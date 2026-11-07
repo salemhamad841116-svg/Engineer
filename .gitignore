@@ -13,3 +13,6 @@ _backup_soug_alhujun/
 *.sqlite
 *.sqlite3
 *.db
+playwright-report/
+test-results/
+blob-report/

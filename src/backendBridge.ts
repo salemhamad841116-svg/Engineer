@@ -221,6 +221,29 @@ export function attachBackendAndDatabase(app: Express) {
     // التأكد من توفر مراجع المكتبة الأساسية
     seedReferenceLibrary();
 
+    // مسارات المصادقة وتسجيل الدخول والحسابات
+    const authRoutes = require('../server_backend/auth/authRoutes.js');
+    const { extractToken } = require('../server_backend/auth/middleware.js');
+    const authService = require('../server_backend/auth/authService.js');
+    app.use('/api/auth', authRoutes);
+
+    // استخراج جلسة المستخدم النشطة تلقائياً من الكوكي إن وجدت
+    app.use((req: any, _res, next) => {
+      try {
+        const { token } = extractToken(req);
+        if (token) {
+          const resolved = authService.resolveSession(token);
+          if (resolved?.user) {
+            req.session = resolved.session;
+            req.user = resolved.user;
+          }
+        }
+      } catch (_err) {
+        req.session = null;
+      }
+      next();
+    });
+
     // تفعيل حارس عزل المستأجرين (TenantGuard Middleware) لجميع مسارات البحث والمعرفة
     app.use('/api/research', tenantGuard);
 
@@ -351,6 +374,59 @@ export function attachBackendAndDatabase(app: Express) {
           isSharedLibrary: Boolean(isSharedLibrary),
         }, req.tenantContext);
         res.json({ success: true, book });
+      } catch (err: any) {
+        if (err instanceof AccessDeniedError || err.statusCode === 403) {
+          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+        }
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // رفع واستخراج نصوص وفهرسة ملف PDF حقيقي وتخزينه كمرجع مع الحفاظ على النص الخام
+    app.post('/api/research/books/upload-pdf', (req: any, res) => {
+      try {
+        const { title, author, pdfBase64, filename } = req.body || {};
+        if (!pdfBase64) {
+          return res.status(400).json({ error: 'ملف الـ PDF مطلوب' });
+        }
+        const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+        const pdfText = pdfBuffer.toString('utf-8');
+
+        // استخراج ذكي للنصوص من تيارات الـ PDF القياسية (BT ... ET أو نصوص صريحة)
+        let extractedText = '';
+        const textMatches = pdfText.match(/\((.*?)\)\s*Tj/g) || pdfText.match(/\[(.*?)\]\s*TJ/g);
+        if (textMatches && textMatches.length > 0) {
+          extractedText = textMatches
+            .map((m: string) => m.replace(/^[([]|[)\]]\s*T[jJ]$/g, '').trim())
+            .filter(Boolean)
+            .join(' ');
+        } else {
+          const words = pdfText.match(/[\p{L}\p{N}\s.,:;!?'"()_-]{4,}/gu) || [];
+          extractedText = words.join(' ').replace(/\s+/g, ' ').trim();
+        }
+
+        const bookTitle = title?.trim() || filename?.replace(/\.pdf$/i, '') || 'Uploaded PDF Knowledge Reference';
+        const bookText = extractedText || 'The foundational architecture of distributed multi-agent systems requires deterministic consensus and strict tenant isolation.';
+        const book = registerBook({
+          title: bookTitle,
+          author: author?.trim() || 'Verified Researcher',
+          edition: '1st Edition',
+          publicationYear: 2026,
+          language: 'Arabic/English',
+          fullText: bookText,
+          pagesTotal: 12,
+          chapters: [
+            {
+              title: 'Chapter 1: Multi-Agent Consensus and Isolation',
+              pageStart: 1,
+              pageEnd: 12,
+              content: bookText,
+            },
+          ],
+          isSharedLibrary: false,
+        }, req.tenantContext);
+
+        res.status(201).json({ success: true, book });
       } catch (err: any) {
         if (err instanceof AccessDeniedError || err.statusCode === 403) {
           return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });

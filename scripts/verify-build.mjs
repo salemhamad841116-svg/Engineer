@@ -10,6 +10,7 @@
  * 4. Verbatim Raw Chunk Byte-Integrity Gate
  * 5. Full production bundle generation (vite build)
  * 6. Dockerfile volume mounting, container build, and live health check probe
+ * 7. Playwright End-to-End Headless Verification (5 scenarios & verbatim byte assertion)
  */
 
 import { execSync } from 'child_process';
@@ -179,4 +180,17 @@ runStep('Dockerfile Verification, Volume Mount & Container Health Probe', () => 
   }
 });
 
+// ----------------------------------------------------
+// Step 7: Playwright End-to-End Verification (5 Scenarios & Verbatim Byte Assertion)
+// ----------------------------------------------------
+runStep('Playwright End-to-End Test Suite (5 Scenarios & Verbatim Byte Assertion)', () => {
+  // Ensure port 3005 is free for Playwright webServer
+  try {
+    execSync('lsof -ti :3005 | xargs kill -9 2>/dev/null || true', { stdio: 'pipe' });
+  } catch (_) {}
+
+  execSync('npm run test:e2e', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
+

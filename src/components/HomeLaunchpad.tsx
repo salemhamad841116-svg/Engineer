@@ -31,6 +31,7 @@ import {
   X,
   Briefcase,
   Sparkles,
+  User,
 } from 'lucide-react';
 import { Language, Project, ProjectCategory } from '../types/platform';
 
@@ -40,6 +41,7 @@ interface HomeLaunchpadProps {
   projects: Project[];
   activeProject: Project;
   isGenerating: boolean;
+  currentUser?: { name?: string; email?: string } | null;
   onToggleSidebar: () => void;
   onToggleLanguage: () => void;
   onSelectProject: (project: Project, openIde?: boolean) => void;
@@ -101,6 +103,7 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
   projects,
   activeProject,
   isGenerating,
+  currentUser,
   onToggleSidebar: _onToggleSidebar,
   onToggleLanguage: _onToggleLanguage,
   onSelectProject,
@@ -482,8 +485,19 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
           </button>
         </nav>
 
-        {/* Right Controls: Clean New Project CTA */}
+        {/* Right Controls: User Auth Badge & Clean New Project CTA */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="auth-open-button"
+            onClick={() => onOpenModal('auth')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs font-medium text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <User className="w-3.5 h-3.5 text-blue-400" />
+            <span data-testid="auth-user-badge">
+              {currentUser?.name || currentUser?.email?.split('@')[0] || (isAr ? 'تسجيل الدخول' : 'Sign In')}
+            </span>
+          </button>
           <button
             type="button"
             onClick={() => onOpenModal('new-project')}
@@ -748,6 +762,7 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
               {/* Deep Research & Books Intelligence Button */}
               <button
                 type="button"
+                data-testid="deep-research-open-button"
                 onClick={() => onOpenModal('deep-research')}
                 aria-label={isAr ? 'البحث ودراسة الكتب' : 'Deep Research & Books'}
                 className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/35 text-[11px] font-semibold text-indigo-300 transition-colors cursor-pointer"

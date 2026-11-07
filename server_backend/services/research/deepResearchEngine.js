@@ -123,14 +123,15 @@ async function executeDeepResearch({
     sanitizedBlocks.push(safeWrapped);
 
     findings.push({
+      bookId: s.bookId,
       bookTitle: s.bookTitle,
       author: s.author,
       chapter: s.chapter,
       pageNumber: s.pageNumber,
       year: s.publicationYear,
       keyFact: s.text.slice(0, 180) + '...',
-      verbatimQuote: s.text.slice(0, 160),
-      rawChunk: s.text,
+      verbatimQuote: s.verbatimRawChunk || s.text,
+      rawChunk: s.verbatimRawChunk || s.text,
     });
   }
 
@@ -203,12 +204,14 @@ async function executeDeepResearch({
     for (const f of findings.slice(0, 4)) {
       const cite = recordCitation({
         sessionId: session.id,
+        bookId: f.bookId,
         bookTitle: f.bookTitle,
         author: f.author,
         chapter: f.chapter,
         pageNumber: f.pageNumber,
         quoteExact: f.verbatimQuote,
         sourceChunkText: f.rawChunk,
+        tenantId: tenantCtx.tenantId,
       });
       recordedCitations.push(cite);
       citationsList.push(`- **${cite.bookTitle}** (المؤلف: ${cite.author} | ${cite.chapter} | ص ${cite.pageNumber}):\n  > «${cite.quoteExact}»`);

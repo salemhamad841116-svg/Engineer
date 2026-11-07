@@ -371,8 +371,27 @@ function sweepSessions() {
   return { expired, lost };
 }
 
+function register({ name, email, password, ip, userAgent, client }) {
+  const cleanEmail = normalizeEmail(email);
+  const cleanName = String(name || '').trim() || cleanEmail.split('@')[0];
+  if (!cleanEmail || !password) throw new AppError(400, 'MISSING_FIELDS', 'Email and password are required.');
+  if (!EMAIL_RE.test(cleanEmail)) throw new AppError(400, 'EMAIL_INVALID', 'A valid email address is required.');
+  const existing = get('SELECT id FROM users WHERE email = ?', cleanEmail);
+  if (existing) {
+    throw new AppError(409, 'EMAIL_EXISTS', 'An account with this email already exists.');
+  }
+  const id = newId('usr');
+  const now = nowIso();
+  run(
+    `INSERT INTO users (id, email, name, role, password_hash, status, created_at, created_by, app_source)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    id, cleanEmail, cleanName, 'supervisor', hashPassword(password), 'active', now, 'self_register', 'chathsm'
+  );
+  return login({ email: cleanEmail, password, ip, userAgent, client });
+}
+
 module.exports = {
   publicUser, bootstrapAdmin, createUser, listUsers, updateUser, issueInvitationForUser,
-  getInvitationByToken, acceptInvitation, login, resolveSession, touchSession, logout,
+  getInvitationByToken, acceptInvitation, login, register, resolveSession, touchSession, logout,
   changePassword, revokeUserSessions, sweepSessions, endUserSessions, normalizeEmail, EMAIL_RE,
 };

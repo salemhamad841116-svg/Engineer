@@ -11,6 +11,34 @@ function clientIp(req) {
 }
 
 router.post(
+  '/register',
+  asyncHandler(async (req, res) => {
+    const { name, email, password, client } = req.body || {};
+    const result = authService.register({
+      name,
+      email,
+      password,
+      ip: clientIp(req),
+      userAgent: req.headers['user-agent'],
+      client: client === 'mobile' ? 'mobile' : 'web',
+    });
+    setSessionCookie(req, res, result.token, result.expiresAt);
+    res.status(201).json({
+      success: true,
+      user: result.user,
+      session: { id: result.sessionId, expiresAt: result.expiresAt },
+      policy: {
+        heartbeatIntervalSeconds: config.heartbeatIntervalSec,
+        offlineAfterSeconds: config.offlineAfterSec,
+        awayAfterSeconds: config.awayAfterSec,
+        displayTimeZone: config.displayTimeZone,
+      },
+      ...(client === 'mobile' ? { token: result.token } : {}),
+    });
+  })
+);
+
+router.post(
   '/login',
   asyncHandler(async (req, res) => {
     const { email, password, client } = req.body || {};

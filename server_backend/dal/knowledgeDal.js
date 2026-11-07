@@ -189,9 +189,18 @@ class KnowledgeDAL {
       );
 
       // 3. Chunks with verbatim_raw_chunk
-      if (chapters && chapters.length > 0) {
+      let targetChapters = (chapters && chapters.length > 0) ? chapters : [];
+      if (targetChapters.length === 0 && fullText && fullText.trim()) {
+        targetChapters = [{
+          title: 'الفصل الأول: المحتوى المعتمد',
+          pageStart: 1,
+          pageEnd: pagesTotal || 1,
+          content: fullText.trim(),
+        }];
+      }
+      if (targetChapters.length > 0) {
         let globalIdx = 0;
-        for (const ch of chapters) {
+        for (const ch of targetChapters) {
           const chChunks = chunkBookContentWithVerbatim(ch.content, {
             chapter: ch.title,
             pageStart: ch.pageStart || 1,

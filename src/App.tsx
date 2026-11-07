@@ -41,6 +41,7 @@ import { PublishedAppsView, ButtonRegistryView } from './components/PublishedAnd
 import { ServersView } from './components/ServersView';
 import DeepResearchModal from './components/DeepResearchModal';
 import { AutonomousAgentModal } from './components/AutonomousAgentModal';
+import { AuthModal } from './components/AuthModal';
 
 export default function App() {
   // Primary State
@@ -80,6 +81,7 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [modalPayload, setModalPayload] = useState<any>(null);
   const [infoDrawer, setInfoDrawer] = useState<'help' | 'releases' | 'status' | 'referral' | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string } | null>(null);
 
   // AI Execution Pipeline State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -93,6 +95,18 @@ export default function App() {
     setTimeout(() => {
       setToast((prev) => (prev?.message === message ? null : prev));
     }, 4000);
+  }, []);
+
+  // Check current session on mount
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Load persisted state from server on mount
@@ -791,6 +805,7 @@ export default function App() {
           projects={projects}
           activeProject={activeProject}
           isGenerating={isGenerating}
+          currentUser={currentUser}
           onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
           onToggleLanguage={() =>
             handleUpdateSettings({
@@ -884,6 +899,22 @@ export default function App() {
         onClose={() => setActiveModal(null)}
         language={language}
         currentProjectId={activeProjectId}
+      />
+
+      {/* User Authentication Modal (Register / Login) */}
+      <AuthModal
+        isOpen={activeModal === 'auth'}
+        onClose={() => setActiveModal(null)}
+        language={language}
+        onAuthSuccess={(user) => {
+          setCurrentUser(user);
+          setSettings((prev) => ({
+            ...prev,
+            userName: user.name,
+            userEmail: user.email,
+          }));
+          notify('success', language === 'ar' ? `مرحباً بك ${user.name}` : `Welcome ${user.name}`);
+        }}
       />
 
       {/* Global Toast Notification Banner */}

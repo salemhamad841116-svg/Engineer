@@ -101,9 +101,15 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
   const [showQualityGateDetails, setShowQualityGateDetails] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState<string | null>(null);
 
-  // Load books library on open
-  useEffect(() => {
-    if (!isOpen) return;
+  // Tab & Upload State
+  const [activeTab, setActiveTab] = useState<'query' | 'upload'>('query');
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadAuthor, setUploadAuthor] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const reloadBooks = () => {
     fetch('/api/research/books')
       .then((r) => r.json())
       .then((data) => {
@@ -112,7 +118,74 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
         }
       })
       .catch((err) => console.warn('Failed to load books:', err));
+  };
+
+  // Load books library on open
+  useEffect(() => {
+    if (!isOpen) return;
+    reloadBooks();
   }, [isOpen]);
+
+  const handlePdfUploadSubmit = async () => {
+    if (!selectedFile) {
+      setUploadStatus({ type: 'error', text: isAr ? 'يرجى اختيار ملف PDF' : 'Please select a PDF file' });
+      return;
+    }
+    setIsUploading(true);
+    setUploadStatus(null);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64Data = (reader.result as string).split(',')[1];
+          const res = await fetch('/api/research/books/upload-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: uploadTitle.trim() || selectedFile.name.replace(/\.pdf$/i, ''),
+              author: uploadAuthor.trim() || 'Verified Author',
+              pdfBase64: base64Data,
+              filename: selectedFile.name,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Failed to upload and index PDF');
+          }
+          setUploadStatus({
+            type: 'success',
+            text: isAr ? `تمت فهرسة الكتاب بنجاح: ${data.book?.title}` : `Book indexed successfully: ${data.book?.title}`,
+          });
+          setUploadTitle('');
+          setUploadAuthor('');
+          setSelectedFile(null);
+          reloadBooks();
+        } catch (innerErr: any) {
+          setUploadStatus({ type: 'error', text: innerErr.message || 'Error parsing upload' });
+        } finally {
+          setIsUploading(false);
+        }
+      };
+      reader.onerror = () => {
+        setUploadStatus({ type: 'error', text: 'Failed to read PDF file' });
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(selectedFile);
+    } catch (err: any) {
+      setUploadStatus({ type: 'error', text: err.message || 'Upload error' });
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+      if (!uploadTitle.trim()) {
+        setUploadTitle(file.name.replace(/\.pdf$/i, ''));
+      }
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -200,6 +273,7 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
 
   return (
     <div
+      data-testid="deep-research-modal"
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
       dir={isAr ? 'rtl' : 'ltr'}
     >
@@ -234,6 +308,7 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
           </div>
           <button
             type="button"
+            data-testid="deep-research-close-button"
             onClick={onClose}
             className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
           >
@@ -241,9 +316,167 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
           </button>
         </div>
 
+        {/* Navigation Tabs: Deep Research vs PDF Book Ingestion */}
+        <div className="flex border-b border-white/10 px-6 pt-2.5 bg-[#12141c] gap-4">
+          <button
+            type="button"
+            data-testid="research-tab-query"
+            onClick={() => setActiveTab('query')}
+            className={`pb-2.5 text-xs font-semibold transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 ${
+              activeTab === 'query'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>{isAr ? 'البحث المعرفي والدراسة' : 'Knowledge Research'}</span>
+          </button>
+          <button
+            type="button"
+            data-testid="research-tab-upload"
+            onClick={() => setActiveTab('upload')}
+            className={`pb-2.5 text-xs font-semibold transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 ${
+              activeTab === 'upload'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Library className="w-3.5 h-3.5" />
+            <span>{isAr ? 'فهرسة ورفع الكتب (PDF)' : 'Upload & Index Books (PDF)'}</span>
+          </button>
+        </div>
+
         {/* Modal Body (Scrollable) */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+          {/* Upload & Indexing Tab View */}
+          {activeTab === 'upload' && (
+            <div data-testid="book-upload-section" className="space-y-4 rounded-xl bg-[#14161f] border border-white/10 p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Library className="w-4 h-4 text-blue-400" />
+                  <span>{isAr ? 'فهرسة مرجع أو كتاب PDF حقيقي في مكتبة المعرفة' : 'Index Real PDF Knowledge Reference'}</span>
+                </h3>
+                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  SQLite Verbatim Vault™
+                </span>
+              </div>
+
+              {uploadStatus && (
+                <div
+                  data-testid="book-indexing-status"
+                  className={`p-3 rounded-lg text-xs font-medium flex items-center gap-2 ${
+                    uploadStatus.type === 'success'
+                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                      : 'bg-red-500/15 border border-red-500/30 text-red-300'
+                  }`}
+                >
+                  {uploadStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                  <span>{uploadStatus.text}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">
+                    {isAr ? 'عنوان الكتاب / المرجع' : 'Book / Document Title'}
+                  </label>
+                  <input
+                    type="text"
+                    data-testid="book-title-input"
+                    value={uploadTitle}
+                    onChange={(e) => setUploadTitle(e.target.value)}
+                    placeholder={isAr ? 'مثال: مقدمة ابن خلدون' : 'e.g. Distributed Multi-Agent Systems'}
+                    className="w-full bg-[#1b1c24] border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">
+                    {isAr ? 'اسم المؤلف' : 'Author'}
+                  </label>
+                  <input
+                    type="text"
+                    data-testid="book-author-input"
+                    value={uploadAuthor}
+                    onChange={(e) => setUploadAuthor(e.target.value)}
+                    placeholder={isAr ? 'مثال: عبد الرحمن بن خلدون' : 'e.g. AI Systems Lab'}
+                    className="w-full bg-[#1b1c24] border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">
+                  {isAr ? 'اختيار ملف PDF حقيقي من الجهاز' : 'Select Real PDF File'}
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  data-testid="book-pdf-input"
+                  onChange={handleFileSelect}
+                  className="w-full bg-[#1b1c24] border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-300 file:me-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-[11px] text-zinc-500">
+                  {selectedFile ? `${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)` : (isAr ? 'لم يتم اختيار ملف' : 'No file chosen')}
+                </span>
+                <button
+                  type="button"
+                  data-testid="book-upload-submit"
+                  disabled={isUploading || !selectedFile}
+                  onClick={handlePdfUploadSubmit}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-medium text-xs transition-colors cursor-pointer flex items-center gap-2 shadow-lg shadow-blue-900/30"
+                >
+                  {isUploading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>{isAr ? 'جاري الفهرسة واستخراج النصوص...' : 'Extracting & Indexing...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 rotate-180" />
+                      <span>{isAr ? 'فهرسة وتخزين في مكتبة المعرفة' : 'Index & Store in Knowledge Library'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Indexed Books List */}
+              <div className="pt-4 border-t border-white/10">
+                <h4 className="text-xs font-semibold text-zinc-400 mb-2">
+                  {isAr ? 'المراجع المفهرسة حالياً في المكتبة:' : 'Currently Indexed Books:'}
+                </h4>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {availableBooks.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-zinc-500">
+                      {isAr ? 'لا توجد مراجع حالياً، قم برفع أول مرجع أعلاه.' : 'No references indexed yet. Upload one above.'}
+                    </div>
+                  ) : (
+                    availableBooks.map((b) => (
+                      <div
+                        key={b.id}
+                        data-testid={`book-list-item-${b.id}`}
+                        className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5 flex items-center justify-between text-xs text-zinc-300 hover:bg-white/[0.06] transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <span className="font-medium text-white">{b.title}</span>
+                          <span className="text-zinc-500 text-[11px]">| {b.author || 'Verified'}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded bg-white/5 text-zinc-400 font-mono text-[10px]">
+                          {b.totalPages ? `${b.totalPages} p.` : 'Indexed'}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Query & Controls Box */}
+          {activeTab === 'query' && (
           <div className="rounded-xl bg-[#14161f] border border-white/10 p-4 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
@@ -325,6 +558,7 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
               </button>
             </div>
           </div>
+          )}
 
           {/* Stepping Indicator (Shows only executed stages, no fake progress) */}
           {(isSearching || result) && (
@@ -516,7 +750,7 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
                           data-testid="citation-verbatim-quote"
                           className="p-2.5 rounded-lg bg-white/[0.03] border-s-2 border-indigo-500 text-zinc-300 text-xs italic font-serif leading-relaxed"
                         >
-                          «{c.quoteExact}»
+                          «<span data-testid="citation-verbatim-text">{c.quoteExact}</span>»
                         </div>
 
                         {/* Expandable Preceding/Succeeding Context */}

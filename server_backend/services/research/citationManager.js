@@ -46,6 +46,7 @@ function recordCitation({
 
   return {
     id: citationId,
+    bookId,
     bookTitle,
     author,
     edition,
