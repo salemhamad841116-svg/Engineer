@@ -10,7 +10,7 @@ const { nowIso } = require('../../utils/clock');
 const { executeDeepResearch } = require('./deepResearchEngine');
 
 // 24 Reference Benchmarks (Batch 1 across 5 domains + 2 behavioral tests)
-const SEED_BENCHMARK_QA = [
+const SEED_BENCHMARK_BATCH1 = [
   // [D1: قواعد البيانات]
   {
     id: 'gold_db_01',
@@ -242,6 +242,123 @@ const SEED_BENCHMARK_QA = [
   },
 ];
 
+// 10 Stress Benchmarks (Batch 2 targeting documented embedding limitations)
+const SEED_BENCHMARK_BATCH2 = [
+  // [S1: صياغة بدون تطابق كلمات مفتاحية — يستهدف غياب self-attention]
+  {
+    id: 'gold_stress_s1_01',
+    query: 'هل توجد طريقة تجعل كتابة البيانات في القاعدة أسرع من قراءتها، وما الثمن المقابل لذلك؟',
+    category: 'stress_s1_no_keyword',
+    limitationCategory: 'S1: صياغة بدون تطابق كلمات مفتاحية (غياب self-attention)',
+    expectedAnswer: 'طريقة تجعل كتابة البيانات في القاعدة أسرع بكثير من قراءتها هي بنية وهياكل LSM-Tree (Log-Structured Merge-Tree) المصممة خصيصاً للتحسين الأقصى لسرعة الكتابة Write-Optimized. والثمن المقابل لذلك هو التضحية بسرعة القراءة الفردية وتضخيم القراءة Read Amplification وعمليات الدمج Compaction المستمرة في الخلفية',
+    expectedBooks: ['موسوعة قواعد البيانات ومعالجة المعاملات ACID'],
+    expectedQuotes: ['طريقة تجعل كتابة البيانات في القاعدة أسرع بكثير من قراءتها هي اعتماد هياكل ومحركات LSM-Tree'],
+    minQualityScore: 8.0,
+  },
+  {
+    id: 'gold_stress_s1_02',
+    query: 'كيف تتصرف الخدمة عندما تغرقها الطلبات: هل ترفضها فوراً أم تبطئ استقبالها، وما اسم هذا النمط؟',
+    category: 'stress_s1_backpressure',
+    limitationCategory: 'S1: صياغة بدون تطابق كلمات مفتاحية (غياب self-attention)',
+    expectedAnswer: 'تطبق الخدمة نمط الضغط العكسي (Backpressure) فتبطئ استقبال ومعالجة الطلبات وإشعار الأنظمة المرسلة بتخفيف وتيرة الإرسال وتخزينها في طوابير معالجة Buffering بدلاً من الرفض الفوري العشوائي، وفي الحالات القصوى تطبق تخفيف الأحمال Load Shedding',
+    expectedBooks: ['هندسة البرمجيات والأنظمة الموزعة الحديثة', 'Cloud Native Microservices & Distributed Architecture'],
+    expectedQuotes: ['تطبق نمط الضغط العكسي (Backpressure) فتبطئ استقبال ومعالجة الطلبات'],
+    minQualityScore: 8.0,
+  },
+  {
+    id: 'gold_stress_s1_03',
+    query: 'ما الآلية التي تضمن أن إعادة إرسال نفس الطلب لا ينفذه النظام مرتين؟',
+    category: 'stress_s1_polysemy',
+    limitationCategory: 'S1: تشابه لفظي واشتراك معنوي (Polysemy: Idempotency vs Identity)',
+    expectedAnswer: 'الآلية التي تضمن أن إعادة إرسال نفس الطلب لا ينفذه النظام مرتين هي خاصية اللاتغير بالتكرار (Idempotency) بالاعتماد على مفاتيح فريدة Idempotency Keys',
+    expectedBooks: ['هندسة البرمجيات والأنظمة الموزعة الحديثة', 'Cloud Native Microservices & Distributed Architecture'],
+    expectedQuotes: ['خاصية اللاتغير بالتكرار (Idempotency) بالاعتماد على مفاتيح فريدة Idempotency Keys'],
+    minQualityScore: 8.0,
+  },
+
+  // [S2: أرقام وتواريخ محددة — تستهدف الدقة]
+  {
+    id: 'gold_stress_s2_04',
+    query: 'في أي عام طُرح مبدأ الـ CAP ومن، وفي أي عام جاءت برهنته الرياضية الرسمية؟',
+    category: 'stress_s2_cap_dates',
+    limitationCategory: 'S2: أرقام وتواريخ محددة (Brewer 2000 & Gilbert/Lynch 2002)',
+    expectedAnswer: 'طُرح مبدأ CAP لأول مرة كفرضية حدسية في عام 2000 بواسطة إريك بروير (Eric Brewer)، ثم جاءت برهنته الرياضية الرسمية في عام 2002 بواسطة سيث غيلبرت ونانسي لينش (Seth Gilbert & Nancy Lynch)',
+    expectedBooks: ['هندسة البرمجيات والأنظمة الموزعة الحديثة', 'موسوعة قواعد البيانات ومعالجة المعاملات ACID'],
+    expectedQuotes: ['طُرح مبدأ الـ CAP لأول مرة كفرضية حدسية في عام 2000 بواسطة إريك بروير (Eric Brewer)'],
+    minQualityScore: 8.0,
+  },
+  {
+    id: 'gold_stress_s2_05',
+    query: 'ما عدد مراحل اختيار القائد في Raft بعد انقسام الشبكة؟ وصفّ ما يحدث لأصوات المرشحين.',
+    category: 'stress_s2_raft_election',
+    limitationCategory: 'S2: تسلسل مراحل وأرقام خوارزمية (Raft Quorum & Split Vote)',
+    expectedAnswer: 'يمر اختيار القائد بثلاث مراحل: انتهاء مهلة الانتخاب، طلب التصويت RequestVote، وجمع الأصوات؛ وعند انقسام الأصوات Split Vote تنتهي الجولة دون فائز وتبدأ حلقة تصويت متكررة بمهل زمنية عشوائية حتى تحقيق أغلبية النصاب Quorum Majority',
+    expectedBooks: ['موسوعة قواعد البيانات ومعالجة المعاملات ACID'],
+    expectedQuotes: ['في خوارزمية Raft بعد انقسام الشبكة أو فقدان إشارات نبضات القلب Heartbeat'],
+    minQualityScore: 8.0,
+  },
+
+  // [S3: أسماء متشابهة — تستهدف polysemy والدقة]
+  {
+    id: 'gold_stress_s3_06',
+    query: 'ما الفرق بين Two-Phase Commit وبين Two-Phase Locking؟',
+    category: 'stress_s3_2pc_vs_2pl',
+    limitationCategory: 'S3: أسماء متشابهة (Two-Phase Commit vs Two-Phase Locking)',
+    expectedAnswer: '2PC هو بروتوكول توافق لمعاملات ذرية موزعة يضمن التزام كافة العقد (Prepare ثم Commit)، بينما 2PL هو آلية تحكم بالتزامن وأقفال داخل محرك قاعدة البيانات (Growing phase ثم Shrinking phase) لضمان العزل التسلسلي',
+    expectedBooks: ['موسوعة قواعد البيانات ومعالجة المعاملات ACID', 'هندسة البرمجيات والأنظمة الموزعة الحديثة'],
+    expectedQuotes: ['الفرق الجوهري بين Two-Phase Commit (2PC) و Two-Phase Locking (2PL)'],
+    minQualityScore: 8.0,
+  },
+  {
+    id: 'gold_stress_s3_07',
+    query: 'ما الفرق بين التسلسلية Serializability وبين التسلسل Serial execution؟',
+    category: 'stress_s3_serializability',
+    limitationCategory: 'S3: تشابه المصطلحات والجذور (Serializability vs Serial execution)',
+    expectedAnswer: 'التنفيذ المتسلسل Serial execution هو تشغيل المعاملات فعلياً واحدة تلو الأخرى دون توازٍ زمني مما يهدر الموارد؛ بينما التسلسلية Serializability هي معيار وضمان عزل يتيح التزامن والتوازي الفعلي مع ضمان تطابق النتيجة لتنفيذ متسلسل',
+    expectedBooks: ['موسوعة قواعد البيانات ومعالجة المعاملات ACID'],
+    expectedQuotes: ['والفرق بين التسلسلية Serializability والتنفيذ المتسلسل Serial execution'],
+    minQualityScore: 8.0,
+  },
+
+  // [S4: ثنائية لغة معكوسة — سؤال إنجليزي يستهدف كتاباً عربياً]
+  {
+    id: 'gold_stress_s4_08',
+    query: 'What consistency guarantee prevents reading uncommitted changes from concurrent transactions?',
+    category: 'stress_s4_reverse_bilingual',
+    limitationCategory: 'S4: ثنائية لغة معكوسة (English query targeting Arabic DB book)',
+    expectedAnswer: 'The consistency guarantee / isolation level that prevents reading uncommitted changes from concurrent transactions is Read Committed (as well as Serializable), preventing dirty reads.',
+    expectedBooks: ['موسوعة قواعد البيانات ومعالجة المعاملات ACID'],
+    expectedQuotes: ['reading uncommitted changes from concurrent transactions', 'Read Committed'],
+    minQualityScore: 7.0,
+  },
+
+  // [S5: استدلال متعدد القفزات — يربط فصلين]
+  {
+    id: 'gold_stress_s5_09',
+    query: 'لماذا تؤدي رفع مستوى العزل إلى تناقض الأداء مع التزامن؟ اربط الإجابة بما يحدث لفهارس القراءة عند كثرة الكتابات المتزامنة.',
+    category: 'stress_s5_multi_hop',
+    limitationCategory: 'S5: استدلال متعدد القفزات (ربط مستويات العزل بأقفال الفهارس وLSM compaction)',
+    expectedAnswer: 'رفع العزل إلى Serializable يفرض أقفال نطاقات Range Locks تسبب تنازع الأقفال وانقسام صفحات فهارس B-Tree وتوقفات دمج Compaction Stalls في LSM-Tree أثناء كثافة الكتابات',
+    expectedBooks: ['موسوعة قواعد البيانات ومعالجة المعاملات ACID'],
+    expectedQuotes: ['يؤدي رفع مستوى العزل (كالانتقال إلى Serializable) إلى تناقض حاد بين ضمانات صحة البيانات والأداء المتزامن'],
+    minQualityScore: 8.0,
+  },
+
+  // [S6: حساس زمني — يستهدف ختم التحقق]
+  {
+    id: 'gold_stress_s6_10',
+    query: 'ما الإصدار طويل الدعم LTS الحالي لـ Node.js وتاريخ انتهاء دعمه؟',
+    category: 'stress_s6_volatile_time',
+    limitationCategory: 'S6: حساسية زمنية (Node.js LTS Releases & Verification Timestamp)',
+    expectedAnswer: 'الإصدار طويل الدعم الحالي (Active LTS) هو Node.js 22 (Jod) وتاريخ انتهاء دعمه هو 30 أبريل 2027، وNode.js 20 ينتهي في 30 أبريل 2026، مع التحقق الخارجي المعتمد بختم زمني',
+    expectedBooks: ['المواصفات القياسية لـ React 19 و Server Actions ومعمارية الويب الحديثة', 'Cloud Native Microservices & Distributed Architecture'],
+    expectedQuotes: ['الإصدار طويل الدعم الحالي (Active LTS) هو Node.js 22'],
+    minQualityScore: 7.0,
+  },
+];
+
+const SEED_BENCHMARK_QA = [...SEED_BENCHMARK_BATCH1, ...SEED_BENCHMARK_BATCH2];
+
 /**
  * Seeds the golden evaluation dataset table if empty or if count is less than SEED_BENCHMARK_QA.
  */
@@ -267,7 +384,7 @@ function seedGoldenDataset(force = false) {
 /**
  * Adds a benchmark QA pair to the golden dataset.
  */
-function addGoldenBenchmark({ query, category, expectedAnswer, expectedBooks = [], expectedQuotes = [], minQualityScore = 7.0, expectedBehavior = null }) {
+function addGoldenBenchmark({ query, category, expectedAnswer, expectedBooks = [], expectedQuotes = [], minQualityScore = 7.0, expectedBehavior = null, limitationCategory = null }) {
   const id = 'gold_' + crypto.randomUUID().slice(0, 10);
   const now = nowIso();
 
@@ -282,17 +399,18 @@ function addGoldenBenchmark({ query, category, expectedAnswer, expectedBooks = [
     minQualityScore, now
   );
 
-  return { id, query, category, expectedAnswer, expectedBooks, expectedQuotes, minQualityScore, expectedBehavior, createdAt: now };
+  return { id, query, category, expectedAnswer, expectedBooks, expectedQuotes, minQualityScore, expectedBehavior, limitationCategory, createdAt: now };
 }
 
 /**
  * Lists all active golden dataset benchmark pairs.
  */
-function listGoldenBenchmarks() {
+function listGoldenBenchmarks({ batch = null } = {}) {
   seedGoldenDataset();
   const rows = all('SELECT * FROM golden_evaluation_dataset WHERE is_active = 1 ORDER BY id ASC');
-  return rows.map((r) => {
+  let list = rows.map((r) => {
     const seedItem = SEED_BENCHMARK_QA.find((s) => s.id === r.id);
+    const itemBatch = r.id.startsWith('gold_stress_') ? 2 : 1;
     return {
       id: r.id,
       query: r.query,
@@ -302,17 +420,27 @@ function listGoldenBenchmarks() {
       expectedQuotes: JSON.parse(r.expected_quotes_json || '[]'),
       minQualityScore: r.min_quality_score,
       expectedBehavior: seedItem?.expectedBehavior || null,
+      limitationCategory: seedItem?.limitationCategory || null,
+      batch: itemBatch,
       createdAt: r.created_at,
     };
   });
+
+  if (batch === 1 || batch === '1') {
+    list = list.filter((item) => item.batch === 1);
+  } else if (batch === 2 || batch === '2') {
+    list = list.filter((item) => item.batch === 2);
+  }
+
+  return list;
 }
 
 /**
  * Runs the automated evaluation harness over the golden evaluation dataset with Recall@5 metric.
  */
-async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } = {}) {
+async function evaluateGoldenDataset({ tenantContext = null, maxItems = null, batch = null } = {}) {
   seedGoldenDataset();
-  let benchmarks = listGoldenBenchmarks();
+  let benchmarks = listGoldenBenchmarks({ batch });
   if (maxItems && maxItems > 0) {
     benchmarks = benchmarks.slice(0, maxItems);
   }
@@ -323,6 +451,11 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } =
   let totalCitationsEvaluated = 0;
   let qualityGatePassCount = 0;
   let recallAt5PassCount = 0;
+
+  let rank1Count = 0;
+  let rank2Count = 0;
+  let rank3To5Count = 0;
+  let rankMissCount = 0;
 
   const domainStats = {};
 
@@ -343,6 +476,7 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } =
     const isRefusalTest = b.expectedBehavior === 'declare_insufficient' || b.expectedBooks.length === 0;
 
     let hitRank = -1;
+    let winningSource = null;
     let recallAt5 = false;
     let hasExpectedBook = false;
 
@@ -361,6 +495,7 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } =
         );
         if (match) {
           hitRank = i + 1;
+          winningSource = src;
           break;
         }
       }
@@ -370,7 +505,9 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } =
         const citedMatch = b.expectedBooks.some((expected) =>
           citedBooks.some((cb) => cb.includes(expected) || expected.includes(cb))
         );
-        if (citedMatch) hitRank = 1;
+        if (citedMatch) {
+          hitRank = 1;
+        }
       }
 
       recallAt5 = hitRank > 0 && hitRank <= 5;
@@ -378,6 +515,31 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } =
         citedBooks.some((cb) => cb.includes(expected) || expected.includes(cb))
       ) || recallAt5;
     }
+
+    // Determine mitigation mechanism
+    let mitigationMechanism = 'N/A';
+    if (winningSource) {
+      const mType = winningSource.matchType || (winningSource.bm25Score > 0 && winningSource.vectorScore > 0 ? 'hybrid' : (winningSource.bm25Score > 0 ? 'bm25_keyword' : 'simhash_vector'));
+      mitigationMechanism = `${mType} (BM25: ${Number((winningSource.bm25Score || winningSource.score || 0).toFixed(2))}, Vector: ${Number((winningSource.vectorScore || 0).toFixed(3))}, RRF: ${Number((winningSource.rrfScore || winningSource.score || 0).toFixed(4))})`;
+    } else if (isRefusalTest) {
+      mitigationMechanism = 'Honest refusal gate (declare_insufficient)';
+    }
+
+    // Rank analysis for items below Rank 2
+    let analysis = null;
+    if (!isRefusalTest && (hitRank > 2 || hitRank === -1)) {
+      if (hitRank <= 5) {
+        analysis = `السؤال حل في الترتيب Rank ${hitRank}؛ آلية التخفيف التي أنقذته ضمن Recall@5 هي (${mitigationMechanism})، وسبب تأخره بعد Rank 2 هو منافسة مقاطع أخرى بمطابقات جزئية أعلى قبل دمج RRF.`;
+      } else {
+        analysis = `فجوة استرجاع: لم يتم استرجاع أي من المراجع المتوقعة ضمن الخمسة الأوائل (Recall@5 = false).`;
+      }
+    }
+
+    // Track rank distribution
+    if (hitRank === 1) rank1Count++;
+    else if (hitRank === 2) rank2Count++;
+    else if (hitRank >= 3 && hitRank <= 5) rank3To5Count++;
+    else rankMissCount++;
 
     // 2. Verbatim Accuracy: Percentage of citations verified >= 95%
     let itemVerbatimPass = 0;
@@ -423,7 +585,9 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } =
 
     results.push({
       benchmarkId: b.id,
+      batch: b.batch,
       category: b.category,
+      limitationCategory: b.limitationCategory,
       query: b.query,
       expectedBooks: b.expectedBooks,
       retrievedBooks: Array.from(new Set(citedBooks.length > 0 ? citedBooks : retrievedSources.slice(0, 3).map((s) => s.bookTitle))),
@@ -431,6 +595,8 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } =
       hitRank: hitRank > 0 ? hitRank : 'غير موجود',
       recallAt5,
       hasExpectedBook,
+      mitigationMechanism,
+      analysis,
       citationsCount: citations.length,
       verbatimPassRate: Number(itemVerbatimRate.toFixed(1)),
       qualityGateScore: isRefusalTest ? 'الامتناع الصادق (معتمد)' : (qg.score || '0/8'),
@@ -460,6 +626,13 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null } =
       sourceAccuracyPercent: Number(overallAccuracy.toFixed(1)),
       verbatimGroundingPercent: Number(overallVerbatimRate.toFixed(1)),
       qualityGatePassRatePercent: Number(overallGatePassRate.toFixed(1)),
+      rankDistribution: {
+        rank1Count,
+        rank2Count,
+        rank3To5Count,
+        rankMissCount,
+        top2Rate: benchmarks.length > 0 ? Number((((rank1Count + rank2Count) / benchmarks.length) * 100).toFixed(1)) : 0,
+      },
       domainBreakdown,
     },
     results,
@@ -473,4 +646,6 @@ module.exports = {
   listGoldenBenchmarks,
   evaluateGoldenDataset,
   SEED_BENCHMARK_QA,
+  SEED_BENCHMARK_BATCH1,
+  SEED_BENCHMARK_BATCH2,
 };

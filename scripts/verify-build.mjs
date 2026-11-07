@@ -189,7 +189,15 @@ runStep('Playwright End-to-End Test Suite (9 Scenarios & Verbatim Byte Assertion
     execSync('lsof -ti :3005 | xargs kill -9 2>/dev/null || true', { stdio: 'pipe' });
   } catch (_) {}
 
-  execSync("NO_PROXY='*' npm run test:e2e", { stdio: 'inherit', cwd: projectRoot, env: { ...process.env, NO_PROXY: '*' } });
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.http_proxy;
+  delete cleanEnv.https_proxy;
+  delete cleanEnv.HTTP_PROXY;
+  delete cleanEnv.HTTPS_PROXY;
+  cleanEnv.no_proxy = '*';
+  cleanEnv.NO_PROXY = '*';
+
+  execSync('npm run test:e2e', { stdio: 'inherit', cwd: projectRoot, env: cleanEnv });
 });
 
 // ----------------------------------------------------

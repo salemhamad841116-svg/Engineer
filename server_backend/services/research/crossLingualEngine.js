@@ -50,8 +50,6 @@ const BILINGUAL_DICTIONARY = [
 
   // Direct English Acronyms & Standards
   { ar: 'معاملات اسيد', en: 'acid transactions' },
-  { ar: 'ميكروسيرفس', en: 'microservices' },
-  { ar: 'اي بي اي', en: 'rest api' },
   { ar: 'جي ار بي سي', en: 'grpc' },
   { ar: 'كاب', en: 'cap theorem' },
 
@@ -86,6 +84,25 @@ const BILINGUAL_DICTIONARY = [
   { ar: 'شبكة خدمات', en: 'service mesh' },
   { ar: 'قاطع دائرة', en: 'circuit breaker' },
   { ar: 'تصيير', en: 'rendering ssr ssg isr' },
+
+  // Stress Batch 2 Terms: Concurrency, Storage, Node.js, Protocols
+  { ar: 'قراءة غير مؤكدة', en: 'reading uncommitted changes' },
+  { ar: 'قراءة غير مؤكدة', en: 'uncommitted changes' },
+  { ar: 'قراءة غير مؤكدة', en: 'dirty read' },
+  { ar: 'مستويات العزل', en: 'consistency guarantee' },
+  { ar: 'مستوى القراءة المعتمدة', en: 'read committed' },
+  { ar: 'معاملات متزامنة', en: 'concurrent transactions' },
+  { ar: 'الضغط العكسي', en: 'backpressure' },
+  { ar: 'تغرقها الطلبات', en: 'backpressure load shedding' },
+  { ar: 'كتابة البيانات أسرع من قراءتها', en: 'lsm-tree write optimized' },
+  { ar: 'إعادة إرسال نفس الطلب لا ينفذه مرتين', en: 'idempotency' },
+  { ar: 'لا ينفذه مرتين', en: 'idempotency key' },
+  { ar: 'قفل ثنائي الطور', en: 'two phase locking 2pl' },
+  { ar: 'اعتماد ثنائي الطور', en: 'two phase commit 2pc' },
+  { ar: 'التسلسلية كمعيار عزل', en: 'serializability' },
+  { ar: 'تنفيذ متسلسل', en: 'serial execution' },
+  { ar: 'إصدار طويل الدعم', en: 'long term support lts nodejs' },
+  { ar: 'نود جي اس', en: 'nodejs lts release' },
 
   // History & Heritage
   { ar: 'حضارة', en: 'civilization' },

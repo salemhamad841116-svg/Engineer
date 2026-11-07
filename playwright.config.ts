@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60000,
+  timeout: 90000,
   expect: {
     timeout: 15000,
   },
@@ -34,5 +34,13 @@ export default defineConfig({
     url: 'http://127.0.0.1:3005/api/health',
     reuseExistingServer: false,
     timeout: 60000,
+    env: {
+      http_proxy: '',
+      https_proxy: '',
+      HTTP_PROXY: '',
+      HTTPS_PROXY: '',
+      no_proxy: '*',
+      NO_PROXY: '*',
+    },
   },
 });

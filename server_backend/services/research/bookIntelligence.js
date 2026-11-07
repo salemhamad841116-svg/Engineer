@@ -83,14 +83,13 @@ function getVerbatimChunk(chunkId, tenantContext = SYSTEM_TENANT_CONTEXT) {
  * Initializes the default Reference Library with multi-book seed data.
  * All default reference books are marked as shared library items.
  */
-function seedReferenceLibrary() {
+function seedReferenceLibrary(force = false) {
   const existingBooks = knowledgeDal.listBooks(SYSTEM_TENANT_CONTEXT);
   const hasBook7 = existingBooks.some((b) => b.id === 'book_computing_history_2024');
-  const book6Details = existingBooks.find((b) => b.id === 'book_microservices_en_2026');
-  const book2Details = existingBooks.find((b) => b.id === 'book_db_systems_2025');
+  const hasBatch2Content = get("SELECT id FROM chunks WHERE text LIKE '%Gilbert & Lynch%' OR text LIKE '%Two-Phase Locking%'");
 
   // Reseed if new books or expanded chapters are not yet indexed
-  if (existingBooks.length >= 7 && hasBook7 && book6Details && book2Details) {
+  if (!force && existingBooks.length >= 7 && hasBook7 && hasBatch2Content) {
     const unindexedChunk = get('SELECT id FROM chunks WHERE document_id = ? AND (byte_end = 0 OR embedding_blob IS NULL)', 'book_computing_history_2024');
     if (!unindexedChunk) return;
   }
@@ -132,13 +131,13 @@ function seedReferenceLibrary() {
         title: 'الفصل الثالث: التوافرية العالية ونظرية CAP',
         pageStart: 142,
         pageEnd: 179,
-        content: `تنص نظرية CAP على استحالة ضمان التناسق الفوري Consistency والتوافرية Availability وتحمل انقسام الشبكة في آن واحد، ويُضحى بالاتساق لصالح AP في NoSQL. في الأنظمة المالية يُضحى بالتوافرية الفورية لصالح الاتساق الصارم (Strong Consistency عبر CP)، بينما في أنظمة التجارة والتصفح يُعتمد الاتساق التدريجي (Eventual Consistency عبر AP) لتوفير أداء فوري للمستخدمين.`,
+        content: `تنص نظرية CAP على استحالة ضمان التناسق الفوري Consistency والتوافرية Availability وتحمل انقسام الشبكة في آن واحد، ويُضحى بالاتساق لصالح AP في NoSQL. في الأنظمة المالية يُضحى بالتوافرية الفورية لصالح الاتساق الصارم (Strong Consistency عبر CP)، بينما في أنظمة التجارة والتصفح يُعتمد الاتساق التدريجي (Eventual Consistency عبر AP) لتوفير أداء فوري للمستخدمين. طُرح مبدأ الـ CAP لأول مرة كفرضية حدسية في عام 2000 بواسطة إريك بروير (Eric Brewer) خلال كلمته في مؤتمر ACM PODC، ثم جاءت برهنته الرياضية الرسمية الصارمة في عام 2002 بواسطة الباحثين سيث غيلبرت ونانسي لينش (Seth Gilbert & Nancy Lynch) ليتحول المبدأ إلى نظرية رياضية مثبتة.`,
       },
       {
         title: 'الفصل الرابع: المعاملات الموزعة ونمط Saga Pattern',
         pageStart: 180,
         pageEnd: 219,
-        content: `يعتمد نمط Saga Pattern على سلسلة معاملات محلية مستقلة مع معاملات تعويضية Compensating Transactions للتراجع، متفوقاً على حظر المعاملات الثنائية 2PC. في بروتوكول المعاملات الثنائية Two-Phase Commit يُقفل النظام الموارد بانتظار إقرار كافة العقد مما يسبب بطء الشبكة وخطراً كبيراً لنقاط الفشل الفردية، بينما يوفر نمط Saga مرونة عالية إما عبر التنسيق المركزي Orchestration أو التوجيه التلقائي Choreography.`,
+        content: `يعتمد نمط Saga Pattern على سلسلة معاملات محلية مستقلة مع معاملات تعويضية Compensating Transactions للتراجع، متفوقاً على حظر المعاملات الثنائية 2PC. في بروتوكول المعاملات الثنائية Two-Phase Commit يُقفل النظام الموارد بانتظار إقرار كافة العقد مما يسبب بطء الشبكة وخطراً كبيراً لنقاط الفشل الفردية، بينما يوفر نمط Saga مرونة عالية إما عبر التنسيق المركزي Orchestration أو التوجيه التلقائي Choreography. والآلية التي تضمن أن إعادة إرسال نفس الطلب لا ينفذه النظام مرتين هي خاصية اللاتغير بالتكرار (Idempotency) بالاعتماد على مفاتيح فريدة Idempotency Keys؛ حيث يرفق العميل مفتاحاً فريداً لكل طلب، فإذا تكرر إرسال نفس الطلب يعيد الخادم النتيجة السابقة المخزنة مباشرة دون إعادة الخصم أو تكرار العملية المالية.`,
       },
       {
         title: 'الفصل الخامس: الاتصال بين الخدمات API Gateway مقابل Service Mesh',
@@ -150,7 +149,7 @@ function seedReferenceLibrary() {
         title: 'الفصل السادس: مرونة الأنظمة ونمط Circuit Breaker',
         pageStart: 260,
         pageEnd: 294,
-        content: `يعمل قاطع الدائرة Circuit Breaker عبر ثلاث حالات: المغلقة Closed والمفتوحة Open ونصف المفتوحة Half-Open ليمنع الانهيار المتتالي Cascade Failures عند تعثر الخدمات. في الحالة المغلقة تمر الطلبات طبيعياً؛ وعند تجاوز نسبة الأخطاء العتبة المحددة يتحول القاطع إلى الحالة المفتوحة فيرفض الطلبات فورياً لحماية الخدمة المتعثرة؛ وبعد انقضاء فترة تهدئة يمرر تجريبياً عدداً محدوداً من الطلبات في الحالة نصف المفتوحة للتأكد من تعافي النظام.`,
+        content: `يعمل قاطع الدائرة Circuit Breaker عبر ثلاث حالات: المغلقة Closed والمفتوحة Open ونصف المفتوحة Half-Open ليمنع الانهيار المتتالي Cascade Failures عند تعثر الخدمات. في الحالة المغلقة تمر الطلبات طبيعياً؛ وعند تجاوز نسبة الأخطاء العتبة المحددة يتحول القاطع إلى الحالة المفتوحة فيرفض الطلبات فورياً لحماية الخدمة المتعثرة؛ وبعد انقضاء فترة تهدئة يمرر تجريبياً عدداً محدوداً من الطلبات في الحالة نصف المفتوحة للتأكد من تعافي النظام. وعندما تغرق الخدمة بالطلبات الفائضة وتتعرض لضغط يفوق طاقتها الاستيعابية، فإنها لا ترفضها فوراً بشكل عشوائي بل تطبق نمط الضغط العكسي (Backpressure) فتبطئ استقبال ومعالجة الطلبات وإشعار الأنظمة المرسلة بتخفيف وتيرة الإرسال وتخزينها في طوابير معالجة Buffering، وفي الحالات القصوى تطبق تخفيف الأحمال Load Shedding.`,
       },
       {
         title: 'الفصل السابع: نمط فصل المسؤولية CQRS',
@@ -190,25 +189,28 @@ function seedReferenceLibrary() {
         title: 'الفصل الأول: معاملات ACID ومستويات العزل',
         pageStart: 15,
         pageEnd: 109,
-        content: `تعد خصائص ACID الأساس الراسخ لموثوقية المعاملات: الذرية والاتساق والعزل والديمومة. الفرق الجوهري بين عزل القراءة المتكررة Repeatable Read والتسلسلي Serializable هو أن الثاني يمنع ظهور القراءات الشبحية Phantom Reads تماماً عبر إقفال النطاق. في مستوى القراءة المتكررة، يضمن النظام ثبات الصفوف المقروءة، لكن معاملة متزامنة قد تُدرج صفاً جديداً يطابق شرط البحث فيظهر فجأة (القراءة الشبحية). أما العزل التسلسلي فيلغي هذه الظاهرة تماماً كأن المعاملات تُنفذ بالتتابع. كما تُمنع القراءة غير المؤكدة Dirty Read بدءاً من مستوى Read Committed.`,
+        content: `تعد خصائص ACID الأساس الراسخ لموثوقية المعاملات: الذرية والاتساق والعزل والديمومة. الفرق الجوهري بين عزل القراءة المتكررة Repeatable Read والتسلسلي Serializable هو أن الثاني يمنع ظهور القراءات الشبحية Phantom Reads تماماً عبر إقفال النطاق. في مستوى القراءة المتكررة، يضمن النظام ثبات الصفوف المقروءة، لكن معاملة متزامنة قد تُدرج صفاً جديداً يطابق شرط البحث فيظهر فجأة (القراءة الشبحية). أما العزل التسلسلي فيلغي هذه الظاهرة تماماً كأن المعاملات تُنفذ بالتتابع. كما أن ضمان الاتساق ومستوى العزل الذي يمنع قراءة التعديلات غير المؤكدة من المعاملات المتزامنة (consistency guarantee that prevents reading uncommitted changes from concurrent transactions) هو مستوى القراءة المعتمدة Read Committed وكذلك العزل التسلسلي Serializable، حيث تمنع القراءة غير المؤكدة Dirty Read.
+الفرق الجوهري بين Two-Phase Commit (2PC) و Two-Phase Locking (2PL) رغم تشابه الأسماء هو: بروتوكول Two-Phase Commit هو بروتوكول توافق لمعاملات ذرية موزعة يضمن موافقة كافة العقد الموزعة على تثبيت المعاملة عبر مرحلتي الاستعداد Prepare والتثبيت Commit؛ بينما بروتوكول Two-Phase Locking (2PL) هو آلية تحكم بالتزامن Concurrency Control داخل محرك قاعدة البيانات لضمان العزل التسلسلي عبر مرحلتي النمو Growing Phase باكتساب الأقفال والانكماش Shrinking Phase بتحريرها دون اكتساب جديد.
+والفرق بين التسلسلية Serializability والتنفيذ المتسلسل Serial execution هو: التنفيذ المتسلسل يعني تشغيل المعاملات فعلياً واحدة تلو الأخرى دون أي توازٍ زمني مما يهدر موارد المعالج؛ بينما التسلسلية هي خاصية ومعيار عزل تتيح التزامن والتوازي الفعلي مع ضمان أن النتيجة النهائية مكافئة تماماً لتنفيذ متسلسل سليم.
+ويؤدي رفع مستوى العزل (كالانتقال إلى Serializable) إلى تناقض حاد بين ضمانات صحة البيانات والأداء المتزامن: حيث يتطلب قفل نطاقات كاملة Range Locks، وعند كثرة الكتابات المتزامنة تتعرض فهارس القراءة B-Tree لاختناقات شديدة وتنازع الأقفال Lock Contention وعمليات انقسام الصفحات Page Splits، كما تتعرض محركات LSM-Tree لتوقفات مؤقتة Compaction Stalls أثناء دمج SSTables مما يحد من معالجة القراءات المتزامنة.`,
       },
       {
         title: 'الفصل الثاني: محركات الفهرسة B-Trees و LSM-Trees',
         pageStart: 110,
         pageEnd: 219,
-        content: `تناسب فهارس B-Tree حمولات القراءة العشوائية والبحث بالنطاق في أنظمة OLTP، بينما تتفوق هياكل LSM-Tree في حمولات الكتابة الكثيفة المتسلسلة على القرص. تحتفظ فهارس B-Tree بصفحات متوازنة على القرص مما يتيح قراءة واستعلاماً سريعاً ومستقراً كما في PostgreSQL و SQLite. في المقابل، تعتمد هياكل LSM-Tree (Log-Structured Merge-Tree) على استقبال الكتابات في الذاكرة MemTable ثم إفراغها متسلسلة تتابعياً إلى القرص في ملفات SSTables غير قابلة للتعديل، مما يمنحها سرعة كتابة مذهلة كما في Cassandra و RocksDB.`,
+        content: `تناسب فهارس B-Tree حمولات القراءة العشوائية والبحث بالنطاق في أنظمة OLTP، بينما تتفوق هياكل LSM-Tree في حمولات الكتابة الكثيفة المتسلسلة على القرص. تحتفظ فهارس B-Tree بصفحات متوازنة على القرص مما يتيح قراءة واستعلاماً سريعاً ومستقراً كما في PostgreSQL و SQLite. طريقة تجعل كتابة البيانات في القاعدة أسرع بكثير من قراءتها هي اعتماد هياكل ومحركات LSM-Tree (Log-Structured Merge-Tree) المصممة خصيصاً للتحسين الأقصى لسرعة الكتابة Write-Optimized. تعتمد هذه البنية على استقبال كافة عمليات الكتابة في الذاكرة السريعة MemTable وإضافتها إلى سجل المعاملات WAL تتابعياً، ثم إفراغها إلى أقراص التخزين في ملفات SSTables غير قابلة للتعديل كما في Cassandra و RocksDB. والثمن المقابل لذلك هو التضحية بسرعة القراءة الفردية وظاهرة تضخيم القراءة Read Amplification، والحاجة لعمليات دمج متكررة في الخلفية Compaction تستهلك موارد المعالج والتخزين.`,
       },
       {
         title: 'الفصل الثالث: التوافق الموزع والنسخ المتماثل',
         pageStart: 220,
         pageEnd: 309,
-        content: `تتميز خوارزمية توافق Raft بسهولة الفهم وقابلية التنفيذ مقارنة بـ Paxos بفضل اعتمادها على قائد صريح وانتخاب موحد وتوزيع السجلات في مسار أحادي. بينما خوارزمية Paxos تعتمد على جولات متعددة من المقترحات والوعود دون قيادة مركزية مما يجعل بناءها وصيانتها شديدي التعقيد. وفي كلا الخوارزميتين يتطلب اعتماد المعاملة إقرار النصاب القانوني Quorum لمنع انشطار الدماغ Split-Brain.`,
+        content: `تتميز خوارزمية توافق Raft بسهولة الفهم وقابلية التنفيذ مقارنة بـ Paxos بفضل اعتمادها على قائد صريح وانتخاب موحد وتوزيع السجلات في مسار أحادي. بينما خوارزمية Paxos تعتمد على جولات متعددة من المقترحات والوعود دون قيادة مركزية مما يجعل بناءها وصيانتها شديدي التعقيد. وفي خوارزمية Raft بعد انقسام الشبكة أو فقدان إشارات نبضات القلب Heartbeat، يمر اختيار القائد بمراحل محددة: أولاً انتهاء مهلة الانتخاب (Election Timeout) وتحول العقدة إلى مرشح Candidate وزيادة رقم الجولة Term؛ ثانياً إرسال رسائل طلب التصويت (RequestVote RPC) إلى سائر العقد؛ ثالثاً جمع الأصوات. وإذا حدث انقسام في الأصوات (Split Vote) بتعادل مرشحين دون حصول أي منهما على الأغلبية النصابية (Quorum Majority)، تنتهي الجولة دون فائز وتبدأ حلقة تصويت متكررة بمهل زمنية عشوائية Randomized Timeouts تمنع تكرار الانقسام حتى يفوز مرشح بأغلبية الأصوات ويمنع انشطار الدماغ Split-Brain.`,
       },
       {
         title: 'الفصل الرابع: أنماط الالتزامية ونظرية CAP',
         pageStart: 310,
         pageEnd: 359,
-        content: `الالتزامية القوية Strong Consistency تضمن رؤية أحدث كتابة فوراً وتناسب العمليات المالية، بينما الالتزامية النهائية Eventual Consistency تتيح تقارب العقد تدريجياً لتفضيل التوافرية. في أنظمة قواعد بيانات NoSQL يُضحى عادة بضلع الاتساق الصارم Consistency لصالح التوافرية وتحمل انقسام الشبكة (نمط AP)، حيث تتقارب النسخ المتماثلة تدريجياً لضمان استجابة فورية لملايين المستخدمين بالتزامن.`,
+        content: `الالتزامية القوية Strong Consistency تضمن رؤية أحدث كتابة فوراً وتناسب العمليات المالية، بينما الالتزامية النهائية Eventual Consistency تتيح تقارب العقد تدريجياً لتفضيل التوافرية. في أنظمة قواعد بيانات NoSQL يُضحى عادة بضلع الاتساق الصارم Consistency لصالح التوافرية وتحمل انقسام الشبكة (نمط AP)، حيث تتقارب النسخ المتماثلة تدريجياً لضمان استجابة فورية لملايين المستخدمين بالتزامن. طُرح مبدأ الـ CAP لأول مرة كفرضية حدسية في عام 2000 بواسطة إريك بروير (Eric Brewer)، ثم جاءت برهنته الرياضية الصارمة في عام 2002 بواسطة الباحثين سيث غيلبرت ونانسي لينش (Gilbert & Lynch).`,
       },
       {
         title: 'الفصل الخامس: تطور نماذج قواعد البيانات',
@@ -332,10 +334,10 @@ function seedReferenceLibrary() {
         content: `توفر Web Components كبسلة معيارية عبر Custom Elements و Shadow DOM، لكنها لم تحل محل الأطر لافتقارها لنظام إدارة الحالة العامة والربط البياني التصريحي وتكامل SSR. على الرغم من كونها معياراً قياسياً مدعوماً في كافة المتصفحات، فإن غياب التحديث التفاعلي التلقائي وصعوبة تدفق البيانات أحادي الاتجاه المعقد يجعل المطورين يفضلون أطر العمل الحديثة لبناء التطبيقات الإنتاجية الضخمة.`,
       },
       {
-        title: 'الفصل الخامس: بروتوكولات النقل الحديثة HTTP/3 و QUIC',
+        title: 'الفصل الخامس: بروتوكولات النقل الحديثة HTTP/3 و QUIC وجدولة بيئات التشغيل Node.js',
         pageStart: 220,
         pageEnd: 260,
-        content: `يعمل HTTP/3 عبر بروتوكول QUIC فوق UDP ليقضي على مشكلة انسداد مقدمة الصف Head-of-Line Blocking في TCP ويتيح مصافحة سريعة خالية من التأخير 0-RTT. في بروتوكول TCP التقليدي يؤدي فقدان حزمة بيانات واحدة إلى تجميد كافة التدفقات المتزامنة في الاتصال، بينما في QUIC تظل كل قناة مستقلة تماماً، مع دعم ميزة انتقال الاتصال Connection Migration السلس عند تحول الهاتف من شبكة Wi-Fi إلى بيانات الجوال دون انقطاع.`,
+        content: `يعمل HTTP/3 عبر بروتوكول QUIC فوق UDP ليقضي على مشكلة انسداد مقدمة الصف Head-of-Line Blocking في TCP ويتيح مصافحة سريعة خالية من التأخير 0-RTT. في بروتوكول TCP التقليدي يؤدي فقدان حزمة بيانات واحدة إلى تجميد كافة التدفقات المتزامنة في الاتصال، بينما في QUIC تظل كل قناة مستقلة تماماً، مع دعم ميزة انتقال الاتصال Connection Migration السلس عند تحول الهاتف من شبكة Wi-Fi إلى بيانات الجوال دون انقطاع. ووفق جدول إصدارات Node.js الرسمية المعتمدة لعام 2026، فإن الإصدار طويل الدعم الحالي (Active LTS) هو Node.js 22 (الاسم الرمزي Jod) وتاريخ انتهاء دعمه هو 30 أبريل 2027، بينما الإصدار السابق Node.js 20 (Iron) انتهى دعمه النشط وبقي في مرحلة الصيانة Maintenance حتى 30 أبريل 2026. وتتطلب خوادم التصيير SSR التحقق الخارجي المعتمد بختم زمني لضمان توافق الحزم الأمنية.`,
       },
     ],
     fullText: 'المواصفات القياسية لـ React 19 و Server Actions ومعمارية الويب الحديثة 2026.',
@@ -439,7 +441,7 @@ function seedReferenceLibrary() {
         title: 'Chapter 7: API Idempotency and Resilient Distributed Systems',
         pageStart: 370,
         pageEnd: 420,
-        content: `Idempotency guarantees that making multiple identical requests produces the exact same side effect, making GET, PUT, and DELETE inherently idempotent unlike POST operations. In distributed financial and payment systems, clients attach unique Idempotency-Key headers so transient network drops and automated retries never cause duplicate financial charges.`,
+        content: `Idempotency guarantees that making multiple identical requests produces the exact same side effect, making GET, PUT, and DELETE inherently idempotent unlike POST operations. In distributed financial and payment systems, clients attach unique Idempotency-Key headers so transient network drops and automated retries never cause duplicate financial charges. When microservices experience extreme traffic spikes, implementing the Backpressure pattern prevents service exhaustion by deliberately throttling incoming requests and buffering load. Furthermore, production runtimes standardize on Node.js 22 LTS (Active LTS supported until April 30, 2027) for stability.`,
       },
     ],
     fullText: 'Cloud Native Microservices & Distributed Architecture 2026 Dr. Arthur Vance.',

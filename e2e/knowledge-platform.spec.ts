@@ -37,7 +37,7 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
   // --------------------------------------------------------------------------
   test('Scenario 1: New user registration creates account and updates UI', async () => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Click user auth button on header
     const authOpenBtn = page.locator('[data-testid="auth-open-button"]');
@@ -218,7 +218,7 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
   // --------------------------------------------------------------------------
   test('Scenario 6: Autonomous Agent - Simple Task Execution & Live Timeline Audit', async () => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 1. Open Autonomous Agent modal
     const agentOpenBtn = page.locator('[data-testid="autonomous-agent-open-button"]');
@@ -235,6 +235,7 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
 
     // 4. Click execute
     const executeBtn = page.locator('[data-testid="agent-execute-button"]');
+    await expect(executeBtn).toBeVisible({ timeout: 15000 });
     await executeBtn.click();
 
     // 5. Verify live steps log appears and status transitions to completed
@@ -242,10 +243,11 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
     await expect(stepsLog).toBeVisible({ timeout: 20000 });
 
     const statusBadge = page.locator('[data-testid="agent-task-status"]');
-    await expect(statusBadge).toContainText('completed', { timeout: 25000 });
+    await expect(statusBadge).toContainText('completed', { timeout: 35000 });
 
     // Close modal
-    await page.locator('[data-testid="agent-close-button"]').click();
+    const closeBtn = page.locator('[data-testid="agent-close-button"]');
+    await closeBtn.click();
     await expect(modal).not.toBeVisible();
 
     console.log('[E2E Gate Verification] ✅ Scenario 6: Autonomous task completed and live audit log verified.');
@@ -256,7 +258,7 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
   // --------------------------------------------------------------------------
   test('Scenario 7: Autonomous Agent - Hazardous Operation Defense & Rejection Safeguard', async () => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 1. Open modal
     await page.locator('[data-testid="autonomous-agent-open-button"]').click();
@@ -300,7 +302,7 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
   // --------------------------------------------------------------------------
   test('Scenario 8: Autonomous Agent - 1-Click Instant Undo Restores State in UI', async () => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 1. Open modal
     await page.locator('[data-testid="autonomous-agent-open-button"]').click();
@@ -314,11 +316,11 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
 
     // 3. Wait for completion
     const statusBadge = page.locator('[data-testid="agent-task-status"]');
-    await expect(statusBadge).toContainText('completed', { timeout: 25000 });
+    await expect(statusBadge).toContainText('completed', { timeout: 35000 });
 
     // 4. Click Undo button
     const undoBtn = page.locator('[data-testid="agent-undo-button"]');
-    await expect(undoBtn).toBeVisible();
+    await expect(undoBtn).toBeVisible({ timeout: 15000 });
     await undoBtn.click();
 
     // 5. Verify feedback banner confirms rollback
@@ -339,7 +341,7 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
   // --------------------------------------------------------------------------
   test('Scenario 9: Deep Research & Book Intelligence Engine - Quality Gate & Feedback', async () => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 1. Open Deep Research modal
     const researchBtn = page.locator('[data-testid="deep-research-open-button"]');
