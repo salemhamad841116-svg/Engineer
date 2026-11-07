@@ -750,7 +750,16 @@ CREATE INDEX IF NOT EXISTS idx_agent_audit_time ON agent_audit_logs(timestamp);
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
-        INSERT OR IGNORE INTO agent_tasks_new SELECT * FROM agent_tasks;
+      `);
+
+      const oldCols = handle.prepare("PRAGMA table_info('agent_tasks')").all().map((c) => c.name);
+      const newCols = handle.prepare("PRAGMA table_info('agent_tasks_new')").all().map((c) => c.name);
+      const sharedCols = oldCols.filter((col) => newCols.includes(col)).join(', ');
+      if (sharedCols.length > 0) {
+        handle.exec(`INSERT OR IGNORE INTO agent_tasks_new (${sharedCols}) SELECT ${sharedCols} FROM agent_tasks;`);
+      }
+
+      handle.exec(`
         DROP TABLE agent_tasks;
         ALTER TABLE agent_tasks_new RENAME TO agent_tasks;
         CREATE INDEX IF NOT EXISTS idx_agent_tasks_project ON agent_tasks(project_id);
