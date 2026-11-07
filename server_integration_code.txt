@@ -1,0 +1,7 @@
+// إضافة الجسر إلى server.ts:
+// 1. في أول الملف مع الاستيرادات:
+import { attachBackendAndDatabase } from './src/backendBridge';
+
+// 2. داخل دالة startServer() بعد تعريف app مباشرة:
+const app = express();
+attachBackendAndDatabase(app);

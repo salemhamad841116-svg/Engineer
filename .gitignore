@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.data/
+data/
+.npm-cache/
+_backup_soug_alhujun/
+*.sqlite
+*.sqlite3
+*.db

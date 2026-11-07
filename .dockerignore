@@ -1,0 +1,10 @@
+node_modules
+dist
+.data
+.npm-cache
+_backup_soug_alhujun
+*.log
+.git
+.env
+.env.local
+.DS_Store

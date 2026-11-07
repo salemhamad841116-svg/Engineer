@@ -1,0 +1,6 @@
+{
+  "name": "Bolt.new Studio — AI App Builder & Cloud IDE",
+  "description": "Full-stack AI-powered application builder, code editor, multi-agent engineering workspace, database manager, automated test center, and cloud deployment platform.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
