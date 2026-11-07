@@ -63,7 +63,7 @@ export interface DbTable {
   id: string;
   name: string;
   columns: DbColumn[];
-  rows: Record<string, any>[];
+  rows: Record<string, unknown>[];
   indexes: string[];
   rlsEnabled: boolean;
   updatedAt: string;

@@ -3,7 +3,25 @@
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { Express } from 'express';
+import type { Express, Request, Response, NextFunction } from 'express';
+import { extractErrorMessage } from './contracts/index';
+
+export interface AuthenticatedRequest extends Request {
+  session?: unknown;
+  user?: { id?: string; email?: string; role?: string; [key: string]: unknown };
+  tenantId?: string;
+  tenantContext?: unknown;
+}
+
+function isForbiddenError(err: unknown, AccessDeniedErrorClass: unknown): boolean {
+  if (typeof AccessDeniedErrorClass === 'function' && err instanceof (AccessDeniedErrorClass as new (...args: unknown[]) => Error)) {
+    return true;
+  }
+  if (typeof err === 'object' && err !== null && 'statusCode' in err) {
+    return (err as { statusCode: unknown }).statusCode === 403;
+  }
+  return false;
+}
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -111,27 +129,27 @@ export function attachBackendAndDatabase(app: Express) {
 
     // 4. ربط مسارات الـ API المباشرة
     // استرجاع المشاريع المخزنة في SQLite
-    app.get('/api/sqlite/projects', (_req, res) => {
+    app.get('/api/sqlite/projects', (_req: Request, res: Response) => {
       try {
         const rows = db.prepare('SELECT * FROM app_projects ORDER BY updated_at DESC').all();
         res.json({ success: true, count: rows.length, projects: rows });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // استرجاع ذاكرة المشروع وحلول الأخطاء السابقة
-    app.get('/api/engineer/memory/:projectId', (req, res) => {
+    app.get('/api/engineer/memory/:projectId', (req: Request, res: Response) => {
       try {
         const memory = getMemory(req.params.projectId);
         res.json({ success: true, memory });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // استرجاع المعرفة البرمجية RAG
-    app.post('/api/engineer/knowledge', (req, res) => {
+    app.post('/api/engineer/knowledge', (req: Request, res: Response) => {
       try {
         const { query, prompt, language, framework, limit } = req.body || {};
         const snippets = retrieveCodingKnowledge(prompt || query || 'react modern web standards', {
@@ -140,13 +158,13 @@ export function attachBackendAndDatabase(app: Express) {
           limit: limit || 5,
         });
         res.json({ success: true, count: snippets.length, snippets });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // تشغيل أوركسترا النماذج والبرمجة الذاتية والإصلاح
-    app.post('/api/engineer/orchestrate', async (req, res) => {
+    app.post('/api/engineer/orchestrate', async (req: Request, res: Response) => {
       try {
         const { projectId, prompt, autoRepair, actor, options } = req.body || {};
         let targetProjectId = projectId;
@@ -183,18 +201,18 @@ export function attachBackendAndDatabase(app: Express) {
         });
 
         res.json({ success: true, result });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // فحص الجودة ومعايير التقييم القياسية
-    app.get('/api/engineer/benchmarks', (_req, res) => {
+    app.get('/api/engineer/benchmarks', (_req: Request, res: Response) => {
       try {
         const benchmarks = listBenchmarkResults();
         res.json({ success: true, count: benchmarks.length, benchmarks });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
@@ -228,7 +246,7 @@ export function attachBackendAndDatabase(app: Express) {
     app.use('/api/auth', authRoutes);
 
     // استخراج جلسة المستخدم النشطة تلقائياً من الكوكي إن وجدت
-    app.use((req: any, _res, next) => {
+    app.use((req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
       try {
         const { token } = extractToken(req);
         if (token) {
@@ -248,7 +266,7 @@ export function attachBackendAndDatabase(app: Express) {
     app.use('/api/research', tenantGuard);
 
     // تشغيل جلسة بحث معرفي عميق
-    app.post('/api/research/execute', async (req: any, res) => {
+    app.post('/api/research/execute', async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { query, level, bookIds, sessionId, userId } = req.body || {};
         if (!query || !query.trim()) {
@@ -263,28 +281,28 @@ export function attachBackendAndDatabase(app: Express) {
           tenantContext: req.tenantContext,
         });
         res.json({ success: true, ...result });
-      } catch (err: any) {
-        if (err instanceof AccessDeniedError || err.statusCode === 403) {
-          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+      } catch (err: unknown) {
+        if (isForbiddenError(err, AccessDeniedError)) {
+          return res.status(403).json({ error: extractErrorMessage(err), code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
         }
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // استرجاع تفاصيل جلسة بحث
-    app.get('/api/research/session/:id', (req, res) => {
+    app.get('/api/research/session/:id', (req: Request, res: Response) => {
       try {
         const session = getSession(req.params.id);
         if (!session) return res.status(404).json({ error: 'جلسة البحث غير موجودة' });
         const citations = getSessionCitations(req.params.id);
         res.json({ success: true, session, citations });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // استئناف جلسة بحث منقطعة
-    app.post('/api/research/session/:id/resume', async (req: any, res) => {
+    app.post('/api/research/session/:id/resume', async (req: AuthenticatedRequest, res: Response) => {
       try {
         const session = getSession(req.params.id);
         if (!session) return res.status(404).json({ error: 'جلسة البحث غير موجودة' });
@@ -295,67 +313,67 @@ export function attachBackendAndDatabase(app: Express) {
           tenantContext: req.tenantContext,
         });
         res.json({ success: true, ...result });
-      } catch (err: any) {
-        if (err instanceof AccessDeniedError || err.statusCode === 403) {
-          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+      } catch (err: unknown) {
+        if (isForbiddenError(err, AccessDeniedError)) {
+          return res.status(403).json({ error: extractErrorMessage(err), code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
         }
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // استعراض كتب ومراجع المكتبة المفهرسة للـ Tenant الحالي
-    app.get('/api/research/books', (req: any, res) => {
+    app.get('/api/research/books', (req: AuthenticatedRequest, res: Response) => {
       try {
         const books = listAvailableBooks(req.tenantContext);
         res.json({ success: true, count: books.length, books });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // تفاصيل كتاب محدد مع فحص العزل
-    app.get('/api/research/book/:id', (req: any, res) => {
+    app.get('/api/research/book/:id', (req: AuthenticatedRequest, res: Response) => {
       try {
         const book = knowledgeDal.getBookDetails(req.params.id, req.tenantContext);
         if (!book) return res.status(404).json({ error: 'الكتاب غير موجود' });
         res.json({ success: true, book });
-      } catch (err: any) {
-        if (err instanceof AccessDeniedError || err.statusCode === 403) {
-          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+      } catch (err: unknown) {
+        if (isForbiddenError(err, AccessDeniedError)) {
+          return res.status(403).json({ error: extractErrorMessage(err), code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
         }
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // حذف كتاب مع فحص ملكية المستأجر
-    app.delete('/api/research/book/:id', (req: any, res) => {
+    app.delete('/api/research/book/:id', (req: AuthenticatedRequest, res: Response) => {
       try {
         const deleted = knowledgeDal.deleteBook(req.params.id, req.tenantContext);
         res.json({ success: true, deleted });
-      } catch (err: any) {
-        if (err instanceof AccessDeniedError || err.statusCode === 403) {
-          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+      } catch (err: unknown) {
+        if (isForbiddenError(err, AccessDeniedError)) {
+          return res.status(403).json({ error: extractErrorMessage(err), code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
         }
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // استرجاع المقطع الحرفي الخام byte-exact
-    app.get('/api/research/chunk/:id/verbatim', (req: any, res) => {
+    app.get('/api/research/chunk/:id/verbatim', (req: AuthenticatedRequest, res: Response) => {
       try {
         const chunk = knowledgeDal.getVerbatimChunk(req.params.id, req.tenantContext);
         if (!chunk) return res.status(404).json({ error: 'المقطع غير موجود' });
         res.json({ success: true, chunk });
-      } catch (err: any) {
-        if (err instanceof AccessDeniedError || err.statusCode === 403) {
-          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+      } catch (err: unknown) {
+        if (isForbiddenError(err, AccessDeniedError)) {
+          return res.status(403).json({ error: extractErrorMessage(err), code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
         }
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // فهرسة كتاب أو مرجع جديد خاص بالمستأجر
-    app.post('/api/research/books/ingest', (req: any, res) => {
+    app.post('/api/research/books/ingest', (req: AuthenticatedRequest, res: Response) => {
       try {
         const { title, author, edition, publicationYear, language, toc, chapters, fullText, pagesTotal, isSharedLibrary } = req.body || {};
         if (!title || !title.trim()) {
@@ -374,16 +392,16 @@ export function attachBackendAndDatabase(app: Express) {
           isSharedLibrary: Boolean(isSharedLibrary),
         }, req.tenantContext);
         res.json({ success: true, book });
-      } catch (err: any) {
-        if (err instanceof AccessDeniedError || err.statusCode === 403) {
-          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+      } catch (err: unknown) {
+        if (isForbiddenError(err, AccessDeniedError)) {
+          return res.status(403).json({ error: extractErrorMessage(err), code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
         }
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // رفع واستخراج نصوص وفهرسة ملف PDF حقيقي وتخزينه كمرجع مع الحفاظ على النص الخام
-    app.post('/api/research/books/upload-pdf', (req: any, res) => {
+    app.post('/api/research/books/upload-pdf', (req: AuthenticatedRequest, res: Response) => {
       try {
         const { title, author, pdfBase64, filename } = req.body || {};
         if (!pdfBase64) {
@@ -427,16 +445,16 @@ export function attachBackendAndDatabase(app: Express) {
         }, req.tenantContext);
 
         res.status(201).json({ success: true, book });
-      } catch (err: any) {
-        if (err instanceof AccessDeniedError || err.statusCode === 403) {
-          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+      } catch (err: unknown) {
+        if (isForbiddenError(err, AccessDeniedError)) {
+          return res.status(403).json({ error: extractErrorMessage(err), code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
         }
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // تصدير تقرير البحث بصيغة Markdown
-    app.get('/api/research/export/:id', (req, res) => {
+    app.get('/api/research/export/:id', (req: Request, res: Response) => {
       try {
         const session = getSession(req.params.id);
         if (!session) return res.status(404).json({ error: 'جلسة البحث غير موجودة' });
@@ -444,13 +462,13 @@ export function attachBackendAndDatabase(app: Express) {
         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="research_${session.id}.md"`);
         res.send(markdown);
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // تسجيل تغذية راجعة على المصادر
-    app.post('/api/research/feedback', (req, res) => {
+    app.post('/api/research/feedback', (req: Request, res: Response) => {
       try {
         const { sessionId, citationId, feedbackType, userComment } = req.body || {};
         if (!sessionId || !feedbackType) {
@@ -458,8 +476,8 @@ export function attachBackendAndDatabase(app: Express) {
         }
         const record = recordFeedback({ sessionId, citationId, feedbackType, userComment });
         res.json({ success: true, feedback: record });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
@@ -493,7 +511,7 @@ export function attachBackendAndDatabase(app: Express) {
     } = require('../server_backend/services/agent/deploymentService.js');
 
     // تشغيل مهمة برمجية مستقلة
-    app.post('/api/agent/task/execute', async (req, res) => {
+    app.post('/api/agent/task/execute', async (req: Request, res: Response) => {
       try {
         const { projectId, prompt, autonomyLevel, autoDeploy, deployTarget } = req.body || {};
         if (!prompt || !prompt.trim()) {
@@ -507,43 +525,43 @@ export function attachBackendAndDatabase(app: Express) {
           deployTarget: deployTarget || 'local_preview',
         });
         res.json({ success: true, ...result });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // استعلام عن حالة مهمة مستقلة
-    app.get('/api/agent/task/:id', (req, res) => {
+    app.get('/api/agent/task/:id', (req: Request, res: Response) => {
       try {
         const task = getAutonomousTask(req.params.id);
         res.json({ success: true, task });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // التراجع الفوري عن تعديلات مهمة (Undo)
-    app.post('/api/agent/task/:id/undo', (req, res) => {
+    app.post('/api/agent/task/:id/undo', (req: Request, res: Response) => {
       try {
         const result = undoAutonomousTask(req.params.id);
         res.json({ success: true, ...result });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // قائمة طلبات الموافقة المعلقة
-    app.get('/api/agent/approvals', (req, res) => {
+    app.get('/api/agent/approvals', (req: Request, res: Response) => {
       try {
         const approvals = listPendingApprovals(req.query.taskId as string);
         res.json({ success: true, approvals });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // البت في طلب موافقة على عملية خطرة
-    app.post('/api/agent/approval/:id', (req, res) => {
+    app.post('/api/agent/approval/:id', (req: Request, res: Response) => {
       try {
         const { decision, userNotes } = req.body || {};
         const approval = resolveApproval({
@@ -552,13 +570,13 @@ export function attachBackendAndDatabase(app: Express) {
           userNotes: userNotes || '',
         });
         res.json({ success: true, approval });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // اعتماد خيار المستخدم للقرار المعماري
-    app.post('/api/agent/decision/:id', (req, res) => {
+    app.post('/api/agent/decision/:id', (req: Request, res: Response) => {
       try {
         const { taskId, chosenOptionId, userCustomFeedback } = req.body || {};
         const record = recordTaskDecisionChoice({
@@ -568,46 +586,46 @@ export function attachBackendAndDatabase(app: Express) {
           userCustomFeedback,
         });
         res.json({ success: true, record });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // قراءة مقاييس الموارد ومساحة القرص والذاكرة
-    app.get('/api/agent/resources', (_req, res) => {
+    app.get('/api/agent/resources', (_req: Request, res: Response) => {
       try {
         const metrics = getSystemResourceMetrics();
         res.json({ success: true, metrics });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // تنظيف آمن للكاش ومخلفات البناء
-    app.post('/api/agent/resources/cleanup', (_req, res) => {
+    app.post('/api/agent/resources/cleanup', (_req: Request, res: Response) => {
       try {
         const report = performSafeCleanup({ workspaceRoot: process.cwd() });
         res.json({ success: true, report });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // استعراض دروس الذاكرة الدائمة
-    app.get('/api/agent/memory/lessons', (req, res) => {
+    app.get('/api/agent/memory/lessons', (req: Request, res: Response) => {
       try {
         const lessons = listLessons({
           projectId: req.query.projectId as string,
           scope: req.query.scope as string,
         });
         res.json({ success: true, count: lessons.length, lessons });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // تصدير المشروع كملف ZIP
-    app.post('/api/agent/files/export', async (req, res) => {
+    app.post('/api/agent/files/export', async (req: Request, res: Response) => {
       try {
         const { projectId, projectName } = req.body || {};
         const zipData = await exportProjectAsZip({
@@ -617,13 +635,13 @@ export function attachBackendAndDatabase(app: Express) {
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${zipData.filename}"`);
         res.send(zipData.buffer);
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // رفع واستيراد ملفات من جهاز المستخدم
-    app.post('/api/agent/files/upload', async (req, res) => {
+    app.post('/api/agent/files/upload', async (req: Request, res: Response) => {
       try {
         const { files, allowOverwrite } = req.body || {};
         const result = await importUserUploadedFiles({
@@ -631,13 +649,13 @@ export function attachBackendAndDatabase(app: Express) {
           allowOverwrite: Boolean(allowOverwrite),
         });
         res.json({ success: true, result });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // نشر المشروع مع التحقق الصحي والتراجع التلقائي
-    app.post('/api/agent/deploy', async (req, res) => {
+    app.post('/api/agent/deploy', async (req: Request, res: Response) => {
       try {
         const { projectId, taskId, targetPlatform, simulateFailure } = req.body || {};
         const result = await executeDeployment({
@@ -647,19 +665,19 @@ export function attachBackendAndDatabase(app: Express) {
           simulateFailure: Boolean(simulateFailure),
         });
         res.json({ success: true, ...result });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 
     // التراجع عن النشر (Rollback)
-    app.post('/api/agent/deploy/:id/rollback', (req, res) => {
+    app.post('/api/agent/deploy/:id/rollback', (req: Request, res: Response) => {
       try {
         const { reason } = req.body || {};
         const result = rollbackDeployment(req.params.id, reason);
         res.json({ success: true, ...result });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
       }
     });
 

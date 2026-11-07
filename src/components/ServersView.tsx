@@ -16,7 +16,7 @@ import { Language } from '../types/platform';
 
 interface ServersViewProps {
   language: Language;
-  onOpenModal: (modal: string, payload?: any) => void;
+  onOpenModal: (modal: string, payload?: unknown) => void;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 

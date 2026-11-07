@@ -28,6 +28,110 @@ interface AutonomousAgentModalProps {
   currentProjectId?: string;
 }
 
+interface AgentTaskStepLog {
+  step: string;
+  message: string;
+  at?: string;
+}
+
+interface SelfHealingHistoryItem {
+  attempt: number;
+  targetFile: string;
+  line: number;
+  testStatus: string;
+  rootCause: string;
+  appliedFixDiff?: string;
+  fixDescription?: string;
+}
+
+interface SelfHealingState {
+  enabled: boolean;
+  active: boolean;
+  status: string;
+  targetFile?: string;
+  targetLine?: number;
+  rootCause?: string;
+  appliedFixDiff?: string;
+  testsPassed?: boolean;
+  attemptsCount?: number;
+  maxAttempts?: number;
+  history?: SelfHealingHistoryItem[];
+  message?: string;
+  resolved?: boolean;
+  exhaustedExplanation?: {
+    summary?: string;
+    details?: string;
+    suggestions?: string[];
+  };
+}
+
+interface AutonomousTaskView {
+  taskId?: string;
+  status?: string;
+  prompt?: string;
+  stepsLog?: AgentTaskStepLog[];
+  selfHealing?: SelfHealingState;
+  [key: string]: unknown;
+}
+
+interface MemoryLessonItem {
+  id?: string;
+  scope?: string;
+  projectId?: string | null;
+  error_signature?: string;
+  root_cause?: string;
+  proven_fix?: string;
+  confidence_score?: number;
+  usage_count?: number;
+  created_at?: string;
+}
+
+interface ApprovalItem {
+  id: string;
+  taskId?: string;
+  operationType?: string;
+  command?: string;
+  filePath?: string;
+  riskLevel?: string;
+  status?: string;
+  title?: string;
+  action_type?: string;
+  description?: string;
+}
+
+interface MemoryMetricsItem {
+  usagePercent?: number;
+  totalMb?: number;
+  freeMb?: number;
+  processRssMb?: number;
+  processHeapUsedMb?: number;
+}
+
+interface DiskMetricsItem {
+  freeMb?: number;
+  usagePercent?: number;
+  totalMb?: number;
+}
+
+interface ResourceMetricsItem {
+  memory?: MemoryMetricsItem;
+  disk?: DiskMetricsItem;
+  pressureLevel?: string;
+  ramUsedMb?: number;
+  ramTotalMb?: number;
+  ramUsagePercent?: number;
+  diskUsedMb?: number;
+  diskTotalMb?: number;
+  diskUsagePercent?: number;
+  tempCacheMb?: number;
+}
+
+interface DeploymentItem {
+  id?: string;
+  target?: string;
+  status?: string;
+}
+
 export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
   isOpen,
   onClose,
@@ -44,11 +148,11 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
   const [deployTarget, setDeployTarget] = useState<'local_preview' | 'staging_docker' | 'cloud_production'>('local_preview');
 
   const [isRunning, setIsRunning] = useState(false);
-  const [currentTask, setCurrentTask] = useState<any>(null);
-  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
-  const [resourceMetrics, setResourceMetrics] = useState<any>(null);
-  const [lessons, setLessons] = useState<any[]>([]);
-  const [_deployments, _setDeployments] = useState<any[]>([]);
+  const [currentTask, setCurrentTask] = useState<AutonomousTaskView | null>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalItem[]>([]);
+  const [resourceMetrics, setResourceMetrics] = useState<ResourceMetricsItem | null>(null);
+  const [lessons, setLessons] = useState<MemoryLessonItem[]>([]);
+  const [_deployments, _setDeployments] = useState<DeploymentItem[]>([]);
   const [searchMemoryQuery, setSearchMemoryQuery] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -128,8 +232,8 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
       } else {
         setFeedbackMsg({ text: data.error || 'حدث خطأ أثناء تشغيل المهمة', type: 'error' });
       }
-    } catch (err: any) {
-      setFeedbackMsg({ text: err.message, type: 'error' });
+    } catch (err: unknown) {
+      setFeedbackMsg({ text: err instanceof Error ? err.message : String(err), type: 'error' });
     } finally {
       setIsRunning(false);
       fetchResources();
@@ -152,8 +256,8 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
           type: 'success',
         });
       }
-    } catch (err: any) {
-      setFeedbackMsg({ text: err.message, type: 'error' });
+    } catch (err: unknown) {
+      setFeedbackMsg({ text: err instanceof Error ? err.message : String(err), type: 'error' });
     }
   };
 
@@ -172,8 +276,8 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
       if (data.success) {
         setFeedbackMsg({ text: `تم اعتماد الخيار المعماري (${optionId}) بنجاح!`, type: 'success' });
       }
-    } catch (err: any) {
-      setFeedbackMsg({ text: err.message, type: 'error' });
+    } catch (err: unknown) {
+      setFeedbackMsg({ text: err instanceof Error ? err.message : String(err), type: 'error' });
     }
   };
 
@@ -187,8 +291,8 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
       } else {
         setFeedbackMsg({ text: data.error || 'تعذر التراجع', type: 'error' });
       }
-    } catch (err: any) {
-      setFeedbackMsg({ text: err.message, type: 'error' });
+    } catch (err: unknown) {
+      setFeedbackMsg({ text: err instanceof Error ? err.message : String(err), type: 'error' });
     }
   };
 
@@ -200,8 +304,8 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
         setFeedbackMsg({ text: data.report.message, type: 'success' });
         fetchResources();
       }
-    } catch (err: any) {
-      setFeedbackMsg({ text: err.message, type: 'error' });
+    } catch (err: unknown) {
+      setFeedbackMsg({ text: err instanceof Error ? err.message : String(err), type: 'error' });
     }
   };
 
@@ -221,8 +325,8 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
       a.click();
       a.remove();
       setFeedbackMsg({ text: 'تم تنزيل المشروع المضغوط ZIP بنجاح.', type: 'success' });
-    } catch (err: any) {
-      setFeedbackMsg({ text: err.message, type: 'error' });
+    } catch (err: unknown) {
+      setFeedbackMsg({ text: err instanceof Error ? err.message : String(err), type: 'error' });
     }
   };
 
@@ -507,7 +611,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                   </div>
 
                   <div className="space-y-2 max-h-56 overflow-y-auto font-mono text-xs text-slate-300 bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
-                    {(currentTask.stepsLog || []).map((step: any, idx: number) => (
+                    {(currentTask.stepsLog || []).map((step: AgentTaskStepLog, idx: number) => (
                       <div key={idx} className="flex items-start gap-2">
                         <span className="text-slate-500 select-none">[{idx + 1}]</span>
                         <span className="text-indigo-400 font-semibold">{step.step}:</span>
@@ -694,7 +798,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                     {/* Surgical History Steps */}
                     <div className="space-y-3">
                       <h4 className="text-xs font-bold text-slate-400">سجل الخطوات الجراحية المطبقة:</h4>
-                      {(currentTask.selfHealing.history || []).map((h: any, idx: number) => (
+                      {(currentTask.selfHealing.history || []).map((h: SelfHealingHistoryItem, idx: number) => (
                         <div key={idx} className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 space-y-2 text-xs">
                           <div className="flex items-center justify-between font-mono">
                             <span className="text-amber-400 font-bold">
@@ -934,8 +1038,8 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                         } else {
                           setFeedbackMsg({ text: data.message || 'فشل النشر وتم التراجع التلقائي', type: 'error' });
                         }
-                      } catch (err: any) {
-                        setFeedbackMsg({ text: err.message, type: 'error' });
+                      } catch (err: unknown) {
+                        setFeedbackMsg({ text: err instanceof Error ? err.message : String(err), type: 'error' });
                       }
                     }}
                     className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-semibold shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition"

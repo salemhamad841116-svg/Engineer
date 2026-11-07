@@ -23,6 +23,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+
 const DATA_DIR = path.resolve(__dirname, '.data');
 const DB_FILE = path.join(DATA_DIR, 'platform-db.json');
 
@@ -254,7 +255,7 @@ async function startServer() {
     const ai = getGeminiClient();
     if (ai) {
       try {
-        const config: Record<string, any> = {
+        const config: { systemInstruction: string; thinkingConfig?: { thinkingLevel: ThinkingLevel } } = {
           systemInstruction: `You are ${selectedAgent.nameEn} (${selectedAgent.nameAr}), a senior full-stack software engineer inside Bolt.new Cloud Studio.
 The active project is "${project.name}" (${project.techStack}, Database: ${project.databaseEngine}).
 Respond concisely in the same language as the user's prompt (Arabic or English).
@@ -275,8 +276,8 @@ Explain:
           config,
         });
         aiReplyText = response.text || '';
-      } catch (err: any) {
-        console.warn('Gemini API fallback triggered:', err?.message);
+      } catch (err: unknown) {
+        console.warn('Gemini API fallback triggered:', err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -498,7 +499,7 @@ Explain:
 
   let currentPort = Number(process.env.PORT) || 3000;
 
-  httpServer.on('error', (err: any) => {
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.warn(`[Port ${currentPort} in use] Retrying on port ${currentPort + 1}...`);
       currentPort += 1;

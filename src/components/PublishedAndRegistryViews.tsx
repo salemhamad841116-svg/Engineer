@@ -23,7 +23,7 @@ interface PublishedAppsViewProps {
   projects: Project[];
   onSelectProject: (project: Project, openIde?: boolean) => void;
   onUpdateProject: (updated: Project, toastMsg?: string) => Promise<void>;
-  onOpenModal: (modal: string, payload?: any) => void;
+  onOpenModal: (modal: string, payload?: unknown) => void;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 

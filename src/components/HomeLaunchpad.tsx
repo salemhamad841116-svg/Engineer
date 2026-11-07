@@ -35,6 +35,34 @@ import {
 } from 'lucide-react';
 import { Language, Project, ProjectCategory } from '../types/platform';
 
+interface SpeechRecognitionResultItem {
+  transcript: string;
+}
+interface SpeechRecognitionResultList {
+  length: number;
+  [index: number]: {
+    [index: number]: SpeechRecognitionResultItem;
+  };
+}
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+interface SpeechRecognitionInstance {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort?: () => void;
+}
+interface WindowWithSpeech {
+  SpeechRecognition?: new () => SpeechRecognitionInstance;
+  webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+}
+
 interface HomeLaunchpadProps {
   language: Language;
   sidebarOpen: boolean;
@@ -57,7 +85,7 @@ interface HomeLaunchpadProps {
       attachments?: { name: string; type: string; size: number }[];
     }
   ) => Promise<void>;
-  onOpenModal: (modal: string, payload?: any) => void;
+  onOpenModal: (modal: string, payload?: unknown) => void;
   onSwitchView: (view: 'home' | 'ide' | 'published' | 'registry') => void;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
 }
@@ -132,7 +160,7 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
   // Voice Recording (Web Speech API)
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceStatusText, setVoiceStatusText] = useState<string | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   // Attachments
   const [attachedItems, setAttachedItems] = useState<{ name: string; type: string; size: number }[]>([]);
@@ -229,8 +257,9 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
         : 'Listening via Web Speech API... Click Mic again to finish'
     );
 
+    const speechWindow = window as unknown as WindowWithSpeech;
     const SpeechRecognitionAPI =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
 
     if (SpeechRecognitionAPI) {
       try {
@@ -238,7 +267,7 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
         recognition.lang = isAr ? 'ar-SA' : 'en-US';
         recognition.interimResults = true;
         recognition.continuous = true;
-        recognition.onresult = (event: any) => {
+        recognition.onresult = (event: SpeechRecognitionEventLike) => {
           let transcript = '';
           for (let i = event.resultIndex; i < event.results.length; i++) {
             transcript += event.results[i][0].transcript;

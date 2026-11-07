@@ -63,9 +63,9 @@ function printSummaryAndExit(exitCode) {
 }
 
 // ----------------------------------------------------
-// Step 1: Strict Lint & Type Checking (strict: false preserved)
+// Step 1: Strict Lint & Type Checking (strict: true permanent)
 // ----------------------------------------------------
-runStep('Type Checking & Linting (ESLint + TypeScript [strict: false])', () => {
+runStep('Type Checking & Strict Linting (ESLint + TypeScript [strict: true])', () => {
   execSync('npm run lint', { stdio: 'inherit', cwd: projectRoot });
 });
 

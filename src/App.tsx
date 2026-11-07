@@ -36,7 +36,7 @@ import {
 } from './utils/buttonRegistry';
 import { HomeLaunchpad } from './components/HomeLaunchpad';
 import { IdeWorkspace } from './components/IdeWorkspace';
-import { ModalsHub } from './components/ModalsHub';
+import { ModalsHub, type SettingsState } from './components/ModalsHub';
 import { PublishedAppsView, ButtonRegistryView } from './components/PublishedAndRegistryViews';
 import { ServersView } from './components/ServersView';
 import DeepResearchModal from './components/DeepResearchModal';
@@ -49,7 +49,7 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState<string>('proj-fintrack-erp');
   const [agents, setAgents] = useState<AIAgentProfile[]>(() => createDefaultAIAgents());
   const [buttonRegistry, setButtonRegistry] = useState<ButtonRegistryEntry[]>(() => getInitialButtonRegistry());
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<SettingsState>({
     userName: 'Salemalderei84',
     userEmail: 'salemhamad841116@gmail.com',
     planName: 'Cloud Studio Pro — Enterprise Tier',
@@ -62,13 +62,13 @@ export default function App() {
     notificationsEnabled: true,
     privacyTelemetryOptOut: true,
     teamMembers: [
-      { id: 'tm-1', name: 'Salem Al-Derei', email: 'salemhamad841116@gmail.com', role: 'Owner', status: 'Active' },
-      { id: 'tm-2', name: 'Noura Al-Mansoori', email: 'noura.eng@cloudstudio.dev', role: 'Admin', status: 'Active' },
-      { id: 'tm-3', name: 'Tariq Al-Harbi', email: 'tariq.qa@cloudstudio.dev', role: 'Editor', status: 'Active' },
+      { id: 'tm-1', name: 'Salem Al-Derei', email: 'salemhamad841116@gmail.com', role: 'Owner' as const, status: 'Active' },
+      { id: 'tm-2', name: 'Noura Al-Mansoori', email: 'noura.eng@cloudstudio.dev', role: 'Admin' as const, status: 'Active' },
+      { id: 'tm-3', name: 'Tariq Al-Harbi', email: 'tariq.qa@cloudstudio.dev', role: 'Editor' as const, status: 'Active' },
     ],
     invoices: [
-      { id: 'INV-2026-1101', date: '2026-11-01', amount: '$49.00', status: 'Paid', plan: 'Pro Cloud Workspace' },
-      { id: 'INV-2026-1001', date: '2026-10-01', amount: '$49.00', status: 'Paid', plan: 'Pro Cloud Workspace' },
+      { id: 'INV-2026-1101', date: '2026-11-01', amount: '$49.00', status: 'Paid' as const, plan: 'Pro Cloud Workspace' },
+      { id: 'INV-2026-1001', date: '2026-10-01', amount: '$49.00', status: 'Paid' as const, plan: 'Pro Cloud Workspace' },
     ],
     activityLog: [
       { id: 'act-1', time: new Date().toISOString(), actor: 'Salemalderei84', action: 'Initialized Cloud IDE & 10 AI Agents', target: 'System' },
@@ -79,7 +79,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<'home' | 'ide' | 'published' | 'registry' | 'servers'>('home');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeModal, setActiveModal] = useState<string | null>(null);
-  const [modalPayload, setModalPayload] = useState<any>(null);
+  const [modalPayload, setModalPayload] = useState<unknown>(null);
   const [infoDrawer, setInfoDrawer] = useState<'help' | 'releases' | 'status' | 'referral' | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string } | null>(null);
 
@@ -156,7 +156,7 @@ export default function App() {
 
   const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
 
-  const handleOpenModal = (modal: string, payload?: any) => {
+  const handleOpenModal = (modal: string, payload?: unknown) => {
     setModalPayload(payload || null);
     setActiveModal(modal);
   };
@@ -169,7 +169,7 @@ export default function App() {
     notify('info', isAr ? `تم فتح المشروع: ${proj.name}` : `Switched to project: ${proj.name}`);
   };
 
-  const handleCreateProject = async (specOrProject: any) => {
+  const handleCreateProject = async (specOrProject: Partial<Project> | Record<string, unknown>) => {
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
@@ -187,7 +187,10 @@ export default function App() {
     } catch {
       // fallback below
     }
-    const localProj = specOrProject.files ? specOrProject : createNewProjectFromSpec(specOrProject);
+    const localProj: Project =
+      'files' in specOrProject && Array.isArray((specOrProject as Project).files)
+        ? (specOrProject as Project)
+        : createNewProjectFromSpec(specOrProject as Parameters<typeof createNewProjectFromSpec>[0]);
     setProjects((prev) => [localProj, ...prev]);
     setActiveProjectId(localProj.id);
     setActiveView('ide');
@@ -247,8 +250,8 @@ export default function App() {
     }
   };
 
-  const handleUpdateSettings = async (partial: any) => {
-    const merged = { ...settings, ...partial };
+  const handleUpdateSettings = async (partial: Partial<SettingsState> | Record<string, unknown>) => {
+    const merged = { ...settings, ...partial } as SettingsState;
     setSettings(merged);
     notify('success', isAr ? 'تم حفظ الإعدادات' : 'Settings updated');
     try {
@@ -889,14 +892,14 @@ export default function App() {
       {/* Deep Research & Book Intelligence Modal */}
       <DeepResearchModal
         isOpen={activeModal === 'deep-research'}
-        onClose={() => setActiveModal(null)}
+        onClose={() => setActiveModal((curr) => (curr === 'deep-research' ? null : curr))}
         language={language}
       />
 
       {/* Autonomous Coding Agent Modal */}
       <AutonomousAgentModal
         isOpen={activeModal === 'autonomous-agent'}
-        onClose={() => setActiveModal(null)}
+        onClose={() => setActiveModal((curr) => (curr === 'autonomous-agent' ? null : curr))}
         language={language}
         currentProjectId={activeProjectId}
       />
@@ -904,7 +907,7 @@ export default function App() {
       {/* User Authentication Modal (Register / Login) */}
       <AuthModal
         isOpen={activeModal === 'auth'}
-        onClose={() => setActiveModal(null)}
+        onClose={() => setActiveModal((curr) => (curr === 'auth' ? null : curr))}
         language={language}
         onAuthSuccess={(user) => {
           setCurrentUser(user);

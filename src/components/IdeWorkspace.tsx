@@ -74,7 +74,7 @@ interface IdeWorkspaceProps {
   onUpdateProject: (updated: Project, toastMsg?: string) => Promise<void>;
   onExecutePrompt: (prompt: string, options: { model: string; thinkingMode: 'standard' | 'deep' | 'plan'; agentId?: string }) => Promise<void>;
   onStopGeneration: () => void;
-  onOpenModal: (modal: string, payload?: any) => void;
+  onOpenModal: (modal: string, payload?: unknown) => void;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
@@ -940,7 +940,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     <select
                       aria-label={isAr ? 'وضع التفكير' : 'Thinking Mode'}
                       value={thinkingMode}
-                      onChange={(e) => setThinkingMode(e.target.value as any)}
+                      onChange={(e) => setThinkingMode(e.target.value as 'standard' | 'deep' | 'plan')}
                       className="col-span-1 bg-[#090b10] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-zinc-200 focus:outline-none truncate"
                     >
                       <option value="standard">{isAr ? 'قياسي' : 'Standard'}</option>

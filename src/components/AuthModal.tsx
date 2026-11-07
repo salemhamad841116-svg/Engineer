@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Lock, Mail, User, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Language } from '../types/platform';
 
@@ -22,6 +22,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleClose = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -55,11 +73,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onAuthSuccess(data.user);
       }
 
-      setTimeout(() => {
-        onClose();
-      }, 1000);
-    } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || (isAr ? 'حدث خطأ في المصادقة' : 'Authentication error') });
+      timerRef.current = setTimeout(() => {
+        handleClose();
+      }, 2500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : (isAr ? 'حدث خطأ في المصادقة' : 'Authentication error');
+      setStatusMessage({ type: 'error', text: msg });
     } finally {
       setIsLoading(false);
     }
@@ -76,7 +95,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <button
           type="button"
           data-testid="auth-close-button"
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-4 end-4 p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />

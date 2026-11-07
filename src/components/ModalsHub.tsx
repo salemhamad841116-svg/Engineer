@@ -35,22 +35,53 @@ import {
   calculateWorkingTreeChanges,
   createNewProjectFromSpec,
 } from '../utils/platformEngine';
+import {
+  TeamMemberContract,
+  BillingInvoiceContract,
+  ActivityLogEntryContract,
+} from '../contracts/index';
+
+export interface ModalPayloadLike {
+  category?: ProjectCategory;
+  template?: string;
+  source?: 'zip' | 'github' | 'figma';
+  tab?: 'account' | 'ai' | 'teams' | 'billing' | 'audit';
+  [key: string]: unknown;
+}
+
+export interface SettingsState {
+  userName: string;
+  userEmail: string;
+  planName: string;
+  aiTokensUsed: number;
+  aiTokensLimit: number;
+  defaultModel: string;
+  thinkingMode: 'standard' | 'deep' | 'plan';
+  language: Language;
+  theme: 'dark' | 'light';
+  notificationsEnabled: boolean;
+  privacyTelemetryOptOut: boolean;
+  teamMembers: TeamMemberContract[];
+  invoices: BillingInvoiceContract[];
+  activityLog: ActivityLogEntryContract[];
+  [key: string]: unknown;
+}
 
 interface ModalsHubProps {
   activeModal: string | null;
-  modalPayload?: any;
+  modalPayload?: unknown;
   language: Language;
   projects: Project[];
   activeProject: Project;
   agents: AIAgentProfile[];
-  settings: any;
+  settings: SettingsState;
   onClose: () => void;
-  onCreateProject: (spec: any) => Promise<void>;
+  onCreateProject: (spec: Partial<Project> | Record<string, unknown>) => Promise<void>;
   onUpdateProject: (updated: Project, toastMsg?: string) => Promise<void>;
   onSelectProject: (project: Project, openIde?: boolean) => void;
   onDuplicateProject: (projectId: string) => Promise<void>;
   onDeleteProject: (projectId: string) => Promise<void>;
-  onUpdateSettings: (newSettings: any) => Promise<void>;
+  onUpdateSettings: (newSettings: Partial<SettingsState> | Record<string, unknown>) => Promise<void>;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
@@ -73,15 +104,16 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
 }) => {
   const isAr = language === 'ar';
   const [isBusy, setIsBusy] = useState(false);
+  const payload = (modalPayload && typeof modalPayload === 'object' ? modalPayload : {}) as ModalPayloadLike;
 
   // 1. New Project State
   const [newProjForm, setNewProjForm] = useState({
     name: '',
     description: '',
-    category: (modalPayload?.category || 'app') as ProjectCategory,
+    category: (payload.category || 'app') as ProjectCategory,
     appType: 'Enterprise SaaS Platform',
     techStack: 'react-ts-vite' as TechStack,
-    template: modalPayload?.template || 'saas-starter',
+    template: payload.template || 'saas-starter',
     language: language,
     direction: (language === 'ar' ? 'rtl' : 'ltr') as 'rtl' | 'ltr',
     databaseEngine: 'postgresql' as DatabaseEngine,
@@ -97,7 +129,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
   const [confirmDeleteProjId, setConfirmDeleteProjId] = useState<string | null>(null);
 
   // 3. Import Project State
-  const [importSource, setImportSource] = useState<'zip' | 'github' | 'figma'>(modalPayload?.source || 'zip');
+  const [importSource, setImportSource] = useState<'zip' | 'github' | 'figma'>(payload.source || 'zip');
   const [githubUrl, setGithubUrl] = useState('https://github.com/salemalderei84/cloud-erp-starter');
   const [importReport, setImportReport] = useState<{
     projectName: string;
@@ -151,7 +183,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
 
   // 8. Settings Modal State
   const [settingsTab, setSettingsTab] = useState<'account' | 'ai' | 'teams' | 'billing' | 'audit'>(
-    modalPayload?.tab || 'account'
+    payload.tab || 'account'
   );
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberRole, setNewMemberRole] = useState<'Admin' | 'Editor' | 'Viewer'>('Editor');
@@ -498,7 +530,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
                 <div className="flex items-center gap-2">
                   <select
                     value={projFilter}
-                    onChange={(e) => setProjFilter(e.target.value as any)}
+                    onChange={(e) => setProjFilter(e.target.value as 'all' | 'active' | 'deployed' | 'archived' | 'starred')}
                     className="bg-[#090b10] border border-white/15 rounded-lg px-3 py-1.5 text-white"
                   >
                     <option value="all">{isAr ? 'جميع المشاريع' : 'All Projects'}</option>
@@ -508,7 +540,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
                   </select>
                   <select
                     value={projSort}
-                    onChange={(e) => setProjSort(e.target.value as any)}
+                    onChange={(e) => setProjSort(e.target.value as 'updated' | 'name')}
                     className="bg-[#090b10] border border-white/15 rounded-lg px-3 py-1.5 text-white"
                   >
                     <option value="updated">{isAr ? 'الترتيب: آخر تعديل' : 'Sort: Last Modified'}</option>
@@ -799,7 +831,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
 
                 <select
                   value={testCategoryFilter}
-                  onChange={(e) => setTestCategoryFilter(e.target.value as any)}
+                  onChange={(e) => setTestCategoryFilter(e.target.value as TestCaseResult['category'] | 'all')}
                   className="bg-[#090b10] border border-white/15 rounded-lg px-3 py-1.5 text-white"
                 >
                   <option value="all">{isAr ? 'جميع الفئات (9 فئات)' : 'All 9 Categories'}</option>
@@ -1191,17 +1223,17 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
                               JSON.stringify(r).toLowerCase().includes(dbSearch.toLowerCase())
                           )
                           .map((row, idx) => (
-                            <tr key={row.id || idx} className="border-b border-white/5">
-                              <td className="p-2 font-mono text-sky-300">{row.id}</td>
-                              <td className="p-2 text-white">{row.name || row.title}</td>
-                              <td className="p-2 font-mono text-emerald-400">{row.status || row.role}</td>
+                            <tr key={String(row.id ?? idx)} className="border-b border-white/5">
+                              <td className="p-2 font-mono text-sky-300">{String(row.id ?? '')}</td>
+                              <td className="p-2 text-white">{String(row.name ?? row.title ?? '')}</td>
+                              <td className="p-2 font-mono text-emerald-400">{String(row.status ?? row.role ?? '')}</td>
                               <td className="p-2 text-end">
                                 <button
                                   type="button"
                                   onClick={() => {
                                     const updatedTables = activeProject.dbTables.map((t) =>
                                       t.id === currentTable.id
-                                        ? { ...t, rows: t.rows.filter((r) => r.id !== row.id) }
+                                        ? { ...t, rows: t.rows.filter((r) => String(r.id) !== String(row.id)) }
                                         : t
                                     );
                                     onUpdateProject(
@@ -1279,7 +1311,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
                   </label>
                   <select
                     value={deployConfig.environment}
-                    onChange={(e) => setDeployConfig({ ...deployConfig, environment: e.target.value as any })}
+                    onChange={(e) => setDeployConfig({ ...deployConfig, environment: e.target.value as 'production' | 'staging' })}
                     className="w-full bg-[#090b10] border border-white/15 rounded-lg px-2.5 py-1.5 text-white"
                   >
                     <option value="production">{isAr ? 'إنتاج (Production)' : 'Production'}</option>
@@ -1735,7 +1767,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => setSettingsTab(t.id as any)}
+                    onClick={() => setSettingsTab(t.id as 'account' | 'ai' | 'teams' | 'billing' | 'audit')}
                     className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
                       settingsTab === t.id ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
                     }`}
@@ -1837,7 +1869,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
                     />
                     <select
                       value={newMemberRole}
-                      onChange={(e) => setNewMemberRole(e.target.value as any)}
+                      onChange={(e) => setNewMemberRole(e.target.value as 'Admin' | 'Editor' | 'Viewer')}
                       className="bg-[#090b10] border border-white/15 rounded-lg px-3 py-1.5 text-white"
                     >
                       <option value="Admin">Admin</option>
@@ -1864,7 +1896,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {settings.teamMembers.map((m: any) => (
+                    {settings.teamMembers.map((m: TeamMemberContract) => (
                       <div key={m.id} className="flex items-center justify-between p-2.5 rounded-lg bg-black/30 border border-white/8">
                         <div>
                           <div className="font-semibold text-white">{m.name}</div>
@@ -1887,7 +1919,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
                     <span className="text-emerald-400 font-mono font-bold">ACTIVE</span>
                   </div>
                   <div className="space-y-1.5 pt-2 border-t border-white/10">
-                    {settings.invoices.map((inv: any) => (
+                    {settings.invoices.map((inv: BillingInvoiceContract) => (
                       <div key={inv.id} className="flex items-center justify-between p-2 rounded bg-black/30 font-mono">
                         <span>{inv.id} · {inv.date}</span>
                         <span className="text-emerald-400">{inv.amount} ({inv.status})</span>
@@ -1899,7 +1931,7 @@ export const ModalsHub: React.FC<ModalsHubProps> = ({
 
               {settingsTab === 'audit' && (
                 <div className="bg-[#161a26] p-4 rounded-xl border border-white/10 max-h-64 overflow-y-auto space-y-1.5 font-mono text-[11px]">
-                  {settings.activityLog.map((act: any) => (
+                  {settings.activityLog.map((act: ActivityLogEntryContract) => (
                     <div key={act.id} className="flex items-center justify-between py-1 border-b border-white/5">
                       <span className="text-zinc-200">{act.actor}: {act.action}</span>
                       <span className="text-sky-400">{act.target}</span>

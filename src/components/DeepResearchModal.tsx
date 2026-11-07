@@ -160,8 +160,9 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
           setUploadAuthor('');
           setSelectedFile(null);
           reloadBooks();
-        } catch (innerErr: any) {
-          setUploadStatus({ type: 'error', text: innerErr.message || 'Error parsing upload' });
+        } catch (innerErr: unknown) {
+          const msg = innerErr instanceof Error ? innerErr.message : 'Error parsing upload';
+          setUploadStatus({ type: 'error', text: msg });
         } finally {
           setIsUploading(false);
         }
@@ -171,8 +172,9 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
         setIsUploading(false);
       };
       reader.readAsDataURL(selectedFile);
-    } catch (err: any) {
-      setUploadStatus({ type: 'error', text: err.message || 'Upload error' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Upload error';
+      setUploadStatus({ type: 'error', text: msg });
       setIsUploading(false);
     }
   };
@@ -242,8 +244,9 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
       } else {
         alert(data.error || 'حدث خطأ أثناء تنفيذ البحث المعرفي');
       }
-    } catch (err: any) {
-      alert(err.message || 'فشل الاتصال بمحرك البحث العميق');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'فشل الاتصال بمحرك البحث العميق';
+      alert(msg);
     } finally {
       setIsSearching(false);
     }
