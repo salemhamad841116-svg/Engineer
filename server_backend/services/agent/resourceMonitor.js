@@ -7,9 +7,21 @@
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const { recordAgentAudit } = require('./agentAuditService');
 
 const DISK_WARNING_THRESHOLD_MB = 1000; // 1 GB
 const DISK_CRITICAL_THRESHOLD_MB = 300;  // 300 MB
+
+// Strictly untouchable files & paths that cleanup must NEVER delete under any circumstances
+const FORBIDDEN_CLEAN_PATTERNS = [
+  /(?:^|[/\\])src(?:[/\\]|$)/i,
+  /(?:^|[/\\])(?:\.data|data)(?:[/\\]|$)/i,
+  /\.db$/i,
+  /\.env(?:\.[a-z0-9_-]+)?$/i,
+  /package\.json$/i,
+  /tsconfig\.json$/i,
+  /\.git(?:[/\\]|$)/i,
+];
 
 /**
  * Returns current memory & disk usage metrics.
@@ -67,7 +79,7 @@ function getSystemResourceMetrics(workspaceRoot = process.cwd()) {
  */
 function scanCleanableArtifacts(workspaceRoot = process.cwd()) {
   const candidates = [
-    { relPath: 'dist', category: 'build_output', safeAuto: true },
+    { relPath: 'dist', category: 'build_output', safeAuto: false },
     { relPath: '.vite', category: 'bundler_cache', safeAuto: true },
     { relPath: '.cache', category: 'tool_cache', safeAuto: true },
     { relPath: 'temp', category: 'temp_files', safeAuto: true },
@@ -81,6 +93,16 @@ function scanCleanableArtifacts(workspaceRoot = process.cwd()) {
   for (const c of candidates) {
     const fullPath = path.resolve(workspaceRoot, c.relPath);
     if (fs.existsSync(fullPath)) {
+      // Double check forbidden patterns
+      let isForbidden = false;
+      for (const pattern of FORBIDDEN_CLEAN_PATTERNS) {
+        if (pattern.test(fullPath)) {
+          isForbidden = true;
+          break;
+        }
+      }
+      if (isForbidden) continue;
+
       try {
         const size = getDirectorySizeBytes(fullPath);
         if (size > 0) {
@@ -115,7 +137,15 @@ function performSafeCleanup({ workspaceRoot = process.cwd(), requireConfirmation
   let bytesFreed = 0;
 
   for (const item of scan.items) {
-    if (!item.safeAuto) continue; // Skip anything not strictly marked as safe ephemeral cache
+    if (!item.safeAuto) continue;
+
+    // Strict untouchable asset protection
+    for (const pattern of FORBIDDEN_CLEAN_PATTERNS) {
+      if (pattern.test(item.fullPath) || pattern.test(item.name)) {
+        console.error(`[resourceMonitor] 🛑 FORBIDDEN CLEANUP BLOCKED: ${item.fullPath}`);
+        throw new Error(`محاولة تنظيف محظورة لملف حساس أو مصدري: ${item.name}`);
+      }
+    }
 
     try {
       if (fs.statSync(item.fullPath).isDirectory()) {
@@ -132,6 +162,16 @@ function performSafeCleanup({ workspaceRoot = process.cwd(), requireConfirmation
 
   const postMetrics = getSystemResourceMetrics(workspaceRoot);
   const isSufficient = postMetrics.disk.freeMb >= DISK_WARNING_THRESHOLD_MB;
+
+  try {
+    recordAgentAudit({
+      actionType: 'resource_cleanup',
+      taskPrompt: 'Safe ephemeral cache cleanup',
+      affectedFiles: freedItems,
+      safetyDecision: 'allowed',
+      details: { bytesFreed, freedItems, isSufficient },
+    });
+  } catch (_) {}
 
   return {
     success: true,

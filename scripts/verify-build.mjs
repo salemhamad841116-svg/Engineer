@@ -181,15 +181,22 @@ runStep('Dockerfile Verification, Volume Mount & Container Health Probe', () => 
 });
 
 // ----------------------------------------------------
-// Step 7: Playwright End-to-End Verification (5 Scenarios & Verbatim Byte Assertion)
+// Step 7: Playwright End-to-End Verification (8 Scenarios & Verbatim Byte Assertion)
 // ----------------------------------------------------
-runStep('Playwright End-to-End Test Suite (5 Scenarios & Verbatim Byte Assertion)', () => {
+runStep('Playwright End-to-End Test Suite (8 Scenarios & Verbatim Byte Assertion)', () => {
   // Ensure port 3005 is free for Playwright webServer
   try {
     execSync('lsof -ti :3005 | xargs kill -9 2>/dev/null || true', { stdio: 'pipe' });
   } catch (_) {}
 
   execSync('npm run test:e2e', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 8: Autonomous Coding Agent Comprehensive Suite & Adversarial Hardening (25 Tests)
+// ----------------------------------------------------
+runStep('Autonomous Coding Agent Comprehensive Suite & Adversarial Hardening (25 Tests)', () => {
+  execSync('node server_backend/tests/autonomousAgentSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
 printSummaryAndExit(0);

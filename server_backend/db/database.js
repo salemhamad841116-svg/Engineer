@@ -688,6 +688,76 @@ CREATE TABLE IF NOT EXISTS research_citations (
       handle.exec('CREATE INDEX IF NOT EXISTS idx_documents_shared ON documents(is_shared_library)');
     },
   },
+  {
+    id: 11,
+    name: 'adversarial_hardening_audit_and_memory',
+    up(handle) {
+      const ensureCol = (table, col, def) => {
+        try {
+          const cols = handle.prepare("PRAGMA table_info('" + table + "')").all();
+          if (!cols.some((c) => c.name === col)) {
+            handle.exec("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def);
+          }
+        } catch (_) {}
+      };
+
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS agent_audit_logs (
+  id TEXT PRIMARY KEY,
+  task_id TEXT,
+  timestamp TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  task_prompt TEXT,
+  affected_files_json TEXT NOT NULL DEFAULT '[]',
+  safety_decision TEXT NOT NULL,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  actor_id TEXT DEFAULT 'autonomous_agent'
+);
+CREATE INDEX IF NOT EXISTS idx_agent_audit_task ON agent_audit_logs(task_id);
+CREATE INDEX IF NOT EXISTS idx_agent_audit_action ON agent_audit_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_agent_audit_time ON agent_audit_logs(timestamp);
+      `);
+
+      ensureCol('agent_memory_lessons', 'has_conflict', 'INTEGER NOT NULL DEFAULT 0');
+      ensureCol('agent_memory_lessons', 'conflict_notes', 'TEXT');
+      ensureCol('agent_memory_lessons', 'last_recalled_at', 'TEXT');
+      ensureCol('agent_memory_lessons', 'is_cold', 'INTEGER NOT NULL DEFAULT 0');
+      ensureCol('agent_memory_lessons', 'proven_fix', 'TEXT');
+      ensureCol('agent_memory_lessons', 'code_after', 'TEXT');
+      ensureCol('agent_memory_lessons', 'code_before', 'TEXT');
+    },
+  },
+  {
+    id: 12,
+    name: 'agent_tasks_suspended_resources_status',
+    up(handle) {
+      handle.exec(`
+        PRAGMA foreign_keys=OFF;
+        CREATE TABLE IF NOT EXISTS agent_tasks_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT,
+          prompt TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'self_healing', 'waiting_approval', 'completed', 'failed', 'rolled_back', 'suspended_resources')),
+          autonomy_level TEXT NOT NULL DEFAULT 'autonomous' CHECK (autonomy_level IN ('autonomous', 'supervised', 'step_by_step')),
+          current_step TEXT NOT NULL DEFAULT 'initializing',
+          steps_log_json TEXT NOT NULL DEFAULT '[]',
+          decisions_json TEXT NOT NULL DEFAULT '[]',
+          error_context_json TEXT NOT NULL DEFAULT '{}',
+          repair_attempts INTEGER NOT NULL DEFAULT 0,
+          undo_snapshot_json TEXT,
+          resource_metrics_json TEXT NOT NULL DEFAULT '{}',
+          deployment_record_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT OR IGNORE INTO agent_tasks_new SELECT * FROM agent_tasks;
+        DROP TABLE agent_tasks;
+        ALTER TABLE agent_tasks_new RENAME TO agent_tasks;
+        CREATE INDEX IF NOT EXISTS idx_agent_tasks_project ON agent_tasks(project_id);
+        PRAGMA foreign_keys=ON;
+      `);
+    },
+  },
 ];
 
 function openDb() {

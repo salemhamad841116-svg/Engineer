@@ -57,7 +57,7 @@ function recordLesson({
 
   // Check if identical signature already exists for this scope & project
   const existing = get(
-    `SELECT id, usage_count FROM agent_memory_lessons 
+    `SELECT * FROM agent_memory_lessons 
      WHERE error_signature = ? AND scope = ? AND (project_id = ? OR (project_id IS NULL AND ? IS NULL))`,
     cleanSignature,
     scope,
@@ -66,12 +66,38 @@ function recordLesson({
   );
 
   if (existing) {
+    const existingFix = existing.proven_fix || existing.verified_solution || '';
+    const isConflict = existingFix && provenFix && existingFix.trim() !== provenFix.trim();
+
+    if (isConflict) {
+      // Conflict detection: Never silently overwrite!
+      const conflictMsg = `[${now}] تعارض حل: الحل المحفوظ سابقاً ("${existingFix.slice(0, 50)}...") يتعارض مع الحل الوارد الجديد ("${provenFix.slice(0, 50)}...")`;
+      run(
+        `UPDATE agent_memory_lessons 
+         SET has_conflict = 1, conflict_notes = COALESCE(conflict_notes || '\n', '') || ?, updated_at = ? 
+         WHERE id = ?`,
+        conflictMsg,
+        now,
+        existing.id
+      );
+
+      return {
+        recorded: true,
+        hasConflict: true,
+        conflictRecorded: true,
+        lessonId: existing.id,
+        reason: 'تم تسجيل تعارض مع حل سابق محفوظ ولم يتم الاستبدال بصمت.',
+        existingFix,
+        incomingFix: provenFix,
+      };
+    }
+
     run(
       `UPDATE agent_memory_lessons 
-       SET usage_count = usage_count + 1, proven_fix = ?, code_after = ?, updated_at = ? 
+       SET usage_count = usage_count + 1, code_after = ?, updated_at = ?, last_recalled_at = ? 
        WHERE id = ?`,
-      provenFix,
       codeAfter,
+      now,
       now,
       existing.id
     );
@@ -79,6 +105,7 @@ function recordLesson({
       recorded: true,
       lessonId: existing.id,
       updated: true,
+      hasConflict: false,
       usageCount: existing.usage_count + 1,
     };
   }
@@ -86,8 +113,8 @@ function recordLesson({
   const lessonId = 'les_' + crypto.randomUUID().slice(0, 12);
   run(
     `INSERT INTO agent_memory_lessons 
-     (id, project_id, scope, tech_stack, error_signature, root_cause, proven_fix, code_before, code_after, verification_status, usage_count, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified', 1, ?, ?)`,
+     (id, project_id, scope, tech_stack, error_signature, root_cause, proven_fix, code_before, code_after, verification_status, usage_count, has_conflict, is_cold, created_at, updated_at, last_recalled_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified', 1, 0, 0, ?, ?, ?)`,
     lessonId,
     projectId,
     scope,
@@ -98,6 +125,7 @@ function recordLesson({
     codeBefore,
     codeAfter,
     now,
+    now,
     now
   );
 
@@ -106,6 +134,33 @@ function recordLesson({
     lessonId,
     scope,
     signature: cleanSignature,
+    hasConflict: false,
+  };
+}
+
+/**
+ * Assesses lesson age and marks cold if not recalled in 90 days.
+ */
+function assessLessonFreshness(lesson, baseConfidence) {
+  if (!lesson) return null;
+  const refTime = new Date(lesson.last_recalled_at || lesson.updated_at || lesson.created_at).getTime();
+  const daysSince = (Date.now() - refTime) / (1000 * 60 * 60 * 24);
+  const isCold = daysSince > 90 || lesson.is_cold === 1;
+
+  if (isCold) {
+    run("UPDATE agent_memory_lessons SET is_cold = 1 WHERE id = ?", lesson.id);
+    return {
+      isCold: true,
+      confidence: 0.4, // Degraded confidence for cold lessons
+      lesson: { ...lesson, is_cold: 1 },
+    };
+  }
+
+  run("UPDATE agent_memory_lessons SET last_recalled_at = ? WHERE id = ?", nowIso(), lesson.id);
+  return {
+    isCold: false,
+    confidence: baseConfidence,
+    lesson: { ...lesson, is_cold: 0 },
   };
 }
 
@@ -127,11 +182,13 @@ function recallLesson({ projectId = null, rawError = '', techStack = 'universal'
       cleanSignature
     );
     if (projectLesson) {
+      const freshness = assessLessonFreshness(projectLesson, 1.0);
       return {
         matched: true,
         source: 'project_memory',
-        confidence: 1.0,
-        lesson: projectLesson,
+        confidence: freshness.confidence,
+        isCold: freshness.isCold,
+        lesson: freshness.lesson,
       };
     }
   }
@@ -144,11 +201,13 @@ function recallLesson({ projectId = null, rawError = '', techStack = 'universal'
     cleanSignature
   );
   if (generalExact) {
+    const freshness = assessLessonFreshness(generalExact, 0.95);
     return {
       matched: true,
       source: 'general_tech_memory',
-      confidence: 0.95,
-      lesson: generalExact,
+      confidence: freshness.confidence,
+      isCold: freshness.isCold,
+      lesson: freshness.lesson,
     };
   }
 
@@ -162,11 +221,13 @@ function recallLesson({ projectId = null, rawError = '', techStack = 'universal'
       `%${kw}%`
     );
     if (fuzzy) {
+      const freshness = assessLessonFreshness(fuzzy, 0.75);
       return {
         matched: true,
         source: fuzzy.scope === 'project' ? 'project_memory_fuzzy' : 'general_memory_fuzzy',
-        confidence: 0.75,
-        lesson: fuzzy,
+        confidence: freshness.confidence,
+        isCold: freshness.isCold,
+        lesson: freshness.lesson,
       };
     }
   }

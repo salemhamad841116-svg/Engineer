@@ -344,7 +344,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-5xl h-[88vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
+      <div data-testid="autonomous-agent-modal" className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-5xl h-[88vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
         
         {/* Top Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
@@ -378,6 +378,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
               تصدير ZIP
             </button>
             <button
+              data-testid="agent-close-button"
               onClick={onClose}
               className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition"
             >
@@ -389,6 +390,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
         {/* Global Feedback Banner */}
         {feedbackMsg && (
           <div
+            data-testid="agent-feedback-msg"
             className={`px-6 py-2.5 text-xs font-medium flex items-center justify-between border-b ${
               feedbackMsg.type === 'success'
                 ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-300'
@@ -420,6 +422,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
           </button>
 
           <button
+            data-testid="agent-tab-decisions"
             onClick={() => setActiveTab('decisions')}
             className={`px-4 py-3 flex items-center gap-2 border-b-2 transition whitespace-nowrap relative ${
               activeTab === 'decisions'
@@ -493,6 +496,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                   وصف المهمة البرمجية المطلوب تنفيذها بشكل مستقل:
                 </label>
                 <textarea
+                  data-testid="agent-prompt-input"
                   rows={3}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -560,6 +564,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                     </label>
 
                     <button
+                      data-testid="agent-execute-button"
                       onClick={handleExecuteTask}
                       disabled={isRunning || !prompt.trim()}
                       className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white text-xs font-semibold shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition"
@@ -582,7 +587,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
 
               {/* Execution Progress & Steps Log */}
               {currentTask && (
-                <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4">
+                <div data-testid="agent-steps-log" className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Terminal className="w-4 h-4 text-indigo-400" />
@@ -591,7 +596,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                       </h3>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2.5 py-0.5 rounded-full font-mono ${
+                      <span data-testid="agent-task-status" className={`text-xs px-2.5 py-0.5 rounded-full font-mono ${
                         currentTask.status === 'completed'
                           ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                           : currentTask.status === 'waiting_approval'
@@ -601,6 +606,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                         الحالة: {currentTask.status}
                       </span>
                       <button
+                        data-testid="agent-undo-button"
                         onClick={handleUndo}
                         className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1 border border-slate-700 transition"
                       >
@@ -630,7 +636,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
             <div className="space-y-6">
               {/* Pending Safety Approvals Banner */}
               {pendingApprovals.length > 0 && (
-                <div className="bg-rose-950/40 border border-rose-800/80 p-5 rounded-xl space-y-3">
+                <div data-testid="agent-pending-approvals" className="bg-rose-950/40 border border-rose-800/80 p-5 rounded-xl space-y-3">
                   <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
                     <AlertTriangle className="w-5 h-5" />
                     طلبات موافقة أمنية معلقة (Safety Gate Approvals)
@@ -652,6 +658,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <button
+                            data-testid="agent-approval-approve"
                             onClick={() => handleResolveApproval(appr.id, 'approved')}
                             className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 transition"
                           >
@@ -659,6 +666,7 @@ export const AutonomousAgentModal: React.FC<AutonomousAgentModalProps> = ({
                             موافقة
                           </button>
                           <button
+                            data-testid="agent-approval-reject"
                             onClick={() => handleResolveApproval(appr.id, 'rejected')}
                             className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-1 transition"
                           >

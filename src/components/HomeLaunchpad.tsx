@@ -780,6 +780,7 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
               {/* Autonomous Coding Agent Button */}
               <button
                 type="button"
+                data-testid="autonomous-agent-open-button"
                 onClick={() => onOpenModal('autonomous-agent')}
                 aria-label={isAr ? 'الوكيل البرمجي الذكي' : 'Autonomous Agent'}
                 className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/35 text-[11px] font-semibold text-purple-300 transition-colors cursor-pointer"
