@@ -10,7 +10,10 @@
  * 4. Verbatim Raw Chunk Byte-Integrity Gate
  * 5. Full production bundle generation (vite build)
  * 6. Dockerfile volume mounting, container build, and live health check probe
- * 7. Playwright End-to-End Headless Verification (5 scenarios & verbatim byte assertion)
+ * 7. Playwright End-to-End Headless Verification (10 scenarios & verbatim byte assertion)
+ * 8. Autonomous Coding Agent Comprehensive Suite & Adversarial Hardening (25 tests)
+ * 9. Deep Research & Book Intelligence Engine Comprehensive Suite (11 tests & Golden Dataset)
+ * 10. External Web Verification & PDF Structures Comprehensive Suite (10 tests)
  */
 
 import { execSync } from 'child_process';
@@ -181,9 +184,9 @@ runStep('Dockerfile Verification, Volume Mount & Container Health Probe', () => 
 });
 
 // ----------------------------------------------------
-// Step 7: Playwright End-to-End Verification (8 Scenarios & Verbatim Byte Assertion)
+// Step 7: Playwright End-to-End Verification (10 Scenarios & Verbatim Byte Assertion)
 // ----------------------------------------------------
-runStep('Playwright End-to-End Test Suite (9 Scenarios & Verbatim Byte Assertion)', () => {
+runStep('Playwright End-to-End Test Suite (10 Scenarios & Verbatim Byte Assertion)', () => {
   // Ensure port 3005 is free for Playwright webServer
   try {
     execSync('lsof -ti :3005 | xargs kill -9 2>/dev/null || true', { stdio: 'pipe' });
@@ -213,6 +216,13 @@ runStep('Autonomous Coding Agent Comprehensive Suite & Adversarial Hardening (25
 runStep('Deep Research & Book Intelligence Engine Comprehensive Suite (11 Tests & Golden Dataset)', () => {
   execSync('node server_backend/tests/deepResearchSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
   execSync('node scripts/run-golden-eval.mjs', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 10: External Web Verification & PDF Structures Comprehensive Suite (10 Tests)
+// ----------------------------------------------------
+runStep('External Web Verification & PDF Structures Comprehensive Suite (10 Tests)', () => {
+  execSync('node server_backend/tests/phase7WebAndPdfSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
 printSummaryAndExit(0);

@@ -380,4 +380,57 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
 
     console.log('[E2E Gate Verification] ✅ Scenario 9: Deep Research Quality Gate & Grounded Citations verified.');
   });
+
+  // --------------------------------------------------------------------------
+  // Scenario 10: Phase 7 - External Web Verification & PDF Structure Extraction
+  // --------------------------------------------------------------------------
+  test('Scenario 10: Phase 7 - External Web Verification & PDF Structure Extraction', async () => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 1. Open Deep Research modal
+    const researchBtn = page.locator('[data-testid="deep-research-open-button"]');
+    await expect(researchBtn).toBeVisible({ timeout: 10000 });
+    await researchBtn.click();
+
+    const researchModal = page.locator('[data-testid="deep-research-modal"]');
+    await expect(researchModal).toBeVisible({ timeout: 10000 });
+
+    // 2. Switch to Knowledge Research tab if needed
+    const queryTab = page.locator('[data-testid="research-tab-query"]');
+    if (await queryTab.isVisible()) {
+      await queryTab.click();
+    }
+
+    // 3. Fill query triggering external web verification
+    const queryInput = page.locator('[data-testid="deep-research-input"]');
+    await expect(queryInput).toBeVisible();
+    await queryInput.fill('ما هو إصدار Node.js LTS الحالي وتاريخ انتهاء دعمه وفق التوثيق الرسمي؟');
+
+    // 4. Submit query
+    await page.locator('[data-testid="deep-research-submit"]').click();
+
+    // 5. Verify quality gate passes 8/8
+    const qualityGateBadge = page.locator('[data-testid="quality-gate-badge"]');
+    await expect(qualityGateBadge).toBeVisible({ timeout: 25000 });
+    await expect(qualityGateBadge).toContainText('Answer Quality Gate');
+
+    // 6. Verify web verification citations container is displayed
+    const citationsContainer = page.locator('[data-testid="citations-container"]');
+    await expect(citationsContainer).toBeVisible({ timeout: 10000 });
+    await expect(citationsContainer).toContainText('nodejs.org');
+
+    // 7. Verify backend endpoint for PDF structures
+    const structuresRes = await page.request.get('/api/research/pdf-structures/book_db_systems_2025');
+    expect(structuresRes.ok()).toBe(true);
+    const structuresJson = await structuresRes.json();
+    expect(structuresJson.success).toBe(true);
+    expect(structuresJson.tables.length).toBeGreaterThan(0);
+
+    // 8. Close modal
+    await page.locator('[data-testid="deep-research-close-button"]').click();
+    await expect(researchModal).not.toBeVisible();
+
+    console.log('[E2E Gate Verification] ✅ Scenario 10: External Web Verification & PDF Structures verified.');
+  });
 });

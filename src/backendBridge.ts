@@ -10,7 +10,7 @@ export interface AuthenticatedRequest extends Request {
   session?: unknown;
   user?: { id?: string; email?: string; role?: string; [key: string]: unknown };
   tenantId?: string;
-  tenantContext?: unknown;
+  tenantContext?: { tenantId?: string; userId?: string; role?: string; isSuperAdmin?: boolean; [key: string]: unknown };
 }
 
 function isForbiddenError(err: unknown, AccessDeniedErrorClass: unknown): boolean {
@@ -243,9 +243,29 @@ export function attachBackendAndDatabase(app: Express) {
     } = require('../server_backend/services/research/citationManager.js');
     const { tenantGuard } = require('../server_backend/auth/tenantGuard.js');
     const { knowledgeDal, AccessDeniedError } = require('../server_backend/dal/knowledgeDal.js');
+    const {
+      getWebVerificationSnapshot,
+      verifyTopicAgainstAuthoritativeWeb,
+      seedWebVerificationCache,
+    } = require('../server_backend/services/research/webVerificationEngine.js');
+    const {
+      findTablesForDocument,
+      extractTablesFromText,
+      saveDocumentTable,
+      seedReferenceTables,
+    } = require('../server_backend/services/research/pdfTableExtractor.js');
+    const {
+      findFiguresForDocument,
+      extractDiagramsFromText,
+      saveDocumentFigure,
+      seedReferenceFigures,
+    } = require('../server_backend/services/research/pdfDiagramExtractor.js');
 
-    // التأكد من توفر مراجع المكتبة الأساسية
+    // التأكد من توفر مراجع المكتبة الأساسية ومواصفات الويب والجداول
     seedReferenceLibrary();
+    seedWebVerificationCache();
+    seedReferenceTables();
+    seedReferenceFigures();
 
     // مسارات المصادقة وتسجيل الدخول والحسابات
     const authRoutes = require('../server_backend/auth/authRoutes.js');
@@ -452,6 +472,16 @@ export function attachBackendAndDatabase(app: Express) {
           isSharedLibrary: false,
         }, req.tenantContext);
 
+        // استخراج الجداول والمخططات من محتوى الـ PDF المرفوع (Phase 7)
+        try {
+          const docTables = extractTablesFromText(bookText, { documentId: book.id, defaultPage: 1, tenantId: req.tenantContext?.tenantId });
+          docTables.forEach((t: Record<string, unknown>) => saveDocumentTable(t));
+          const docFigs = extractDiagramsFromText(bookText, { documentId: book.id, defaultPage: 1, tenantId: req.tenantContext?.tenantId });
+          docFigs.forEach((f: Record<string, unknown>) => saveDocumentFigure(f));
+        } catch (_err) {
+          // Gracefully ignore structure extraction errors on upload to avoid failing book creation
+        }
+
         res.status(201).json({ success: true, book });
       } catch (err: unknown) {
         if (isForbiddenError(err, AccessDeniedError)) {
@@ -470,6 +500,36 @@ export function attachBackendAndDatabase(app: Express) {
         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="research_${session.id}.md"`);
         res.send(markdown);
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
+      }
+    });
+
+    // مسار التحقق الخارجي المعتمد من الويب (Phase 7)
+    app.get('/api/research/web-verification', (req: Request, res: Response) => {
+      try {
+        const { url, query } = req.query as { url?: string; query?: string };
+        if (url) {
+          const snapshot = getWebVerificationSnapshot(url);
+          return res.json({ success: true, snapshot });
+        }
+        if (query) {
+          const result = verifyTopicAgainstAuthoritativeWeb(query);
+          return res.json({ success: true, result });
+        }
+        res.status(400).json({ error: 'الرابط أو الاستعلام مطلوب لإجراء التحقق المعتمد' });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
+      }
+    });
+
+    // استرجاع الجداول والمخططات المستخرجة من المستند (Phase 7)
+    app.get('/api/research/pdf-structures/:docId', (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const docId = req.params.docId;
+        const tables = findTablesForDocument(docId, req.tenantContext);
+        const figures = findFiguresForDocument(docId, req.tenantContext);
+        res.json({ success: true, docId, tables, figures });
       } catch (err: unknown) {
         res.status(500).json({ error: extractErrorMessage(err) });
       }

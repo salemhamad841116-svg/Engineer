@@ -4,6 +4,8 @@
 // and decomposes complex questions into targeted sub-queries with objectives.
 // ==============================================================================
 
+const { detectVolatileTopic } = require('./webVerificationEngine');
+
 const VOLATILE_TECH_KEYWORDS = [
   'react', 'nextjs', 'vue', 'node', 'grpc', 'rest', 'api', 'jwt',
   'tailwind', 'vite', 'typescript', 'microservices', 'cloud', 'sqlite', 'docker'
@@ -115,12 +117,22 @@ function analyzeAndDecomposeQuery(query, manualLevel = null) {
     }
   }
 
+  // Detect table/matrix extraction request
+  const requiresTableExtraction = /جدول|مصفوفة|مقارنة\s+مصفوفية|table|matrix|مقارنة\s+شاملة/i.test(lower);
+
+  // Detect volatile web verification requirement
+  const volatileCheck = detectVolatileTopic(cleanQuery);
+
   return {
     originalQuery: cleanQuery,
     questionType,
     complexityScore,
     researchLevel: selectedLevel,
-    requiresModernSpecCheck,
+    requiresModernSpecCheck: requiresModernSpecCheck || volatileCheck.isVolatile,
+    requiresWebVerification: volatileCheck.isVolatile,
+    webVerificationCategory: volatileCheck.category,
+    suggestedWebUrls: volatileCheck.suggestedUrls,
+    requiresTableExtraction,
     subQueries,
   };
 }

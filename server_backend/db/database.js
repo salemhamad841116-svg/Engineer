@@ -870,6 +870,66 @@ UPDATE documents SET is_shared_library = 1 WHERE (tenant_id IS NULL OR tenant_id
       ensureCol('research_feedback', 'quality_gate_score', 'TEXT');
     },
   },
+  {
+    id: 16,
+    name: 'phase7_web_verification_and_pdf_extracts',
+    up(handle) {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS web_verification_cache (
+  id TEXT PRIMARY KEY,
+  url TEXT NOT NULL UNIQUE,
+  domain TEXT NOT NULL,
+  title TEXT,
+  clean_content TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  snapshot_type TEXT NOT NULL CHECK(snapshot_type IN ('standard_spec', 'software_release', 'general')),
+  verified_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  ttl_seconds INTEGER NOT NULL,
+  http_status INTEGER NOT NULL DEFAULT 200,
+  is_stale INTEGER NOT NULL DEFAULT 0,
+  source_metadata_json TEXT DEFAULT '{}',
+  tenant_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_web_cache_url ON web_verification_cache(url);
+CREATE INDEX IF NOT EXISTS idx_web_cache_domain ON web_verification_cache(domain);
+CREATE INDEX IF NOT EXISTS idx_web_cache_expires ON web_verification_cache(expires_at);
+
+CREATE TABLE IF NOT EXISTS document_tables (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL,
+  page_number INTEGER NOT NULL DEFAULT 1,
+  table_idx INTEGER NOT NULL DEFAULT 1,
+  caption TEXT,
+  markdown_table TEXT NOT NULL,
+  csv_content TEXT,
+  json_data TEXT NOT NULL DEFAULT '[]',
+  byte_start INTEGER DEFAULT 0,
+  byte_end INTEGER DEFAULT 0,
+  tenant_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doc_tables_doc ON document_tables(document_id);
+CREATE INDEX IF NOT EXISTS idx_doc_tables_page ON document_tables(document_id, page_number);
+
+CREATE TABLE IF NOT EXISTS document_figures (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL,
+  page_number INTEGER NOT NULL DEFAULT 1,
+  figure_idx INTEGER NOT NULL DEFAULT 1,
+  figure_number TEXT,
+  caption TEXT NOT NULL,
+  figure_type TEXT DEFAULT 'diagram',
+  byte_offset INTEGER DEFAULT 0,
+  metadata_json TEXT DEFAULT '{}',
+  tenant_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doc_figures_doc ON document_figures(document_id);
+      `);
+    },
+  },
 ];
 
 function openDb() {

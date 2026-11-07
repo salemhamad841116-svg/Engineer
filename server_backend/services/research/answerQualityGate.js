@@ -67,9 +67,11 @@ function evaluateAnswerQuality({
 
   // 5. فحص وجود معلومات متعارضة وحسمها
   const conflictReport = detectConflictResolution(retrievedSources, cleanAnswer);
+  const conflictEvidence = typeof conflictReport === 'string' ? conflictReport : (conflictReport?.evidence || '');
+  const conflictPassed = typeof conflictReport === 'string' ? true : (conflictReport?.passed !== false);
   const conflictsIdentified = {
-    passed: true,
-    evidence: conflictReport,
+    passed: conflictPassed,
+    evidence: conflictEvidence,
   };
 
   // 6. حداثة المعلومات وسياسة إصدارات الكتب
@@ -118,6 +120,9 @@ function evaluateAnswerQuality({
   } else if (!evidenceSupportsConclusion.passed) {
     decision = 'reject_ungrounded';
     failureReasons.push('الاقتباسات لا تطابق نصوص الكتب بنسبة 95% أو تفتقر للدعم النصي الصريح');
+  } else if (!conflictsIdentified.passed) {
+    decision = 'reject_unresolved_conflict';
+    failureReasons.push(conflictEvidence || 'التعارض بين المصادر لم يُحسم وفق الشروط المعتمدة');
   } else if (!freshnessVerified.passed) {
     decision = 'retry_modern_search';
     failureReasons.push(freshnessCheck.evidence || 'المعلومة تتطلب وثائق رسمية حديثة لتفادي الاعتماد على مراجع قديمة');
@@ -131,33 +136,61 @@ function evaluateAnswerQuality({
     score: `${passedChecksCount}/8`,
     failureReasons,
     checklist,
-    temporalWarning: conflictReport.includes('تعارض زمني') || conflictReport.includes('اختلاف زمني') ? conflictReport : null,
+    temporalWarning: conflictEvidence.includes('تعارض زمني') || conflictEvidence.includes('اختلاف زمني') || conflictEvidence.includes('تعارض منهجي') ? conflictEvidence : null,
   };
 }
 
 /**
- * Detects historical/temporal differences between references (e.g. 2012 vs 2026).
+ * Detects historical/temporal differences between references (e.g. 2012 vs 2026)
+ * and enforces Condition 2: Strict Book vs Web Conflict Resolution (Dual Dates + Discrepancy Explained).
  */
-function detectConflictResolution(sources, _answer) {
+function detectConflictResolution(sources, answer = '') {
+  const clean = String(answer || '');
   const years = sources.map((s) => s.publicationYear).filter(Boolean);
-  if (years.length < 2) {
-    return 'لا يوجد تعارض جوهري بين مصادر البحث المعتمدة';
+  const hasWebSource = sources.some((s) => s.isWebSource || s.webSnapshot);
+  const hasOutdatedBook = sources.some((s) => s.publicationYear && s.publicationYear <= 2018);
+  const hasModernSpec = sources.some((s) => (s.publicationYear && s.publicationYear >= 2025) || s.isWebSource);
+
+  // Condition 2: Strict Book vs Web Conflict Resolution
+  if (hasOutdatedBook && (hasWebSource || hasModernSpec)) {
+    const hasBookDate = /(?:نُشر|عام|سنة|إصدار)\s*(?:في|عام)?\s*:\s*[0-9]{4}|2012|2018/i.test(clean);
+    const hasWebVerificationDate = /تم\s+التحقق|تاريخ\s+الفحص|[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:/i.test(clean);
+    const hasDiscrepancyExplanation = /تطور|اختلاف|فارق|معمار|استبدال|حظر|deprecated/i.test(clean);
+
+    if (!hasBookDate || !hasWebVerificationDate || !hasDiscrepancyExplanation) {
+      return {
+        passed: false,
+        evidence: 'مخالفة شرط حسم التعارض بين الكتاب والويب: يجب عرض المصدرين مع تواريخهما وتفسير سبب الاختلاف المعماري دون تفضيل صامت أو خلط',
+      };
+    }
+
+    return {
+      passed: true,
+      evidence: 'تم تطبيق قاعدة حسم التعارض الصارم: تم توثيق تاريخ نشر الكتاب وتاريخ تحقق وثيقة الويب وتفسير التطور المعماري الفارق بينهما بدقة',
+    };
   }
 
-  const minYear = Math.min(...years);
-  const maxYear = Math.max(...years);
-
-  if (maxYear - minYear >= 6) {
-    return `تم رصد اختلاف زمني وتطور تاريخي بين مرجع أقدم (${minYear}) ومرجع أحدث (${maxYear}). تم التمييز بوضوح بين الممارسات التاريخية والمواصفات المعاصرة.`;
+  if (years.length >= 2) {
+    const minYear = Math.min(...years);
+    const maxYear = Math.max(...years);
+    if (maxYear - minYear >= 6) {
+      return {
+        passed: true,
+        evidence: `تم رصد اختلاف زمني وتطور تاريخي بين مرجع أقدم (${minYear}) ومرجع أحدث (${maxYear}). تم التمييز بوضوح بين الممارسات التاريخية والمواصفات المعاصرة.`,
+      };
+    }
   }
 
-  return 'مصادر البحث متسقة دلالياً وتدعم النتيجة المشتركة';
+  return {
+    passed: true,
+    evidence: 'مصادر البحث متسقة دلالياً وتدعم النتيجة المشتركة',
+  };
 }
 
 /**
  * Validates reference freshness for volatile and evolving tech domains.
  */
-function verifyModernSpecCheck(sources, requiresModernSpecCheck, _answer) {
+function verifyModernSpecCheck(sources, requiresModernSpecCheck, answer = '') {
   if (!requiresModernSpecCheck) {
     return {
       passed: true,
@@ -166,7 +199,7 @@ function verifyModernSpecCheck(sources, requiresModernSpecCheck, _answer) {
   }
 
   const hasModernSource = sources.some(
-    (s) => (s.publicationYear && s.publicationYear >= 2025) || /2025|2026|حديثة|رسمية|قياسية/i.test(s.bookTitle || '')
+    (s) => (s.publicationYear && s.publicationYear >= 2025) || /2025|2026|حديثة|رسمية|قياسية/i.test(s.bookTitle || '') || s.isWebSource
   );
 
   const hasOutdatedSource = sources.some(

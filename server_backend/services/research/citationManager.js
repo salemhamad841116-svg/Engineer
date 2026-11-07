@@ -34,6 +34,15 @@ function recordCitation({
   // Audit quote against source chunk text
   const audit = verifyVerbatimGrounding(quoteExact, sourceChunkText || quoteExact);
 
+  // Validate if bookId exists in documents table; if not (e.g. external web source), set to null
+  let validBookId = bookId;
+  if (validBookId) {
+    const docExists = get('SELECT id FROM documents WHERE id = ?', validBookId);
+    if (!docExists) {
+      validBookId = null;
+    }
+  }
+
   run(`
     INSERT INTO research_citations (
       id, session_id, tenant_id, book_id, book_title, author, edition, chapter, page_number,
@@ -41,7 +50,7 @@ function recordCitation({
       verified_grounded, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
-    citationId, sessionId, tenantId || 'default_tenant', bookId, bookTitle, author, edition, chapter, pageNumber,
+    citationId, sessionId, tenantId || 'default_tenant', validBookId, bookTitle, author, edition, chapter, pageNumber,
     byteStart || 0, byteEnd || 0, sourceUrl, quoteExact, quoteContextBefore, quoteContextAfter,
     audit.verified ? 1 : 0, now
   );
