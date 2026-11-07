@@ -7,6 +7,15 @@
 const crypto = require('node:crypto');
 const { get, all, run, tx } = require('../db/database');
 const { nowIso } = require('../utils/clock');
+const {
+  generateEmbedding,
+  vectorToBlob,
+  blobToVector,
+  cosineSimilarity,
+  tokenizeForBM25,
+  computeBM25Score,
+  reciprocalRankFusion,
+} = require('../services/research/localEmbeddingService');
 
 class AccessDeniedError extends Error {
   constructor(message = 'Access denied: Tenant isolation policy violation', statusCode = 403) {
@@ -53,6 +62,7 @@ function chunkBookContentWithVerbatim(text, {
   let chunkIdx = 0;
 
   if (text.length <= targetChars) {
+    const rawBuffer = Buffer.from(text, 'utf-8');
     return [{
       idx: 0,
       page: pageStart,
@@ -61,6 +71,8 @@ function chunkBookContentWithVerbatim(text, {
       verbatimRawChunk: text, // Byte-exact preservation without trim
       charStart: 0,
       charEnd: text.length,
+      byteStart: 0,
+      byteEnd: rawBuffer.byteLength,
     }];
   }
 
@@ -72,6 +84,8 @@ function chunkBookContentWithVerbatim(text, {
       const cleanSlice = rawSlice.trim();
       if (cleanSlice.length > 0) {
         const estimatedPage = pageStart + Math.floor(startIndex / (wordsPerPage * 6));
+        const byteStart = Buffer.byteLength(text.slice(0, startIndex), 'utf-8');
+        const byteEnd = Buffer.byteLength(text, 'utf-8');
         chunks.push({
           idx: chunkIdx++,
           page: estimatedPage,
@@ -80,6 +94,8 @@ function chunkBookContentWithVerbatim(text, {
           verbatimRawChunk: rawSlice, // Byte-exact preservation
           charStart: startIndex,
           charEnd: text.length,
+          byteStart,
+          byteEnd,
         });
       }
       break;
@@ -109,6 +125,8 @@ function chunkBookContentWithVerbatim(text, {
 
     if (chunkText.length > 0) {
       const estimatedPage = pageStart + Math.floor(startIndex / (wordsPerPage * 6));
+      const byteStart = Buffer.byteLength(text.slice(0, startIndex), 'utf-8');
+      const byteEnd = Buffer.byteLength(text.slice(0, startIndex + splitOffset), 'utf-8');
       chunks.push({
         idx: chunkIdx++,
         page: estimatedPage,
@@ -117,6 +135,8 @@ function chunkBookContentWithVerbatim(text, {
         verbatimRawChunk: rawChunkSlice, // Byte-exact preservation
         charStart: startIndex,
         charEnd: startIndex + splitOffset,
+        byteStart,
+        byteEnd,
       });
     }
 
@@ -210,12 +230,16 @@ class KnowledgeDAL {
 
           for (const c of chChunks) {
             const chunkId = `chk_${bookId}_${globalIdx}`;
-            const embeddingBytes = Buffer.alloc(64 * 4); // Deterministic placeholder vector
+            const embeddingVec = generateEmbedding(c.text);
+            const embeddingBlob = vectorToBlob(embeddingVec);
             run(`
-              INSERT OR REPLACE INTO chunks (id, document_id, idx, page, text, verbatim_raw_chunk, embedding, embed_model, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, 'text-embedding-3-small', ?)
+              INSERT OR REPLACE INTO chunks (
+                id, document_id, idx, page, text, verbatim_raw_chunk,
+                byte_start, byte_end, embedding, embedding_blob, embed_model, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local-dense-128', ?)
             `,
-              chunkId, bookId, globalIdx++, c.page, c.text, c.verbatimRawChunk, embeddingBytes, now
+              chunkId, bookId, globalIdx++, c.page, c.text, c.verbatimRawChunk,
+              c.byteStart || 0, c.byteEnd || 0, embeddingBlob, embeddingBlob, now
             );
           }
         }
@@ -323,6 +347,7 @@ class KnowledgeDAL {
 
     let sql = `
       SELECT c.id, c.document_id, c.idx, c.page, c.text, c.verbatim_raw_chunk,
+             c.byte_start, c.byte_end, c.embedding_blob, c.embedding,
              d.title as book_title, d.tenant_id, d.is_shared_library,
              s.author, s.edition, s.publication_year, s.chapters_json
       FROM chunks c
@@ -345,65 +370,114 @@ class KnowledgeDAL {
     }
 
     const allChunks = all(sql, ...params);
-    const scored = [];
+    if (!allChunks || allChunks.length === 0) return [];
+
+    const queryTokens = tokenizeForBM25(cleanQuery);
+    const queryVec = generateEmbedding(cleanQuery);
+
+    const bm25List = [];
+    const vectorList = [];
+    const chunkMap = new Map();
+    const highlightsMap = new Map();
+
+    const avgDocLen = allChunks.reduce((acc, c) => acc + (c.text.length / 5), 0) / Math.max(allChunks.length, 1);
 
     for (const chunk of allChunks) {
+      chunkMap.set(chunk.id, chunk);
       const textLower = chunk.text.toLowerCase();
-      let score = 0;
       const matchHighlights = [];
 
-      if (cleanQuery.length > 4 && textLower.includes(cleanQuery.toLowerCase())) {
-        score += 15.0;
+      // 1. BM25 & exact keyword matching
+      const docTokens = tokenizeForBM25(chunk.text);
+      let bm25 = computeBM25Score(queryTokens, docTokens, docTokens.length, avgDocLen);
+
+      if (cleanQuery.length > 3 && textLower.includes(cleanQuery.toLowerCase())) {
+        bm25 += 15.0;
         matchHighlights.push(cleanQuery);
       }
-
-      for (const t of tokens) {
+      for (const t of queryTokens) {
         if (textLower.includes(t)) {
-          score += 2.5;
           matchHighlights.push(t);
         }
       }
 
-      if (score > 0) {
-        let chapterTitle = 'الفصل العام';
-        if (chunk.chapters_json) {
-          try {
-            const chList = JSON.parse(chunk.chapters_json);
-            const foundCh = chList.find((ch) => chunk.page >= ch.pageStart && (!ch.pageEnd || chunk.page <= ch.pageEnd));
-            if (foundCh) chapterTitle = foundCh.title;
-          } catch (_) {}
-        }
-
-        let contextBefore = '';
-        let contextAfter = '';
-        if (expandContext) {
-          const prev = get('SELECT text FROM chunks WHERE document_id = ? AND idx = ?', chunk.document_id, chunk.idx - 1);
-          const next = get('SELECT text FROM chunks WHERE document_id = ? AND idx = ?', chunk.document_id, chunk.idx + 1);
-          if (prev) contextBefore = prev.text.slice(-200);
-          if (next) contextAfter = next.text.slice(0, 200);
-        }
-
-        scored.push({
-          chunkId: chunk.id,
-          bookId: chunk.document_id,
-          bookTitle: chunk.book_title,
-          tenantId: chunk.tenant_id,
-          author: chunk.author || 'غير محدد',
-          edition: chunk.edition || 'طبعة معتمدة',
-          publicationYear: chunk.publication_year || 2024,
-          chapter: chapterTitle,
-          pageNumber: chunk.page || 1,
-          text: chunk.text,
-          verbatimRawChunk: chunk.verbatim_raw_chunk || chunk.text, // Verbatim guarantee
-          contextBefore,
-          contextAfter,
-          score,
-          matchedTokens: Array.from(new Set(matchHighlights)),
-        });
+      if (bm25 > 0) {
+        bm25List.push({ id: chunk.id, score: bm25 });
       }
+
+      // 2. Vector Cosine Similarity
+      let chunkVec = null;
+      if (chunk.embedding_blob && Buffer.isBuffer(chunk.embedding_blob) && chunk.embedding_blob.byteLength >= 512) {
+        chunkVec = blobToVector(chunk.embedding_blob);
+      } else if (chunk.embedding && Buffer.isBuffer(chunk.embedding) && chunk.embedding.byteLength >= 512) {
+        chunkVec = blobToVector(chunk.embedding);
+      } else {
+        chunkVec = generateEmbedding(chunk.text);
+      }
+
+      const cosSim = cosineSimilarity(queryVec, chunkVec);
+      const minSim = bm25 > 0 ? 0.15 : 0.35;
+      if (cosSim >= minSim) {
+        vectorList.push({ id: chunk.id, score: cosSim });
+      }
+
+      highlightsMap.set(chunk.id, Array.from(new Set(matchHighlights)));
     }
 
-    scored.sort((a, b) => b.score - a.score);
+    bm25List.sort((a, b) => b.score - a.score);
+    vectorList.sort((a, b) => b.score - a.score);
+
+    // 3. Reciprocal Rank Fusion
+    const fusedResults = reciprocalRankFusion(bm25List, vectorList, 60);
+
+    const scored = [];
+    for (const item of fusedResults) {
+      const chunk = chunkMap.get(item.id);
+      if (!chunk) continue;
+
+      let chapterTitle = 'الفصل العام';
+      if (chunk.chapters_json) {
+        try {
+          const chList = JSON.parse(chunk.chapters_json);
+          const foundCh = chList.find((ch) => chunk.page >= ch.pageStart && (!ch.pageEnd || chunk.page <= ch.pageEnd));
+          if (foundCh) chapterTitle = foundCh.title;
+        } catch (_) {}
+      }
+
+      let contextBefore = '';
+      let contextAfter = '';
+      if (expandContext) {
+        const prev = get('SELECT text FROM chunks WHERE document_id = ? AND idx = ?', chunk.document_id, chunk.idx - 1);
+        const next = get('SELECT text FROM chunks WHERE document_id = ? AND idx = ?', chunk.document_id, chunk.idx + 1);
+        if (prev) contextBefore = prev.text.slice(-200);
+        if (next) contextAfter = next.text.slice(0, 200);
+      }
+
+      scored.push({
+        chunkId: chunk.id,
+        bookId: chunk.document_id,
+        bookTitle: chunk.book_title,
+        tenantId: chunk.tenant_id,
+        author: chunk.author || 'غير محدد',
+        edition: chunk.edition || 'طبعة معتمدة',
+        publicationYear: chunk.publication_year || 2024,
+        chapter: chapterTitle,
+        pageNumber: chunk.page || 1,
+        byteStart: chunk.byte_start || 0,
+        byteEnd: chunk.byte_end || (chunk.verbatim_raw_chunk ? Buffer.byteLength(chunk.verbatim_raw_chunk, 'utf-8') : 0),
+        text: chunk.text,
+        verbatimRawChunk: chunk.verbatim_raw_chunk || chunk.text, // Verbatim guarantee
+        contextBefore,
+        contextAfter,
+        score: item.score,
+        rrfScore: item.rrfScore,
+        matchType: item.matchType,
+        semanticSimilarity: item.vectorScore || 0,
+        bm25Score: item.bm25Score || 0,
+        matchedTokens: highlightsMap.get(chunk.id) || [],
+      });
+    }
+
     return scored.slice(0, limit);
   }
 

@@ -19,6 +19,8 @@ function recordCitation({
   edition = 'طبعة معتمدة',
   chapter = 'الفصل العام',
   pageNumber = 1,
+  byteStart = 0,
+  byteEnd = 0,
   sourceUrl = null,
   quoteExact,
   quoteContextBefore = '',
@@ -35,12 +37,12 @@ function recordCitation({
   run(`
     INSERT INTO research_citations (
       id, session_id, tenant_id, book_id, book_title, author, edition, chapter, page_number,
-      source_url, quote_exact, quote_context_before, quote_context_after,
+      byte_start, byte_end, source_url, quote_exact, quote_context_before, quote_context_after,
       verified_grounded, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     citationId, sessionId, tenantId || 'default_tenant', bookId, bookTitle, author, edition, chapter, pageNumber,
-    sourceUrl, quoteExact, quoteContextBefore, quoteContextAfter,
+    byteStart || 0, byteEnd || 0, sourceUrl, quoteExact, quoteContextBefore, quoteContextAfter,
     audit.verified ? 1 : 0, now
   );
 
@@ -52,6 +54,8 @@ function recordCitation({
     edition,
     chapter,
     pageNumber,
+    byteStart: byteStart || 0,
+    byteEnd: byteEnd || 0,
     sourceUrl,
     quoteExact,
     verifiedGrounded: audit.verified,
@@ -72,6 +76,8 @@ function getSessionCitations(sessionId) {
     edition: r.edition,
     chapter: r.chapter,
     pageNumber: r.page_number,
+    byteStart: r.byte_start || 0,
+    byteEnd: r.byte_end || 0,
     sourceUrl: r.source_url,
     quoteExact: r.quote_exact,
     quoteContextBefore: r.quote_context_before,

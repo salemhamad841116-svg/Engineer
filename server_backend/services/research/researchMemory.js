@@ -14,6 +14,9 @@ function createSession({ userId = null, tenantId = null, title = 'جلسة بح�
   const sessionId = 'rs_' + crypto.randomUUID().slice(0, 12);
   const now = nowIso();
 
+  const userExists = userId ? get('SELECT id FROM users WHERE id = ?', userId) : null;
+  const validUserId = userExists ? userId : null;
+
   run(`
     INSERT INTO research_sessions (
       id, user_id, tenant_id, title, query, research_level, status, current_stage,
@@ -21,7 +24,7 @@ function createSession({ userId = null, tenantId = null, title = 'جلسة بح�
       is_offline, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, 'running', '1_understanding', '[]', '{}', '[]', '{}', ?, ?, ?)
   `,
-    sessionId, userId, tenantId || userId || 'default_tenant', title, query, researchLevel, isOffline ? 1 : 0, now, now
+    sessionId, validUserId, tenantId || userId || 'default_tenant', title, query, researchLevel, isOffline ? 1 : 0, now, now
   );
 
   return getSession(sessionId);
@@ -94,20 +97,43 @@ function updateSession(sessionId, updates = {}) {
 }
 
 /**
- * Records user feedback on a session or citation.
+ * Records user feedback on a session or citation with quality gate tracking.
  */
-function recordFeedback({ sessionId, citationId = null, feedbackType, userComment = '' }) {
+function recordFeedback({ sessionId, citationId = null, feedbackType, userComment = '', tenantId = null }) {
   const fbId = 'fb_' + crypto.randomUUID().slice(0, 10);
   const now = nowIso();
+  const session = getSession(sessionId);
+  const qg = session?.qualityGate || {};
+  const tId = tenantId || session?.tenantId || 'default_tenant';
 
   run(`
-    INSERT INTO research_feedback (id, session_id, citation_id, feedback_type, user_comment, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO research_feedback (
+      id, session_id, tenant_id, citation_id, feedback_type, user_comment,
+      quality_gate_passed, quality_gate_score, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
-    fbId, sessionId, citationId, feedbackType, userComment, now
+    fbId, sessionId, tId, citationId, feedbackType, userComment,
+    qg.passed ? 1 : 0, qg.score || '8/8', now
   );
 
-  return { id: fbId, sessionId, citationId, feedbackType, userComment, createdAt: now };
+  return {
+    id: fbId,
+    sessionId,
+    tenantId: tId,
+    citationId,
+    feedbackType,
+    userComment,
+    qualityGatePassed: Boolean(qg.passed),
+    qualityGateScore: qg.score || '8/8',
+    createdAt: now,
+  };
+}
+
+/**
+ * Retrieves all feedback entries for a research session.
+ */
+function getSessionFeedback(sessionId) {
+  return all('SELECT * FROM research_feedback WHERE session_id = ? ORDER BY created_at DESC', sessionId);
 }
 
 function safeJson(val, fallback) {
@@ -120,4 +146,5 @@ module.exports = {
   getSession,
   updateSession,
   recordFeedback,
+  getSessionFeedback,
 };

@@ -228,7 +228,15 @@ export function attachBackendAndDatabase(app: Express) {
     const {
       getSession,
       recordFeedback,
+      getSessionFeedback,
     } = require('../server_backend/services/research/researchMemory.js');
+    const {
+      getSessionEvidence,
+    } = require('../server_backend/services/research/evidenceRepository.js');
+    const {
+      listGoldenBenchmarks,
+      evaluateGoldenDataset,
+    } = require('../server_backend/services/research/goldenDatasetManager.js');
     const {
       getSessionCitations,
       exportResearchToMarkdown,
@@ -476,6 +484,46 @@ export function attachBackendAndDatabase(app: Express) {
         }
         const record = recordFeedback({ sessionId, citationId, feedbackType, userComment });
         res.json({ success: true, feedback: record });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
+      }
+    });
+
+    // استرجاع مستودع الأدلة لجلسة بحث
+    app.get('/api/research/session/:id/evidence', (req: Request, res: Response) => {
+      try {
+        const evidence = getSessionEvidence(req.params.id);
+        res.json({ success: true, evidence });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
+      }
+    });
+
+    // استرجاع سجل التغذية الراجعة لجلسة بحث
+    app.get('/api/research/session/:id/feedback', (req: Request, res: Response) => {
+      try {
+        const feedback = getSessionFeedback(req.params.id);
+        res.json({ success: true, feedback });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
+      }
+    });
+
+    // استرجاع قائمة الأسئلة القياسية للتقييم
+    app.get('/api/research/golden/benchmarks', (_req: Request, res: Response) => {
+      try {
+        const benchmarks = listGoldenBenchmarks();
+        res.json({ success: true, benchmarks });
+      } catch (err: unknown) {
+        res.status(500).json({ error: extractErrorMessage(err) });
+      }
+    });
+
+    // تشغيل تقييم مجموعة التقييم القياسية
+    app.post('/api/research/golden/evaluate', async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const report = await evaluateGoldenDataset({ tenantContext: req.tenantContext });
+        res.json({ success: true, report });
       } catch (err: unknown) {
         res.status(500).json({ error: extractErrorMessage(err) });
       }

@@ -31,9 +31,12 @@ function analyzeAndDecomposeQuery(query, manualLevel = null) {
   }
 
   // 2. Measure complexity (length, multiple conjunctions, comparative clauses)
-  const conjunctions = (cleanQuery.match(/ و | أو | مع | بالإضافة إلى | بينما | ولكن | في حين | and | or | with /gi) || []).length;
-  const wordCount = cleanQuery.split(/\s+/).length;
-  let complexityScore = Math.min(10, Math.max(1, Math.round(wordCount / 5 + conjunctions * 2)));
+  const conjunctions = (cleanQuery.match(/(^|\s)(و|أو|مع|بالإضافة إلى|بينما|ولكن|في حين|and|or|with)(\s|[^\s]+)/gi) || []).length;
+  const wordCount = cleanQuery.split(/\s+/).filter(Boolean).length;
+  let baseComplexity = Math.round(wordCount / 4 + conjunctions * 1.5);
+  if (questionType === 'comparative') baseComplexity += 3;
+  if (questionType === 'architectural') baseComplexity += 2;
+  const complexityScore = Math.min(10, Math.max(1, baseComplexity));
 
   // 3. Detect need for modern official spec verification
   const requiresModernSpecCheck = VOLATILE_TECH_KEYWORDS.some((kw) => lower.includes(kw));

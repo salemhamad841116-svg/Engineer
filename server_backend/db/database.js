@@ -758,6 +758,118 @@ CREATE INDEX IF NOT EXISTS idx_agent_audit_time ON agent_audit_logs(timestamp);
       `);
     },
   },
+  {
+    id: 13,
+    name: 'phase6_deep_research_and_hybrid_knowledge',
+    up(handle) {
+      const ensureCol = (table, col, def) => {
+        try {
+          const cols = handle.prepare("PRAGMA table_info('" + table + "')").all();
+          if (!cols.some((c) => c.name === col)) {
+            handle.exec("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def);
+          }
+        } catch (_) {}
+      };
+
+      ensureCol('chunks', 'byte_start', 'INTEGER DEFAULT 0');
+      ensureCol('chunks', 'byte_end', 'INTEGER DEFAULT 0');
+      ensureCol('chunks', 'embedding_blob', 'BLOB');
+      ensureCol('documents', 'is_latest_edition', 'INTEGER DEFAULT 1');
+      ensureCol('documents', 'edition_notes', 'TEXT');
+      ensureCol('research_sessions', 'budget_limit', 'REAL DEFAULT 0.01');
+      ensureCol('research_sessions', 'loop_count', 'INTEGER DEFAULT 1');
+      ensureCol('research_sessions', 'max_loops', 'INTEGER DEFAULT 3');
+      ensureCol('research_sessions', 'cross_lingual', 'INTEGER DEFAULT 0');
+      ensureCol('research_citations', 'byte_start', 'INTEGER DEFAULT 0');
+      ensureCol('research_citations', 'byte_end', 'INTEGER DEFAULT 0');
+
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS research_evidence (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  book_id TEXT NOT NULL,
+  book_title TEXT NOT NULL,
+  author TEXT DEFAULT 'غير محدد',
+  chapter TEXT DEFAULT 'الفصل العام',
+  page_number INTEGER DEFAULT 1,
+  byte_start INTEGER DEFAULT 0,
+  byte_end INTEGER DEFAULT 0,
+  key_fact TEXT NOT NULL,
+  exact_quote TEXT NOT NULL,
+  quote_confidence REAL NOT NULL DEFAULT 1.0,
+  is_verified INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_research_evidence_session ON research_evidence(session_id);
+CREATE INDEX IF NOT EXISTS idx_research_evidence_tenant ON research_evidence(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_research_evidence_book ON research_evidence(book_id);
+
+CREATE TABLE IF NOT EXISTS golden_evaluation_dataset (
+  id TEXT PRIMARY KEY,
+  query TEXT NOT NULL,
+  category TEXT NOT NULL,
+  expected_answer TEXT NOT NULL,
+  expected_books_json TEXT NOT NULL DEFAULT '[]',
+  expected_quotes_json TEXT NOT NULL DEFAULT '[]',
+  min_quality_score REAL NOT NULL DEFAULT 7.0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_golden_dataset_category ON golden_evaluation_dataset(category);
+
+CREATE TABLE IF NOT EXISTS research_feedback (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  tenant_id TEXT,
+  citation_id TEXT,
+  feedback_type TEXT NOT NULL,
+  user_comment TEXT,
+  quality_gate_passed INTEGER NOT NULL DEFAULT 1,
+  quality_gate_score TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_research_feedback_session ON research_feedback(session_id);
+
+UPDATE documents SET is_shared_library = 1 WHERE (tenant_id IS NULL OR tenant_id = 'system_library') AND (id LIKE 'book_%' OR id LIKE 'spec_%') AND id NOT IN ('book_alpha_confidential_2026', 'book_beta_proprietary_2026', 'book_verbatim_test_01');
+      `);
+    },
+  },
+  {
+    id: 14,
+    name: 'research_citations_byte_offsets',
+    up(handle) {
+      const ensureCol = (table, col, def) => {
+        try {
+          const cols = handle.prepare("PRAGMA table_info('" + table + "')").all();
+          if (!cols.some((c) => c.name === col)) {
+            handle.exec("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def);
+          }
+        } catch (_) {}
+      };
+
+      ensureCol('research_citations', 'byte_start', 'INTEGER DEFAULT 0');
+      ensureCol('research_citations', 'byte_end', 'INTEGER DEFAULT 0');
+    },
+  },
+  {
+    id: 15,
+    name: 'research_feedback_tenant_and_quality_gate',
+    up(handle) {
+      const ensureCol = (table, col, def) => {
+        try {
+          const cols = handle.prepare("PRAGMA table_info('" + table + "')").all();
+          if (!cols.some((c) => c.name === col)) {
+            handle.exec("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def);
+          }
+        } catch (_) {}
+      };
+
+      ensureCol('research_feedback', 'tenant_id', 'TEXT');
+      ensureCol('research_feedback', 'quality_gate_passed', 'INTEGER NOT NULL DEFAULT 1');
+      ensureCol('research_feedback', 'quality_gate_score', 'TEXT');
+    },
+  },
 ];
 
 function openDb() {

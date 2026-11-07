@@ -183,13 +183,13 @@ runStep('Dockerfile Verification, Volume Mount & Container Health Probe', () => 
 // ----------------------------------------------------
 // Step 7: Playwright End-to-End Verification (8 Scenarios & Verbatim Byte Assertion)
 // ----------------------------------------------------
-runStep('Playwright End-to-End Test Suite (8 Scenarios & Verbatim Byte Assertion)', () => {
+runStep('Playwright End-to-End Test Suite (9 Scenarios & Verbatim Byte Assertion)', () => {
   // Ensure port 3005 is free for Playwright webServer
   try {
     execSync('lsof -ti :3005 | xargs kill -9 2>/dev/null || true', { stdio: 'pipe' });
   } catch (_) {}
 
-  execSync('npm run test:e2e', { stdio: 'inherit', cwd: projectRoot });
+  execSync("NO_PROXY='*' npm run test:e2e", { stdio: 'inherit', cwd: projectRoot, env: { ...process.env, NO_PROXY: '*' } });
 });
 
 // ----------------------------------------------------
@@ -199,5 +199,14 @@ runStep('Autonomous Coding Agent Comprehensive Suite & Adversarial Hardening (25
   execSync('node server_backend/tests/autonomousAgentSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 9: Deep Research & Book Intelligence Engine Comprehensive Suite (11 Tests & Golden Dataset)
+// ----------------------------------------------------
+runStep('Deep Research & Book Intelligence Engine Comprehensive Suite (11 Tests & Golden Dataset)', () => {
+  execSync('node server_backend/tests/deepResearchSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+  execSync('node scripts/run-golden-eval.mjs', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
+
 

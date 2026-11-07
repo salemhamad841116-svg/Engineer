@@ -333,4 +333,49 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
 
     console.log('[E2E Gate Verification] ✅ Scenario 8: 1-Click Undo successfully rolled back and updated UI.');
   });
+
+  // --------------------------------------------------------------------------
+  // Scenario 9: Deep Research & Book Intelligence Engine - Quality Gate & Feedback
+  // --------------------------------------------------------------------------
+  test('Scenario 9: Deep Research & Book Intelligence Engine - Quality Gate & Feedback', async () => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // 1. Open Deep Research modal
+    const researchBtn = page.locator('[data-testid="deep-research-open-button"]');
+    await expect(researchBtn).toBeVisible({ timeout: 10000 });
+    await researchBtn.click();
+
+    const researchModal = page.locator('[data-testid="deep-research-modal"]');
+    await expect(researchModal).toBeVisible({ timeout: 10000 });
+
+    // 2. Switch to Knowledge Research tab if needed
+    const queryTab = page.locator('[data-testid="research-tab-query"]');
+    if (await queryTab.isVisible()) {
+      await queryTab.click();
+    }
+
+    // 3. Fill query for ACID transactions
+    const queryInput = page.locator('[data-testid="deep-research-input"]');
+    await expect(queryInput).toBeVisible();
+    await queryInput.fill('ما هي خصائص ACID في قواعد البيانات ومعالجة المعاملات؟');
+
+    // 4. Submit query
+    await page.locator('[data-testid="deep-research-submit"]').click();
+
+    // 5. Verify quality gate badge passes
+    const qualityGateBadge = page.locator('[data-testid="quality-gate-badge"]');
+    await expect(qualityGateBadge).toBeVisible({ timeout: 25000 });
+    await expect(qualityGateBadge).toContainText('Answer Quality Gate');
+
+    // 6. Verify citations are grounded
+    const citationsContainer = page.locator('[data-testid="citations-container"]');
+    await expect(citationsContainer).toBeVisible({ timeout: 10000 });
+
+    // 7. Close modal
+    await page.locator('[data-testid="deep-research-close-button"]').click();
+    await expect(researchModal).not.toBeVisible();
+
+    console.log('[E2E Gate Verification] ✅ Scenario 9: Deep Research Quality Gate & Grounded Citations verified.');
+  });
 });

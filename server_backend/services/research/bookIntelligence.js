@@ -11,6 +11,7 @@ const {
   AccessDeniedError,
   assertTenantContext,
 } = require('../../dal/knowledgeDal');
+const { get } = require('../../db/database');
 
 const SYSTEM_TENANT_CONTEXT = {
   tenantId: 'system_library',
@@ -84,7 +85,11 @@ function getVerbatimChunk(chunkId, tenantContext = SYSTEM_TENANT_CONTEXT) {
  */
 function seedReferenceLibrary() {
   const existingBooks = knowledgeDal.listBooks(SYSTEM_TENANT_CONTEXT);
-  if (existingBooks.length >= 5) return;
+  const hasBook6 = existingBooks.some((b) => b.id === 'book_microservices_en_2026');
+  if (existingBooks.length >= 6 && hasBook6) {
+    const unindexedChunk = get('SELECT id FROM chunks WHERE document_id = ? AND (byte_end = 0 OR embedding_blob IS NULL)', 'book_db_systems_2025');
+    if (!unindexedChunk) return;
+  }
 
   // Book 1: Software Architecture
   registerBook({
@@ -267,6 +272,37 @@ function seedReferenceLibrary() {
       },
     ],
     fullText: 'المواصفات القياسية لـ React 19 و Server Actions 2026.',
+  }, SYSTEM_TENANT_CONTEXT);
+
+  // Book 6: English Reference for Bilingual Research
+  registerBook({
+    id: 'book_microservices_en_2026',
+    title: 'Cloud Native Microservices & Distributed Architecture',
+    author: 'Dr. Arthur Vance',
+    edition: '2026 Standard Edition',
+    publicationYear: 2026,
+    language: 'English',
+    pagesTotal: 320,
+    isSharedLibrary: true,
+    toc: [
+      { chapter: 1, title: 'Chapter 1: Microservices Communication - gRPC vs REST APIs', page: 12 },
+      { chapter: 2, title: 'Chapter 2: Event Sourcing and CQRS Pattern', page: 98 },
+    ],
+    chapters: [
+      {
+        title: 'Chapter 1: Microservices Communication - gRPC vs REST APIs',
+        pageStart: 12,
+        pageEnd: 97,
+        content: `In modern cloud native microservices architectures, gRPC utilizes HTTP/2 multiplexing and Protocol Buffers serialization to deliver up to 7-10x lower latency compared to traditional REST JSON over HTTP/1.1. While REST remains universally compatible for external public APIs, internal microservices backbones standardize on gRPC for high-throughput inter-service communication.`,
+      },
+      {
+        title: 'Chapter 2: Event Sourcing and CQRS Pattern',
+        pageStart: 98,
+        pageEnd: 320,
+        content: `Event Sourcing guarantees state immutability by persisting every domain mutation as an append-only event log. Coupled with Command Query Responsibility Segregation (CQRS), it decouples write models from denormalized read projections, ensuring resilient data consistency without distributed lock contention across microservices boundaries.`,
+      },
+    ],
+    fullText: 'Cloud Native Microservices & Distributed Architecture 2026 Dr. Arthur Vance.',
   }, SYSTEM_TENANT_CONTEXT);
 }
 
