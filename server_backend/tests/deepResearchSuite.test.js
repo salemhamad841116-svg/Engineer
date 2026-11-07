@@ -333,10 +333,12 @@ async function runDeepResearchSuite() {
   // ----------------------------------------------------------------------------
   // TEST 7: Golden Dataset Framework & Benchmark Evaluation
   // ----------------------------------------------------------------------------
-  await runTest('Test 7: Golden Dataset benchmark runner and report generation', async () => {
+  // TEST 7: Golden Dataset Framework & Benchmark Evaluation
+  // ----------------------------------------------------------------------------
+  await runTest('Test 7: Golden Dataset benchmark runner, Recall@5 and report generation', async () => {
     seedGoldenDataset();
     const benchmarks = listGoldenBenchmarks();
-    assert.ok(benchmarks.length >= 5, `Must have at least 5 benchmarks, got ${benchmarks.length}`);
+    assert.ok(benchmarks.length >= 24, `Must have at least 24 benchmarks, got ${benchmarks.length}`);
 
     // Verify benchmark categories
     const categories = new Set(benchmarks.map((b) => b.category));
@@ -346,9 +348,10 @@ async function runDeepResearchSuite() {
     assert.ok(categories.has('history'), 'Must include history benchmark');
     assert.ok(categories.has('cross_lingual'), 'Must include cross_lingual benchmark');
 
-    // Run benchmark evaluation
-    const report = await evaluateGoldenDataset({ tenantContext: tenantCtx });
+    // Run benchmark evaluation (sample 5 items for fast test suite execution)
+    const report = await evaluateGoldenDataset({ tenantContext: tenantCtx, maxItems: 5 });
     assert.strictEqual(report.evaluatedCount, 5, 'Must evaluate 5 benchmarks');
+    assert.ok(report.overallMetrics.recallAt5Percent >= 80, 'Recall@5 should be >= 80%');
     assert.strictEqual(report.overallMetrics.sourceAccuracyPercent, 100, 'Source accuracy should be 100%');
     assert.strictEqual(report.overallMetrics.verbatimGroundingPercent, 100, 'Verbatim grounding rate should be 100%');
     assert.strictEqual(report.overallMetrics.qualityGatePassRatePercent, 100, 'Quality gate pass rate should be 100%');

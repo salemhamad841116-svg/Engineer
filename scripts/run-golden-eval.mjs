@@ -15,23 +15,37 @@ async function main() {
   getDb();
   const report = await evaluateGoldenDataset();
 
-  console.log(`Evaluated ${report.evaluatedCount} benchmark queries.\n`);
+  console.log(`Evaluated ${report.evaluatedCount} benchmark queries across 5 domains + behavioral tests.\n`);
+  let idx = 1;
   for (const r of report.results) {
-    const status = r.hasExpectedBook && r.qualityGatePassed ? '✅ PASS' : '⚠️ WARN';
-    console.log(`[${status}] [${r.category.toUpperCase()}] "${r.query.slice(0, 55)}..."`);
-    console.log(`      Books: ${r.retrievedBooks.join(', ') || 'None'}`);
-    console.log(`      Gate: ${r.qualityGateScore} | Verbatim: ${r.verbatimPassRate}% | Latency: ${r.durationMs}ms\n`);
+    const status = r.recallAt5 && r.qualityGatePassed ? '✅ PASS' : '⚠️ GAP ';
+    console.log(`[${status}] #${idx++} [${r.category.toUpperCase()}] "${r.query}"`);
+    console.log(`      المصدر المسترجع: ${r.primaryBook}`);
+    console.log(`      Recall@5 Rank: ${r.hitRank} | الاقتباس الحرفي: ${r.verbatimPassRate}% | بوابة الجودة: ${r.qualityGateScore} | زمن البحث: ${r.durationMs}ms\n`);
   }
 
   console.log('----------------------------------------------------------------');
-  console.log('📊 OVERALL METRICS:');
+  console.log('📊 DOMAIN RECALL@5 & QUALITY BREAKDOWN:');
+  if (report.overallMetrics.domainBreakdown) {
+    for (const [dom, stats] of Object.entries(report.overallMetrics.domainBreakdown)) {
+      console.log(`  - [${dom.toUpperCase()}]: Recall@5: ${stats.recallAt5Rate}% (${stats.total} questions) | Gate Pass: ${stats.gatePassRate}%`);
+    }
+  }
+  console.log('----------------------------------------------------------------');
+  console.log('📈 OVERALL BENCHMARK METRICS:');
+  console.log(`  - Recall@5 Rate:             ${report.overallMetrics.recallAt5Percent}% (Threshold: >= 80%)`);
   console.log(`  - Source Accuracy:           ${report.overallMetrics.sourceAccuracyPercent}%`);
   console.log(`  - Verbatim Grounding Rate:   ${report.overallMetrics.verbatimGroundingPercent}%`);
   console.log(`  - Quality Gate Pass Rate:    ${report.overallMetrics.qualityGatePassRatePercent}%`);
   console.log('----------------------------------------------------------------\n');
 
-  if (report.overallMetrics.sourceAccuracyPercent < 60) {
-    console.error('⛔ Golden Dataset Accuracy is below 60% threshold.');
+  if (report.overallMetrics.recallAt5Percent < 80) {
+    console.error(`⛔ Golden Dataset Recall@5 is ${report.overallMetrics.recallAt5Percent}%, below the required 80% threshold.`);
+    process.exit(1);
+  }
+
+  if (report.overallMetrics.sourceAccuracyPercent < 70) {
+    console.error('⛔ Golden Dataset Accuracy is below 70% threshold.');
     process.exit(1);
   }
 

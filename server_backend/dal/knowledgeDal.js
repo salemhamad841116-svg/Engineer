@@ -219,6 +219,7 @@ class KnowledgeDAL {
         }];
       }
       if (targetChapters.length > 0) {
+        run('DELETE FROM chunks WHERE document_id = ?', bookId);
         let globalIdx = 0;
         for (const ch of targetChapters) {
           const chChunks = chunkBookContentWithVerbatim(ch.content, {

@@ -340,6 +340,7 @@ ${citationsList.join('\n\n')}
     citations: recordedCitations,
     evidence: recordedEvidence,
     qualityGate,
+    retrievedSources: allRetrieved,
     stages: stagesLog,
     durationMs: Date.now() - t0,
   };
