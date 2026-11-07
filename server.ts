@@ -146,6 +146,16 @@ async function startServer() {
     saveState(state);
   }
 
+  // 0. Dedicated Health Check Endpoint for Docker & Orchestration
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      service: 'engineer-platform',
+    });
+  });
+
   // 1. Get full platform state
   app.get('/api/state', (_req, res) => {
     res.json(state);

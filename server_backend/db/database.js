@@ -540,6 +540,154 @@ CREATE INDEX IF NOT EXISTS idx_voice_library_created ON voice_library(created_at
       `);
     },
   },
+  {
+    id: 9,
+    name: 'autonomous_agent_core',
+    up(handle) {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS agent_tasks (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  autonomy_level TEXT NOT NULL DEFAULT 'autonomous',
+  status TEXT NOT NULL DEFAULT 'running',
+  steps_log_json TEXT NOT NULL DEFAULT '[]',
+  undo_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  resource_metrics_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_project ON agent_tasks(project_id);
+
+CREATE TABLE IF NOT EXISTS agent_approvals (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  operation_type TEXT NOT NULL,
+  command TEXT,
+  file_path TEXT,
+  risk_level TEXT NOT NULL DEFAULT 'high',
+  status TEXT NOT NULL DEFAULT 'pending',
+  reason TEXT,
+  created_at TEXT NOT NULL,
+  decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_approvals_task ON agent_approvals(task_id);
+
+CREATE TABLE IF NOT EXISTS agent_memory_lessons (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL DEFAULT 'general',
+  project_id TEXT,
+  error_signature TEXT NOT NULL,
+  root_cause TEXT NOT NULL,
+  verified_solution TEXT NOT NULL,
+  confidence_score REAL NOT NULL DEFAULT 1.0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_lessons_sig ON agent_memory_lessons(error_signature);
+
+CREATE TABLE IF NOT EXISTS agent_deployments (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  target_environment TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'deploying',
+  health_status TEXT NOT NULL DEFAULT 'pending',
+  url TEXT,
+  rollback_snapshot_json TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_deployments_project ON agent_deployments(project_id);
+      `);
+    },
+  },
+  {
+    id: 10,
+    name: 'security_tenant_guard_and_verbatim_chunks',
+    up(handle) {
+      const ensureCol = (table, col, def) => {
+        try {
+          const cols = handle.prepare("PRAGMA table_info('" + table + "')").all();
+          if (!cols.some((c) => c.name === col)) {
+            handle.exec("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def);
+          }
+        } catch (_) {}
+      };
+
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS book_structures (
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL,
+  toc_json TEXT NOT NULL DEFAULT '[]',
+  chapters_json TEXT NOT NULL DEFAULT '[]',
+  author TEXT DEFAULT 'غير محدد',
+  edition TEXT DEFAULT 'طبعة معتمدة',
+  publication_year INTEGER DEFAULT 2024,
+  language TEXT DEFAULT 'Arabic',
+  total_pages INTEGER DEFAULT 1,
+  tenant_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS research_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  tenant_id TEXT,
+  title TEXT NOT NULL,
+  query TEXT NOT NULL,
+  research_level TEXT NOT NULL DEFAULT 'deep',
+  status TEXT NOT NULL DEFAULT 'running',
+  current_stage TEXT NOT NULL DEFAULT '1_understanding',
+  stages_json TEXT NOT NULL DEFAULT '[]',
+  plan_json TEXT NOT NULL DEFAULT '{}',
+  findings_json TEXT NOT NULL DEFAULT '[]',
+  quality_gate_json TEXT NOT NULL DEFAULT '{}',
+  answer_markdown TEXT,
+  summary TEXT,
+  uncertainties TEXT,
+  token_count INTEGER DEFAULT 0,
+  cost_estimate REAL DEFAULT 0.0,
+  is_offline INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS research_citations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  tenant_id TEXT,
+  book_id TEXT,
+  book_title TEXT NOT NULL,
+  author TEXT,
+  edition TEXT,
+  chapter TEXT,
+  page_number INTEGER DEFAULT 1,
+  source_url TEXT,
+  quote_exact TEXT NOT NULL,
+  quote_context_before TEXT,
+  quote_context_after TEXT,
+  verified_grounded INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+      `);
+
+      ensureCol('book_structures', 'tenant_id', 'TEXT');
+      ensureCol('research_sessions', 'tenant_id', 'TEXT');
+      ensureCol('research_citations', 'tenant_id', 'TEXT');
+      ensureCol('documents', 'tenant_id', 'TEXT');
+      ensureCol('documents', 'is_shared_library', 'INTEGER NOT NULL DEFAULT 0');
+      ensureCol('chunks', 'verbatim_raw_chunk', 'TEXT');
+
+      handle.exec('CREATE INDEX IF NOT EXISTS idx_book_structures_book ON book_structures(book_id)');
+      handle.exec('CREATE INDEX IF NOT EXISTS idx_book_structures_tenant ON book_structures(tenant_id)');
+      handle.exec('CREATE INDEX IF NOT EXISTS idx_research_sessions_user ON research_sessions(user_id)');
+      handle.exec('CREATE INDEX IF NOT EXISTS idx_research_sessions_tenant ON research_sessions(tenant_id)');
+      handle.exec('CREATE INDEX IF NOT EXISTS idx_research_citations_session ON research_citations(session_id)');
+      handle.exec('CREATE INDEX IF NOT EXISTS idx_research_citations_tenant ON research_citations(tenant_id)');
+      handle.exec('CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents(tenant_id)');
+      handle.exec('CREATE INDEX IF NOT EXISTS idx_documents_shared ON documents(is_shared_library)');
+    },
+  },
 ];
 
 function openDb() {

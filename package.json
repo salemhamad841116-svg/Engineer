@@ -11,7 +11,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "eslint src/ server.ts --max-warnings 0 && tsc --noEmit",
     "lint:fix": "eslint src/ server.ts --fix",
-    "verify:build": "node scripts/verify-build.mjs"
+    "verify:build": "node scripts/verify-build.mjs",
+    "prepare": "node scripts/setup-git-hooks.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",

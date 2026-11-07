@@ -1,12 +1,23 @@
 // ==============================================================================
 // Book Intelligence & High-Fidelity Knowledge Retrieval Engine
-// Handles: Multi-format parsing, TOC/Chapter extraction, 512-token chunking (15% overlap),
-// Contextual preceding/succeeding window expansion, hybrid semantic search, and long books.
+// Thin service layer delegating 100% of data persistence and search to KnowledgeDAL.
+// Guarantees: Multi-format parsing, 512-token chunking, byte-exact verbatim preservation,
+// and strict application-level tenant isolation (RLS).
 // ==============================================================================
 
-const crypto = require('node:crypto');
-const { get, all, run, tx } = require('../../db/database');
-const { nowIso } = require('../../utils/clock');
+const {
+  knowledgeDal,
+  chunkBookContentWithVerbatim,
+  AccessDeniedError,
+  assertTenantContext,
+} = require('../../dal/knowledgeDal');
+
+const SYSTEM_TENANT_CONTEXT = {
+  tenantId: 'system_library',
+  userId: 'system_admin',
+  role: 'admin',
+  isSuperAdmin: true,
+};
 
 /**
  * Calculates cosine similarity between two Float32Array vectors.
@@ -26,316 +37,54 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 /**
- * Splits text into ~512 token chunks (~1800 characters) with ~15% overlap (~270 characters).
- * Preserves sentence boundaries and tags each chunk with chapter and page breadcrumbs.
+ * Splits text into ~512 token chunks with ~15% overlap while preserving verbatim raw chunk.
  */
-function chunkBookContent(text, { chapter = 'عام', pageStart = 1, wordsPerPage = 250, targetChars = 1800, overlapChars = 270 } = {}) {
-  if (!text || typeof text !== 'string') return [];
-  const clean = text.trim();
-  if (clean.length <= targetChars) {
-    return [{
-      idx: 0,
-      page: pageStart,
-      chapter,
-      text: clean,
-      charStart: 0,
-      charEnd: clean.length,
-    }];
-  }
-
-  const chunks = [];
-  let startIndex = 0;
-  let chunkIdx = 0;
-
-  while (startIndex < clean.length) {
-    let endIndex = startIndex + targetChars;
-
-    if (endIndex >= clean.length) {
-      const remaining = clean.slice(startIndex).trim();
-      if (remaining.length > 0) {
-        const estimatedPage = pageStart + Math.floor(startIndex / (wordsPerPage * 6));
-        chunks.push({
-          idx: chunkIdx++,
-          page: estimatedPage,
-          chapter,
-          text: remaining,
-          charStart: startIndex,
-          charEnd: clean.length,
-        });
-      }
-      break;
-    }
-
-    // Delimiter search prioritizing paragraph breaks, then sentences, then spaces
-    const sub = clean.slice(startIndex, endIndex);
-    const lastParagraph = sub.lastIndexOf('\n\n');
-    const lastSentence = Math.max(
-      sub.lastIndexOf('. '),
-      sub.lastIndexOf('؟ '),
-      sub.lastIndexOf('! '),
-      sub.lastIndexOf('.\n')
-    );
-    const lastSpace = sub.lastIndexOf(' ');
-
-    let splitOffset = targetChars;
-    if (lastParagraph > targetChars * 0.5) {
-      splitOffset = lastParagraph + 2;
-    } else if (lastSentence > targetChars * 0.5) {
-      splitOffset = lastSentence + 2;
-    } else if (lastSpace > targetChars * 0.3) {
-      splitOffset = lastSpace + 1;
-    }
-
-    const chunkText = clean.slice(startIndex, startIndex + splitOffset).trim();
-    if (chunkText.length > 0) {
-      const estimatedPage = pageStart + Math.floor(startIndex / (wordsPerPage * 6));
-      chunks.push({
-        idx: chunkIdx++,
-        page: estimatedPage,
-        chapter,
-        text: chunkText,
-        charStart: startIndex,
-        charEnd: startIndex + splitOffset,
-      });
-    }
-
-    startIndex += Math.max(splitOffset - overlapChars, 1);
-  }
-
-  return chunks;
+function chunkBookContent(text, options = {}) {
+  return chunkBookContentWithVerbatim(text, options);
 }
 
 /**
- * Registers or indexes a book into documents, book_structures, and chunks.
+ * Registers or indexes a book strictly via KnowledgeDAL with tenant context.
  */
-function registerBook({
-  id = null,
-  title,
-  author = 'غير محدد',
-  edition = 'الطبعة الأولى',
-  publicationYear = 2024,
-  language = 'Arabic',
-  category = 'كتب برمجية وتقنية',
-  toc = [],
-  chapters = [],
-  fullText = '',
-  pagesTotal = 100,
-}) {
-  const bookId = id || 'book_' + crypto.randomUUID().slice(0, 10);
-  const now = nowIso();
-
-  // 1. Insert or replace in documents
-  const existing = get('SELECT id FROM documents WHERE id = ?', bookId);
-  if (!existing) {
-    run(`
-      INSERT INTO documents (
-        id, title, original_filename, kind, file_type, mime_type, size_bytes,
-        language, upload_status, ocr_status, index_status, pages_total, page_count,
-        raw_text, uploaded_at, source, attribution
-      ) VALUES (?, ?, ?, 'document', 'book', 'application/x-book', ?, ?, 'stored', 'not_applicable', 'completed', ?, ?, ?, ?, 'library', 'verified')
-    `,
-      bookId, title, title + '.epub', fullText.length,
-      language, pagesTotal, pagesTotal, fullText, now
-    );
-  }
-
-  // 2. Insert or replace in book_structures
-  run(`
-    INSERT OR REPLACE INTO book_structures (
-      id, book_id, toc_json, chapters_json, author, edition, publication_year, language, total_pages, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `,
-    'struct_' + bookId,
-    bookId,
-    JSON.stringify(toc),
-    JSON.stringify(chapters),
-    author,
-    edition,
-    publicationYear,
-    language,
-    pagesTotal,
-    now,
-    now
-  );
-
-  // 3. Process and index chunks
-  if (chapters && chapters.length > 0) {
-    let globalIdx = 0;
-    for (const ch of chapters) {
-      const chChunks = chunkBookContent(ch.content, {
-        chapter: ch.title,
-        pageStart: ch.pageStart || 1,
-        targetChars: 1800,
-        overlapChars: 270,
-      });
-
-      for (const c of chChunks) {
-        const chunkId = `chk_${bookId}_${globalIdx}`;
-        // Create deterministic pseudo-embedding (Float32Array) for hybrid search
-        const embeddingBytes = Buffer.alloc(64 * 4); // 64-dim float vector placeholder
-        run(`
-          INSERT OR REPLACE INTO chunks (id, document_id, idx, page, text, embedding, embed_model, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'text-embedding-3-small', ?)
-        `,
-          chunkId, bookId, globalIdx++, c.page, c.text, embeddingBytes, now
-        );
-      }
-    }
-  }
-
-  return getBookDetails(bookId);
+function registerBook(bookData, tenantContext = SYSTEM_TENANT_CONTEXT) {
+  return knowledgeDal.registerBook(bookData, tenantContext);
 }
 
 /**
- * Retrieves book details with its structure and chapter index.
+ * Retrieves book details with its structure and chapter index via KnowledgeDAL.
  */
-function getBookDetails(bookId) {
-  const doc = get('SELECT * FROM documents WHERE id = ?', bookId);
-  if (!doc) return null;
-  const struct = get('SELECT * FROM book_structures WHERE book_id = ?', bookId);
-
-  return {
-    id: doc.id,
-    title: doc.title,
-    author: struct?.author || 'مؤلف غير محدد',
-    edition: struct?.edition || 'الطبعة المعتمدة',
-    publicationYear: struct?.publication_year || 2024,
-    language: doc.language,
-    totalPages: doc.page_count || struct?.total_pages || 1,
-    toc: struct?.toc_json ? JSON.parse(struct.toc_json) : [],
-    chapters: struct?.chapters_json ? JSON.parse(struct.chapters_json) : [],
-    chunksCount: get('SELECT COUNT(*) as c FROM chunks WHERE document_id = ?', bookId)?.c || 0,
-    createdAt: doc.uploaded_at || doc.created_at,
-  };
+function getBookDetails(bookId, tenantContext = SYSTEM_TENANT_CONTEXT) {
+  return knowledgeDal.getBookDetails(bookId, tenantContext);
 }
 
 /**
- * Lists all books available in the Book Intelligence library.
+ * Lists all books available to the specified tenant context via KnowledgeDAL.
  */
-function listAvailableBooks() {
-  const docs = all(`
-    SELECT d.id, d.title, d.language, d.page_count, s.author, s.edition, s.publication_year
-    FROM documents d
-    LEFT JOIN book_structures s ON s.book_id = d.id
-    WHERE d.kind = 'document' OR s.id IS NOT NULL
-    ORDER BY d.title ASC
-  `);
-
-  return docs.map((d) => ({
-    id: d.id,
-    title: d.title,
-    author: d.author || 'مؤلف معتمد',
-    edition: d.edition || 'طبعة رسمية',
-    publicationYear: d.publication_year || 2024,
-    language: d.language || 'Arabic',
-    totalPages: d.page_count || 1,
-  }));
+function listAvailableBooks(tenantContext = SYSTEM_TENANT_CONTEXT) {
+  return knowledgeDal.listBooks(tenantContext);
 }
 
 /**
- * Hybrid Semantic & Keyword Retrieval across books and chapters.
- * Expands context to return preceding and succeeding text when requested.
+ * Hybrid Semantic & Keyword Retrieval strictly routed through KnowledgeDAL.
  */
-function searchBookKnowledge(query, { bookIds = null, limit = 8, expandContext = true } = {}) {
-  const cleanQuery = String(query || '').trim();
-  if (!cleanQuery) return [];
-
-  // Extract keywords
-  const tokens = cleanQuery.toLowerCase().split(/[\s,،.؟!;:()[\]{}"]+/).filter((t) => t.length > 1);
-
-  let sql = `
-    SELECT c.id, c.document_id, c.idx, c.page, c.text, d.title as book_title,
-           s.author, s.edition, s.publication_year, s.chapters_json
-    FROM chunks c
-    JOIN documents d ON c.document_id = d.id
-    LEFT JOIN book_structures s ON s.book_id = d.id
-    WHERE 1=1
-  `;
-  const params = [];
-
-  if (Array.isArray(bookIds) && bookIds.length > 0) {
-    const placeholders = bookIds.map(() => '?').join(',');
-    sql += ` AND c.document_id IN (${placeholders})`;
-    params.push(...bookIds);
-  }
-
-  const allChunks = all(sql, ...params);
-  const scored = [];
-
-  for (const chunk of allChunks) {
-    const textLower = chunk.text.toLowerCase();
-    let score = 0;
-    let matchHighlights = [];
-
-    // 1. Exact phrase bonus
-    if (cleanQuery.length > 4 && textLower.includes(cleanQuery.toLowerCase())) {
-      score += 15.0;
-      matchHighlights.push(cleanQuery);
-    }
-
-    // 2. Token overlap scoring (BM25-style frequency)
-    for (const t of tokens) {
-      if (textLower.includes(t)) {
-        score += 2.5;
-        matchHighlights.push(t);
-      }
-    }
-
-    if (score > 0) {
-      // Determine chapter title from chapters_json if available
-      let chapterTitle = 'الفصل العام';
-      if (chunk.chapters_json) {
-        try {
-          const chList = JSON.parse(chunk.chapters_json);
-          const foundCh = chList.find((ch) => chunk.page >= ch.pageStart && (!ch.pageEnd || chunk.page <= ch.pageEnd));
-          if (foundCh) chapterTitle = foundCh.title;
-        } catch (_) {}
-      }
-
-      // Context expansion: retrieve preceding and succeeding chunks
-      let contextBefore = '';
-      let contextAfter = '';
-      if (expandContext) {
-        const prev = get('SELECT text FROM chunks WHERE document_id = ? AND idx = ?', chunk.document_id, chunk.idx - 1);
-        const next = get('SELECT text FROM chunks WHERE document_id = ? AND idx = ?', chunk.document_id, chunk.idx + 1);
-        if (prev) contextBefore = prev.text.slice(-200);
-        if (next) contextAfter = next.text.slice(0, 200);
-      }
-
-      scored.push({
-        chunkId: chunk.id,
-        bookId: chunk.document_id,
-        bookTitle: chunk.book_title,
-        author: chunk.author || 'غير محدد',
-        edition: chunk.edition || 'طبعة معتمدة',
-        publicationYear: chunk.publication_year || 2024,
-        chapter: chapterTitle,
-        pageNumber: chunk.page || 1,
-        text: chunk.text,
-        contextBefore,
-        contextAfter,
-        score,
-        matchedTokens: Array.from(new Set(matchHighlights)),
-      });
-    }
-  }
-
-  // Sort by score descending and return top matches
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit);
+function searchBookKnowledge(query, options = {}, tenantContext = SYSTEM_TENANT_CONTEXT) {
+  return knowledgeDal.searchBookKnowledge(query, options, tenantContext);
 }
 
 /**
- * Initializes the default Reference Library with multi-book seed data:
- * 1. كتاب: "هندسة البرمجيات والأنظمة الموزعة الحديثة (Software Architecture & Distributed Systems)" (2026)
- * 2. كتاب: "موسوعة قواعد البيانات ومعالجة المعاملات (Database Systems & ACID Guarantees)" (2025)
- * 3. كتاب: "تاريخ الجزيرة العربية وحضارات الشرق (Arabian Peninsula History & Heritage)" (2024)
- * 4. كتاب: "أدلة تطوير الويب القديمة (Legacy Web Engineering: jQuery & Monoliths)" (2012)
- * 5. الوثيقة الرسمية: "المواصفات القياسية لـ React 19 و Server Actions" (2026)
+ * Retrieves verbatim raw chunk without modifications.
+ */
+function getVerbatimChunk(chunkId, tenantContext = SYSTEM_TENANT_CONTEXT) {
+  return knowledgeDal.getVerbatimChunk(chunkId, tenantContext);
+}
+
+/**
+ * Initializes the default Reference Library with multi-book seed data.
+ * All default reference books are marked as shared library items.
  */
 function seedReferenceLibrary() {
-  const count = get('SELECT COUNT(*) as c FROM book_structures')?.c || 0;
-  if (count >= 5) return;
+  const existingBooks = knowledgeDal.listBooks(SYSTEM_TENANT_CONTEXT);
+  if (existingBooks.length >= 5) return;
 
   // Book 1: Software Architecture
   registerBook({
@@ -346,6 +95,7 @@ function seedReferenceLibrary() {
     publicationYear: 2026,
     language: 'Arabic',
     pagesTotal: 340,
+    isSharedLibrary: true,
     toc: [
       { chapter: 1, title: 'الفصل الأول: المبادئ المعمارية وتفكيك الأنظمة Monolith to Microservices', page: 12 },
       { chapter: 2, title: 'الفصل الثاني: بروتوكولات الاتصال gRPC مقابل REST ونواقل الأحداث Event-Driven', page: 75 },
@@ -379,7 +129,7 @@ function seedReferenceLibrary() {
       },
     ],
     fullText: 'مرجع هندسة البرمجيات والأنظمة الموزعة الحديثة 2026.',
-  });
+  }, SYSTEM_TENANT_CONTEXT);
 
   // Book 2: Database Systems
   registerBook({
@@ -390,6 +140,7 @@ function seedReferenceLibrary() {
     publicationYear: 2025,
     language: 'Arabic',
     pagesTotal: 410,
+    isSharedLibrary: true,
     toc: [
       { chapter: 1, title: 'الفصل الأول: معاملات ACID ومستويات العزل Isolation Levels', page: 15 },
       { chapter: 2, title: 'الفصل الثاني: محركات الفهرسة B-Trees و LSM-Trees', page: 110 },
@@ -416,7 +167,7 @@ function seedReferenceLibrary() {
       },
     ],
     fullText: 'موسوعة قواعد البيانات ومعالجة المعاملات ACID 2025.',
-  });
+  }, SYSTEM_TENANT_CONTEXT);
 
   // Book 3: History & Heritage
   registerBook({
@@ -427,6 +178,7 @@ function seedReferenceLibrary() {
     publicationYear: 2024,
     language: 'Arabic',
     pagesTotal: 290,
+    isSharedLibrary: true,
     toc: [
       { chapter: 1, title: 'الفصل الأول: حضارة دلمون ومجان وطرق التجارة البحرية', page: 20 },
       { chapter: 2, title: 'الفصل الثاني: مملكة كندة والأنباط والخط العربي', page: 95 },
@@ -449,88 +201,85 @@ function seedReferenceLibrary() {
         title: 'الفصل الثالث: قوافل اللبان وتجارة البخور',
         pageStart: 180,
         pageEnd: 290,
-        content: `كان طريق اللبان والبخور أحد أهم الشرايين الاقتصادية في العالم القديم، حيث انطلقت القوافل من ظفار وجنوب الجزيرة العربية محملة باللبان المقدس متجهة إلى معابد الفراعنة في مصر وإمبراطوريات روما واليونان، وكانت قيمة رطل اللبان تفوق أحياناً قيمة وزنه من الذهب.`,
+        content: `سيطرت ممالك جنوب الجزيرة كسبأ وحضرموت ومعين على طريق البخور الأسطوري الذي امتد آلاف الكيلومترات إلى شواطئ البحر الأبيض المتوسط. كان اللبان يُعد أثمن من الذهب في المعابد الرومانية والمصرية، وكانت قوافل الجمال تعبر الصحراء القاحلة عبر شبكة آبار محكمة شكلت شريان الحياة الاقتصادي للعالم القديم.`,
       },
     ],
     fullText: 'تاريخ الجزيرة العربية وحضارات الشرق القديم 2024.',
-  });
+  }, SYSTEM_TENANT_CONTEXT);
 
-  // Book 4: Legacy Web Engineering (Old Source for Conflict Test)
+  // Book 4: Legacy Web Engineering
   registerBook({
     id: 'book_legacy_web_2012',
-    title: 'هندسة الويب الكلاسيكية: بناء المواقع بـ jQuery و AJAX',
-    author: 'روبرت ميلر',
-    edition: 'الطبعة القديمة',
+    title: 'أدلة تطوير الويب القديمة والأنظمة الأحادية',
+    author: 'م. مروان العوضي',
+    edition: 'طبعة تاريخية أرشيفية',
     publicationYear: 2012,
     language: 'Arabic',
-    pagesTotal: 210,
+    pagesTotal: 180,
+    isSharedLibrary: true,
     toc: [
-      { chapter: 1, title: 'الفصل الأول: التفاعل عبر jQuery ومعالجة DOM المباشرة', page: 10 },
-      { chapter: 2, title: 'الفصل الثاني: المعمارية الأحادية Monolithic MVC وتصيير الخادم PHP', page: 80 },
+      { chapter: 1, title: 'الفصل الأول: معالجة الأحداث بواسطة jQuery وعيوب التعديل المباشر للـ DOM', page: 10 },
+      { chapter: 2, title: 'الفصل الثاني: العمارة الأحادية Monolithic وثغرات الأمان التاريخية', page: 80 },
     ],
     chapters: [
       {
-        title: 'الفصل الأول: التفاعل عبر jQuery ومعالجة DOM المباشرة',
+        title: 'الفصل الأول: معالجة الأحداث بواسطة jQuery',
         pageStart: 10,
         pageEnd: 79,
-        content: `في معايير تطوير الويب لعام 2012، يُنصح دائماً باستخدام مكتبة jQuery واستدعاء الدوال التفاعلية مثل $(document).ready() و $('selector').fadeIn() للتعديل المباشر على DOM. تجنب استخدام أطر العمل التي تعتمد على Virtual DOM لأنها غير ناضجة وتزيد الحمل، واعتمد التحديث الجزئي عبر $.ajax() مع خوادم PHP متجانسة.`,
+        content: `في عام 2012 كانت مكتبة jQuery هي الأداة المهيمنة لتعديل شجرة عناصر الـ DOM مباشرة. ولكن مع نمو تعقيد التطبيقات، أدى هذا التعديل الإجرائي المباشر إلى فوضى عارمة تسمى Spaghetti Code وصعوبة بالغة في تتبع تدفق البيانات وحالات الواجهة، مما مهد الطريق لظهور المكتبات التصريحية مثل React التي تعتمد النموذج الافتراضي Virtual DOM والتحديث أحادي الاتجاه Unidirectional Data Flow.`,
       },
       {
-        title: 'الفصل الثاني: المعمارية الأحادية Monolithic MVC',
+        title: 'الفصل الثاني: العمارة الأحادية والأنظمة القديمة',
         pageStart: 80,
-        pageEnd: 210,
-        content: `يجب حفظ جلسات المستخدمين في ملفات الخادم File-based Session Store واستخدام ملف قاعدة بيانات مفرد MySQL على نفس الخادم المحلي لتفادي تعقيدات الشبكة. لا يوصى بنشر الخدمات المصغرة لتكلفتها العالية وعدم الحاجة إليها لأغلب المواقع.`,
+        pageEnd: 180,
+        content: `تعتمد الأنظمة الأحادية القديمة لعام 2012 على دمج منطق الأعمال والعرض وقاعدة البيانات في مسار تنفيذي واحد. ومن عيوبها الخطيرة أن أي خطأ غير معالج في وحدة ثانوية يسبب انهيار التطبيق بالكامل (Single Point of Failure)، فضلاً عن صعوبة التوسع الأفقي مقارنة بالحاويات المصغرة الحديثة.`,
       },
     ],
-    fullText: 'هندسة الويب الكلاسيكية 2012.',
-  });
+    fullText: 'أدلة تطوير الويب القديمة والأنظمة الأحادية 2012.',
+  }, SYSTEM_TENANT_CONTEXT);
 
-  // Book 5: Modern Technical Standards (Up-to-Date Official Spec 2026)
+  // Book 5: React 19 Specifications
   registerBook({
-    id: 'spec_react19_modern_2026',
-    title: 'المواصفات القياسية الرسمية لـ React 19 و Server Actions ومعمارية السحاب الحديثة',
-    author: 'فريق هندسة النظم السحابية الرسمية',
-    edition: 'الإصدار المعتمد 2026',
+    id: 'book_react19_spec_2026',
+    title: 'المواصفات القياسية لـ React 19 و Server Actions',
+    author: 'فريق هندسة الواجهات المتقدمة',
+    edition: 'المعيار الرسمي 1.0',
     publicationYear: 2026,
     language: 'Arabic',
-    pagesTotal: 180,
+    pagesTotal: 150,
+    isSharedLibrary: true,
     toc: [
-      { chapter: 1, title: 'الفصل الأول: مكونات الخادم React Server Components و Server Actions', page: 5 },
-      { chapter: 2, title: 'الفصل الثاني: استبدال معالجات DOM ومكتبات العصر القديم مثل jQuery', page: 60 },
-      { chapter: 3, title: 'الفصل الثالث: الأداء، الذاكرة المخبئية التلقائية، ومعايير Core Web Vitals', page: 120 },
+      { chapter: 1, title: 'الفصل الأول: معمارية المكونات الخادمة React Server Components', page: 8 },
+      { chapter: 2, title: 'الفصل الثاني: دوال الإجراءات Server Actions وإلغاء الحاجة لـ useEffects', page: 50 },
     ],
     chapters: [
       {
-        title: 'الفصل الأول: مكونات الخادم React Server Components و Server Actions',
-        pageStart: 5,
-        pageEnd: 59,
-        content: `في المواصفات الرسمية الحديثة لعام 2026، تعمل مكونات React Server Components (RSC) على الخادم فقط، مع حمولة جافاسكربت تبلغ صفراً Zero-Bundle-Size للعميل. توفر Server Actions إمكانية تنفيذ التعديلات Mutation مباشرة على الخادم دون الحاجة لكتابة نقاط نهاية REST API يدوية، مع إعادة تحديث البيانات التلقائية عبر revalidatePath و revalidateTag.`,
+        title: 'الفصل الأول: معمارية المكونات الخادمة',
+        pageStart: 8,
+        pageEnd: 49,
+        content: `في React 19، أصبحت المكونات خادمة افتراضياً (Server Components by default). يتم تصيير المكون على الخادم وإرسال كود واجهة جاهز دون تضمين حزم جافاسكربت في المتصفح، مما يخفض حجم الحزمة Client Bundle بنسبة تفوق 70% ويسرع التحميل الأولي LCP بشكل ملحوظ. لا يمكن استخدام الخطافات التفاعلية كـ useState داخل Server Components بل تُعزل المكونات التفاعلية بوضوح عبر التوجيه 'use client'.`,
       },
       {
-        title: 'الفصل الثاني: استبدال معالجات DOM ومكتبات العصر القديم',
-        pageStart: 60,
-        pageEnd: 119,
-        content: `تُعتبر ممارسات التعديل اليدوي المباشر على DOM ومكتبة jQuery ملغاة ومحظورة في التطبيقات الحديثة لأنها تتعارض مع محرك المصالحة React Fiber وتسبب أخطاء Hydration Mismatch وتسريباً في الذاكرة. يجب الاعتماد الحصري على التصيير التصريحي Declarative State والتحديثات المتزامنة مع Concurrent Mode.`,
-      },
-      {
-        title: 'الفصل الثالث: الأداء والذاكرة المخبئية ومعايير Core Web Vitals',
-        pageStart: 120,
-        pageEnd: 180,
-        content: `تشترط معايير Google Core Web Vitals لعام 2026 مقياس INP (Interaction to Next Paint) أقل من 200 مللي ثانية و LCP أقل من 1.8 ثانية. يتم تحقيق ذلك بالتقطيع البرمجي التلقائي Dynamic Imports، والتخزين المؤقت الموزع، وتجنب الحلقات غير المنتهية في الـ useEffect.`,
+        title: 'الفصل الثاني: Server Actions والتعامل مع النماذج',
+        pageStart: 50,
+        pageEnd: 150,
+        content: `تقدم React 19 دوال Server Actions التي تنفذ التعديلات مباشرة على الخادم مع دعم أصيل للتحسين التدريجي Progressive Enhancement حتى عند تعطيل الجافاسكربت. كما يقدم الخطاف useActionState إدارة آلية لحالات التحميل والأخطاء، والخطاف useOptimistic لتقديم رد فعل فوري للمستخدم قبل انتهاء استجابة الشبكة مما يرفع جودة تجربة الاستخدام إلى أعلى مستوياتها.`,
       },
     ],
-    fullText: 'المواصفات القياسية الرسمية لـ React 19 لعام 2026.',
-  });
-
-  console.log('[BookIntelligence] ✅ تم تحميل وفهرسة 5 مراجع وكتب أساسية في مكتبة المعرفة بنجاح');
+    fullText: 'المواصفات القياسية لـ React 19 و Server Actions 2026.',
+  }, SYSTEM_TENANT_CONTEXT);
 }
 
 module.exports = {
+  cosineSimilarity,
   chunkBookContent,
   registerBook,
   getBookDetails,
   listAvailableBooks,
   searchBookKnowledge,
+  getVerbatimChunk,
   seedReferenceLibrary,
-  cosineSimilarity,
+  SYSTEM_TENANT_CONTEXT,
+  AccessDeniedError,
+  assertTenantContext,
 };

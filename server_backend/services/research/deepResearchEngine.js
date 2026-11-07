@@ -21,16 +21,25 @@ async function executeDeepResearch({
   manualLevel = null,
   bookIds = null,
   userId = null,
+  tenantId = null,
+  tenantContext = null,
   onStageUpdate = null,
 }) {
   const t0 = Date.now();
   seedReferenceLibrary();
+
+  const tenantCtx = tenantContext || {
+    tenantId: tenantId || userId || 'default_tenant',
+    userId: userId || tenantId || 'anonymous_user',
+    role: 'user',
+  };
 
   // 1. Initialize or load session
   let session = sessionId ? getSession(sessionId) : null;
   if (!session) {
     session = createSession({
       userId,
+      tenantId: tenantCtx.tenantId,
       title: (query || 'بحث معرفي').slice(0, 50),
       query,
       researchLevel: manualLevel || 'deep',
@@ -82,7 +91,7 @@ async function executeDeepResearch({
       bookIds,
       limit: plan.researchLevel === 'expert' ? 6 : 4,
       expandContext: true,
-    });
+    }, tenantCtx);
     for (const h of hits) {
       if (!allRetrieved.some((existing) => existing.chunkId === h.chunkId)) {
         allRetrieved.push(h);

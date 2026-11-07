@@ -24,6 +24,7 @@ function recordCitation({
   quoteContextBefore = '',
   quoteContextAfter = '',
   sourceChunkText = '',
+  tenantId = null,
 }) {
   const citationId = 'cite_' + crypto.randomUUID().slice(0, 10);
   const now = nowIso();
@@ -33,12 +34,12 @@ function recordCitation({
 
   run(`
     INSERT INTO research_citations (
-      id, session_id, book_id, book_title, author, edition, chapter, page_number,
+      id, session_id, tenant_id, book_id, book_title, author, edition, chapter, page_number,
       source_url, quote_exact, quote_context_before, quote_context_after,
       verified_grounded, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
-    citationId, sessionId, bookId, bookTitle, author, edition, chapter, pageNumber,
+    citationId, sessionId, tenantId || 'default_tenant', bookId, bookTitle, author, edition, chapter, pageNumber,
     sourceUrl, quoteExact, quoteContextBefore, quoteContextAfter,
     audit.verified ? 1 : 0, now
   );

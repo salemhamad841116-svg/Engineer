@@ -215,12 +215,17 @@ export function attachBackendAndDatabase(app: Express) {
       getSessionCitations,
       exportResearchToMarkdown,
     } = require('../server_backend/services/research/citationManager.js');
+    const { tenantGuard } = require('../server_backend/auth/tenantGuard.js');
+    const { knowledgeDal, AccessDeniedError } = require('../server_backend/dal/knowledgeDal.js');
 
     // التأكد من توفر مراجع المكتبة الأساسية
     seedReferenceLibrary();
 
+    // تفعيل حارس عزل المستأجرين (TenantGuard Middleware) لجميع مسارات البحث والمعرفة
+    app.use('/api/research', tenantGuard);
+
     // تشغيل جلسة بحث معرفي عميق
-    app.post('/api/research/execute', async (req, res) => {
+    app.post('/api/research/execute', async (req: any, res) => {
       try {
         const { query, level, bookIds, sessionId, userId } = req.body || {};
         if (!query || !query.trim()) {
@@ -232,9 +237,13 @@ export function attachBackendAndDatabase(app: Express) {
           bookIds,
           sessionId,
           userId,
+          tenantContext: req.tenantContext,
         });
         res.json({ success: true, ...result });
       } catch (err: any) {
+        if (err instanceof AccessDeniedError || err.statusCode === 403) {
+          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+        }
         res.status(500).json({ error: err.message });
       }
     });
@@ -252,7 +261,7 @@ export function attachBackendAndDatabase(app: Express) {
     });
 
     // استئناف جلسة بحث منقطعة
-    app.post('/api/research/session/:id/resume', async (req, res) => {
+    app.post('/api/research/session/:id/resume', async (req: any, res) => {
       try {
         const session = getSession(req.params.id);
         if (!session) return res.status(404).json({ error: 'جلسة البحث غير موجودة' });
@@ -260,27 +269,72 @@ export function attachBackendAndDatabase(app: Express) {
           sessionId: session.id,
           query: session.query,
           manualLevel: session.researchLevel,
+          tenantContext: req.tenantContext,
         });
         res.json({ success: true, ...result });
       } catch (err: any) {
+        if (err instanceof AccessDeniedError || err.statusCode === 403) {
+          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+        }
         res.status(500).json({ error: err.message });
       }
     });
 
-    // استعراض كتب ومراجع المكتبة المفهرسة
-    app.get('/api/research/books', (_req, res) => {
+    // استعراض كتب ومراجع المكتبة المفهرسة للـ Tenant الحالي
+    app.get('/api/research/books', (req: any, res) => {
       try {
-        const books = listAvailableBooks();
+        const books = listAvailableBooks(req.tenantContext);
         res.json({ success: true, count: books.length, books });
       } catch (err: any) {
         res.status(500).json({ error: err.message });
       }
     });
 
-    // فهرسة كتاب أو مرجع جديد
-    app.post('/api/research/books/ingest', (req, res) => {
+    // تفاصيل كتاب محدد مع فحص العزل
+    app.get('/api/research/book/:id', (req: any, res) => {
       try {
-        const { title, author, edition, publicationYear, language, toc, chapters, fullText, pagesTotal } = req.body || {};
+        const book = knowledgeDal.getBookDetails(req.params.id, req.tenantContext);
+        if (!book) return res.status(404).json({ error: 'الكتاب غير موجود' });
+        res.json({ success: true, book });
+      } catch (err: any) {
+        if (err instanceof AccessDeniedError || err.statusCode === 403) {
+          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+        }
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // حذف كتاب مع فحص ملكية المستأجر
+    app.delete('/api/research/book/:id', (req: any, res) => {
+      try {
+        const deleted = knowledgeDal.deleteBook(req.params.id, req.tenantContext);
+        res.json({ success: true, deleted });
+      } catch (err: any) {
+        if (err instanceof AccessDeniedError || err.statusCode === 403) {
+          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+        }
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // استرجاع المقطع الحرفي الخام byte-exact
+    app.get('/api/research/chunk/:id/verbatim', (req: any, res) => {
+      try {
+        const chunk = knowledgeDal.getVerbatimChunk(req.params.id, req.tenantContext);
+        if (!chunk) return res.status(404).json({ error: 'المقطع غير موجود' });
+        res.json({ success: true, chunk });
+      } catch (err: any) {
+        if (err instanceof AccessDeniedError || err.statusCode === 403) {
+          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+        }
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // فهرسة كتاب أو مرجع جديد خاص بالمستأجر
+    app.post('/api/research/books/ingest', (req: any, res) => {
+      try {
+        const { title, author, edition, publicationYear, language, toc, chapters, fullText, pagesTotal, isSharedLibrary } = req.body || {};
         if (!title || !title.trim()) {
           return res.status(400).json({ error: 'عنوان الكتاب مطلوب' });
         }
@@ -294,9 +348,13 @@ export function attachBackendAndDatabase(app: Express) {
           chapters: chapters || [],
           fullText: fullText || '',
           pagesTotal: pagesTotal || 100,
-        });
+          isSharedLibrary: Boolean(isSharedLibrary),
+        }, req.tenantContext);
         res.json({ success: true, book });
       } catch (err: any) {
+        if (err instanceof AccessDeniedError || err.statusCode === 403) {
+          return res.status(403).json({ error: err.message, code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
+        }
         res.status(500).json({ error: err.message });
       }
     });

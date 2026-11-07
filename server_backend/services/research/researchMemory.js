@@ -10,18 +10,18 @@ const { nowIso } = require('../../utils/clock');
 /**
  * Creates a new research session entry in SQLite.
  */
-function createSession({ userId = null, title = 'جلسة بحث معرفي', query, researchLevel = 'deep', isOffline = 1 }) {
+function createSession({ userId = null, tenantId = null, title = 'جلسة بحث معرفي', query, researchLevel = 'deep', isOffline = 1 }) {
   const sessionId = 'rs_' + crypto.randomUUID().slice(0, 12);
   const now = nowIso();
 
   run(`
     INSERT INTO research_sessions (
-      id, user_id, title, query, research_level, status, current_stage,
+      id, user_id, tenant_id, title, query, research_level, status, current_stage,
       stages_json, plan_json, findings_json, quality_gate_json,
       is_offline, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 'running', '1_understanding', '[]', '{}', '[]', '{}', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, 'running', '1_understanding', '[]', '{}', '[]', '{}', ?, ?, ?)
   `,
-    sessionId, userId, title, query, researchLevel, isOffline ? 1 : 0, now, now
+    sessionId, userId, tenantId || userId || 'default_tenant', title, query, researchLevel, isOffline ? 1 : 0, now, now
   );
 
   return getSession(sessionId);

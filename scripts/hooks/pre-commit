@@ -1,0 +1,22 @@
+#!/bin/sh
+# Pre-commit hook: Enforces ESLint and TypeScript checks before allowing any commit
+
+echo "=================================================="
+echo "🔍 Running pre-commit quality gate (ESLint + TS)..."
+echo "=================================================="
+
+npm run lint
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+  echo ""
+  echo "❌ Pre-commit checks failed! Commit aborted."
+  echo "💡 Please resolve all ESLint warnings/errors and TypeScript issues before committing."
+  echo "   Tip: Run 'npm run lint:fix' or 'npm run lint' locally to diagnose."
+  exit 1
+fi
+
+echo ""
+echo "✅ All pre-commit quality checks passed successfully!"
+echo "=================================================="
+exit 0

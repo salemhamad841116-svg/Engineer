@@ -21,6 +21,7 @@
         "./*"
       ]
     },
+    "strict": false /* Preserved as false until Phase 4 (Days 7-8) */,
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
