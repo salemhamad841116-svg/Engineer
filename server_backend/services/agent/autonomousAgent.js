@@ -100,8 +100,10 @@ async function executeAutonomousTask({
   let cleanupReport = null;
 
   // Check if resource limits are exceeded -> transition to 'suspended_resources' gracefully
-  if (mockResourceExhaustion || (resourceMetrics.pressureLevel === 'critical' && resourceMetrics.disk.freeMb < 100)) {
-    const suspendReason = 'تجاوز استهلاك الموارد الحد الحرج المسموح به — تم إيقاف المهمة تلقائياً بحالة (معلقة-للموارد).';
+  if (mockResourceExhaustion || (resourceMetrics.pressureLevel === 'critical' && (resourceMetrics.disk.freeMb < 100 || resourceMetrics.vram?.isOverThreshold || resourceMetrics.memory.usagePercent > 90))) {
+    const suspendReason = resourceMetrics.vram?.isOverThreshold 
+      ? `تجاوز استهلاك ذاكرة كرت الشاشة (VRAM: ${resourceMetrics.vram.usagePercent}%) الحد الأقصى المسموح به (${resourceMetrics.vram.thresholdPercent}%) — تم تعليق المهمة معلنةً لحماية الاستدلال.`
+      : 'تجاوز استهلاك الموارد الحد الحرج المسموح به — تم إيقاف المهمة تلقائياً بحالة (معلقة-للموارد).';
     stepsLog.push({
       step: 'suspended_resources',
       message: suspendReason,

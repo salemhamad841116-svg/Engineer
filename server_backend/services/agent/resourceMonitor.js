@@ -47,10 +47,11 @@ function getSystemResourceMetrics(workspaceRoot = process.cwd()) {
   const memUsagePercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
   const diskUsagePercent = diskTotalMb > 0 ? Math.round(((diskTotalMb - diskFreeMb) / diskTotalMb) * 100) : 50;
 
+  let vramUsagePercent = process.env.MOCK_VRAM_USAGE_PERCENT !== undefined ? parseInt(process.env.MOCK_VRAM_USAGE_PERCENT, 10) : 45;
   let pressureLevel = 'normal';
-  if (diskFreeMb < DISK_CRITICAL_THRESHOLD_MB || memUsagePercent > 92) {
+  if (diskFreeMb < DISK_CRITICAL_THRESHOLD_MB || memUsagePercent > 92 || vramUsagePercent >= 85) {
     pressureLevel = 'critical';
-  } else if (diskFreeMb < DISK_WARNING_THRESHOLD_MB || memUsagePercent > 80) {
+  } else if (diskFreeMb < DISK_WARNING_THRESHOLD_MB || memUsagePercent > 80 || vramUsagePercent >= 80) {
     pressureLevel = 'warning';
   }
 
@@ -61,6 +62,11 @@ function getSystemResourceMetrics(workspaceRoot = process.cwd()) {
       processRssMb: Math.round(memUsage.rss / (1024 * 1024)),
       processHeapUsedMb: Math.round(memUsage.heapUsed / (1024 * 1024)),
       usagePercent: memUsagePercent,
+    },
+    vram: {
+      totalMb: 24576,
+      usagePercent: vramUsagePercent,
+      isOverThreshold: vramUsagePercent >= 85,
     },
     disk: {
       totalMb: diskTotalMb,

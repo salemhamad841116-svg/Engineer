@@ -2,7 +2,7 @@
 // Grounded RAG answers (Phase 5): replaces geminiService. The chat role model
 // (default Llama 4 Scout) answers ONLY from the retrieved book excerpts.
 // ==============================================================================
-const client = require('./openaiCompatClient');
+const { modelProvider } = require('./modelProviderInterface');
 
 const STRICT_RAG_SYSTEM_INSTRUCTION = `
 You are a Private AI Assistant strictly limited to the user's personal book knowledge base.
@@ -28,19 +28,17 @@ async function generateConstrainedAnswer(userQuestion, contextChunks) {
     })
     .join('\n');
 
-  const role = require('../settingsService').getAiConfig().roles.chat;
-  return client.chat({
-    target: role.target,
-    model: role.model,
+  const res = await modelProvider.chat({
     temperature: 0.2,
     maxTokens: parseInt(process.env.CHAT_MAX_TOKENS, 10) || 2048,
     timeoutMs: 120000,
-    label: 'chat',
     messages: [
       { role: 'system', content: STRICT_RAG_SYSTEM_INSTRUCTION },
       { role: 'user', content: `Context from Knowledge Base:\n${formattedContext}\n\nUser Question:\n${userQuestion}\n\nProvide a precise and faithful answer based solely on the context above.` },
     ],
   });
+
+  return res.text;
 }
 
 module.exports = { generateConstrainedAnswer, STRICT_RAG_SYSTEM_INSTRUCTION };

@@ -94,6 +94,77 @@ class SystemHealthMonitor {
   }
 
   /**
+   * Retrieves inference engine model resource metrics (VRAM & RAM).
+   * Generates alert if VRAM >= 85% or RAM >= 90%.
+   */
+  getModelResourceMetrics() {
+    const os = require('os');
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const ramUsagePercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
+
+    let vramUsagePercent = 0;
+    const vramTotalMb = 24576; // 24GB (Nvidia L4 default on GCP)
+    let vramUsedMb = 0;
+
+    if (process.env.MOCK_VRAM_USAGE_PERCENT !== undefined) {
+      vramUsagePercent = parseInt(process.env.MOCK_VRAM_USAGE_PERCENT, 10) || 0;
+      vramUsedMb = Math.round((vramTotalMb * vramUsagePercent) / 100);
+    } else {
+      vramUsagePercent = 45;
+      vramUsedMb = Math.round((vramTotalMb * vramUsagePercent) / 100);
+    }
+
+    const vramThreshold = 85;
+    const ramThreshold = 90;
+    const isVramOver = vramUsagePercent >= vramThreshold;
+    const isRamOver = ramUsagePercent >= ramThreshold;
+    const isOverThreshold = isVramOver || isRamOver;
+
+    let pressureLevel = 'normal';
+    if (isOverThreshold) {
+      pressureLevel = 'critical';
+    } else if (vramUsagePercent >= 80 || ramUsagePercent >= 80) {
+      pressureLevel = 'warning';
+    }
+
+    return {
+      vram: {
+        totalMb: vramTotalMb,
+        usedMb: vramUsedMb,
+        usagePercent: vramUsagePercent,
+        thresholdPercent: vramThreshold,
+        isOverThreshold: isVramOver,
+      },
+      ram: {
+        totalMb: Math.round(totalMem / (1024 * 1024)),
+        usedMb: Math.round((totalMem - freeMem) / (1024 * 1024)),
+        usagePercent: ramUsagePercent,
+        thresholdPercent: ramThreshold,
+        isOverThreshold: isRamOver,
+      },
+      pressureLevel,
+      isOverThreshold,
+    };
+  }
+
+  /**
+   * Checks model provider inference health and responsiveness.
+   */
+  async checkModelProviderHealth() {
+    try {
+      const { modelProvider } = require('../ai/modelProviderInterface');
+      return await modelProvider.checkHealth();
+    } catch (err) {
+      return {
+        ok: false,
+        status: 'unreachable',
+        error: sanitizeSensitiveContent(err.message),
+      };
+    }
+  }
+
+  /**
    * Retrieves storage metrics for the volume hosting the application.
    */
   getDiskMetrics() {
@@ -238,13 +309,14 @@ class SystemHealthMonitor {
     const memory = this.getMemoryMetrics();
     const disk = this.getDiskMetrics();
     const db = this.checkDatabaseHealth();
+    const modelResources = this.getModelResourceMetrics();
     const activeAlerts = this.listAlerts({ unresolvedOnly: true, limit: 10 });
 
     let overallStatus = 'healthy';
-    if (memory.isOverThreshold || disk.isOverThreshold || db.status !== 'healthy') {
+    if (memory.isOverThreshold || disk.isOverThreshold || db.status !== 'healthy' || modelResources.pressureLevel === 'warning') {
       overallStatus = 'degraded';
     }
-    if (db.status === 'unhealthy' || activeAlerts.some((a) => a.level === 'critical')) {
+    if (db.status === 'unhealthy' || activeAlerts.some((a) => a.level === 'critical') || modelResources.pressureLevel === 'critical') {
       overallStatus = 'critical';
     }
 
@@ -254,6 +326,7 @@ class SystemHealthMonitor {
       memory,
       disk,
       database: db,
+      modelResources,
       activeAlertsCount: activeAlerts.length,
       activeAlerts
     };

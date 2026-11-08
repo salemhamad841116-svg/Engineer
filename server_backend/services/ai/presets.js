@@ -49,17 +49,37 @@ const CLOUD_PRESETS = {
     models: { chat: '', vision: '', embeddings: '', transcription: '' },
     limits: { audioMb: 25, imageMb: 4 },
   },
+  vllm: {
+    baseUrl: process.env.VLLM_BASE_URL || 'http://localhost:8000/v1',
+    models: {
+      chat: process.env.VLLM_MODEL || 'Qwen/Qwen2.5-32B-Instruct-AWQ',
+      vision: 'Qwen/Qwen2-VL-7B-Instruct',
+      embeddings: 'BAAI/bge-m3',
+      transcription: 'openai/whisper-large-v3',
+    },
+    suggestedModels: {
+      chat: ['Qwen/Qwen2.5-32B-Instruct-AWQ', 'Qwen/Qwen2.5-14B-Instruct-AWQ', 'Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen3-8B'],
+      vision: ['Qwen/Qwen2-VL-7B-Instruct'],
+      embeddings: ['BAAI/bge-m3'],
+    },
+    limits: { audioMb: 100, imageMb: 20 },
+  },
 };
 
 const LOCAL_PRESET = {
-  baseUrl: 'http://masruq_ollama:11434/v1',
+  baseUrl: process.env.LOCAL_AI_BASE_URL || 'http://localhost:11434/v1',
   models: {
-    chat: 'llama3.1:8b',
+    chat: process.env.LOCAL_AI_MODEL || 'qwen2.5:7b',
     vision: 'llama3.2-vision',
     embeddings: 'bge-m3',
     // Ollama does not serve Whisper; this only applies if the local endpoint is an
     // OpenAI-compatible speech server (e.g. vLLM or a faster-whisper server).
     transcription: 'whisper-large-v3',
+  },
+  suggestedModels: {
+    chat: ['qwen2.5:7b', 'qwen2.5:14b', 'qwen2.5:32b', 'qwen3:8b', 'llama3.1:8b'],
+    vision: ['llama3.2-vision'],
+    embeddings: ['bge-m3'],
   },
   limits: { audioMb: 100, imageMb: 20 },
 };

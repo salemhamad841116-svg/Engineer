@@ -16,6 +16,7 @@ const { expandCrossLingualQuery } = require('./crossLingualEngine');
 const { verifyTopicAgainstAuthoritativeWeb, resolveBookVsWebConflict, seedWebVerificationCache } = require('./webVerificationEngine');
 const { findTablesForDocument, seedReferenceTables } = require('./pdfTableExtractor');
 const { findFiguresForDocument, seedReferenceFigures } = require('./pdfDiagramExtractor');
+const { modelProvider } = require('../ai/modelProviderInterface');
 
 /**
  * Executes a complete Deep Research session through the 5 real stages.
@@ -81,15 +82,16 @@ async function executeDeepResearch({
   const plan = analyzeAndDecomposeQuery(query, manualLevel || session.researchLevel);
   const crossLingual = expandCrossLingualQuery(query);
 
+  const isLocalActive = modelProvider.getActiveConfig().isLocal;
   const tierLimits = {
-    quick: { maxLoops: 1, maxChunks: 4, costCap: 0.0005 },
-    deep: { maxLoops: 3, maxChunks: 10, costCap: 0.003 },
-    expert: { maxLoops: 6, maxChunks: 20, costCap: 0.008 },
-  }[plan.researchLevel] || { maxLoops: 3, maxChunks: 10, costCap: 0.003 };
+    quick: { maxLoops: 1, maxChunks: 4, costCap: 0.0005, maxDurationMs: 15000, maxOutputTokens: 1024 },
+    deep: { maxLoops: 3, maxChunks: 10, costCap: 0.003, maxDurationMs: 45000, maxOutputTokens: 3072 },
+    expert: { maxLoops: 6, maxChunks: 20, costCap: 0.008, maxDurationMs: 120000, maxOutputTokens: 8192 },
+  }[plan.researchLevel] || { maxLoops: 3, maxChunks: 10, costCap: 0.003, maxDurationMs: 45000, maxOutputTokens: 3072 };
 
   session = updateSession(session.id, {
     researchLevel: plan.researchLevel,
-    plan: { ...plan, crossLingual, tierLimits },
+    plan: { ...plan, crossLingual, tierLimits, isLocalActive },
   });
 
   recordStageProgress(
@@ -435,13 +437,25 @@ ${citationsList.join('\n\n')}${tablesSection}
   }
 
   // Update session with final results
-  const totalTokens = Math.min(tierLimits.costCap / 0.000001, Math.round((Date.now() - t0) * 1.5) + 320);
-  const costEstimate = Math.min(tierLimits.costCap, Number(((totalTokens / 1000) * 0.0015).toFixed(5)));
+  const durationMs = Date.now() - t0;
+  const isLocalModel = modelProvider.getActiveConfig().isLocal;
+  const totalTokens = Math.min(tierLimits.costCap / 0.000001, Math.round(durationMs * 1.5) + 320);
+  const costEstimate = isLocalModel ? 0.0 : Math.min(tierLimits.costCap, Number(((totalTokens / 1000) * 0.0015).toFixed(5)));
+
+  const localResourceUsage = isLocalModel ? {
+    isLocal: true,
+    provider: modelProvider.getProvider(),
+    model: modelProvider.getModel(),
+    durationMs,
+    tokensCount: totalTokens,
+    memoryMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+    quotaMet: durationMs <= (tierLimits.maxDurationMs || 45000) && totalTokens <= (tierLimits.maxOutputTokens || 3072),
+  } : null;
 
   recordStageProgress(
     '5_synthesizing',
     'صياغة الإجابة الموثقة وتوليد الاقتباسات المعتمدة',
-    `اكتملت الجلسة بنجاح (${Date.now() - t0}ms) وتم توثيق ${recordedCitations.length} شواهد معتمدة`
+    `اكتملت الجلسة بنجاح (${durationMs}ms) وتم توثيق ${recordedCitations.length} شواهد معتمدة${isLocalModel ? ` [استدلال محلي: ${modelProvider.getModel()}]` : ''}`
   );
 
   session = updateSession(session.id, {
@@ -453,6 +467,7 @@ ${citationsList.join('\n\n')}${tablesSection}
     uncertainties: declaredUncertainties,
     tokenCount: totalTokens,
     costEstimate,
+    localResourceUsage,
   });
 
   return {
@@ -462,7 +477,8 @@ ${citationsList.join('\n\n')}${tablesSection}
     qualityGate,
     retrievedSources: allRetrieved,
     stages: stagesLog,
-    durationMs: Date.now() - t0,
+    durationMs,
+    localResourceUsage,
   };
 }
 

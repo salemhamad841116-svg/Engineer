@@ -43,10 +43,38 @@ const config = {
   get maxMediaMb() { return int('MAX_MEDIA_MB', 1024); },
   /** 'mock' (tests only) or the live open-source stack (any other value; 'openai' is the documented one). */
   get aiProvider() {
-    const v = (process.env.AI_PROVIDER || 'openai').toLowerCase();
+    const v = (process.env.LLM_PROVIDER || process.env.AI_PROVIDER || 'openai').toLowerCase();
     if (v === 'mock') return 'mock';
     if (v === 'gemini') return 'gemini';
+    if (v === 'vllm') return 'vllm';
+    if (v === 'ollama') return 'ollama';
     return 'openai';
+  },
+  get llmProvider() {
+    return (process.env.LLM_PROVIDER || process.env.AI_PROVIDER || 'ollama').toLowerCase().trim();
+  },
+  get llmBaseUrl() {
+    if (process.env.LLM_BASE_URL) return process.env.LLM_BASE_URL.replace(/\/+$/, '');
+    if (process.env.LOCAL_AI_BASE_URL) return process.env.LOCAL_AI_BASE_URL.replace(/\/+$/, '');
+    const p = this.llmProvider;
+    if (p === 'vllm') return 'http://localhost:8000/v1';
+    if (p === 'openai') return 'https://api.openai.com/v1';
+    if (p === 'gemini') return 'https://generativelanguage.googleapis.com/v1beta/openai';
+    if (p === 'mock') return 'http://mock-model-engine/v1';
+    return 'http://localhost:11434/v1';
+  },
+  get llmModel() {
+    if (process.env.LLM_MODEL) return process.env.LLM_MODEL.trim();
+    if (process.env.LOCAL_AI_MODEL) return process.env.LOCAL_AI_MODEL.trim();
+    const p = this.llmProvider;
+    if (p === 'vllm') return 'Qwen/Qwen2.5-32B-Instruct-AWQ';
+    if (p === 'openai') return 'gpt-4o-mini';
+    if (p === 'gemini') return 'gemini-3.8-flash';
+    if (p === 'mock') return 'deterministic-grounded-qwen';
+    return 'qwen2.5:7b';
+  },
+  get allowCloudFallback() {
+    return process.env.ALLOW_CLOUD_FALLBACK === 'true' || process.env.ALLOW_CLOUD_FALLBACK === '1';
   },
   get aiTmpDir() { return path.join(this.tempUploadDir, 'ai-work'); },
   get cookieName() { return 'sid'; },

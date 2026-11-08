@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # 1. High-Performance vLLM Inference Engine with Nvidia L4 (24GB VRAM)
+  vllm-engine:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-inference
+    restart: always
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - /root/.cache/huggingface:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      --model Qwen/Qwen2.5-32B-Instruct-AWQ
+      --quantization awq
+      --dtype auto
+      --max-model-len 16384
+      --gpu-memory-utilization 0.90
+      --enforce-eager
+      --port 8000
+
+  # 2. Knowledge Platform Core Application
+  knowledge-app:
+    image: ${DOCKER_IMAGE:-knowledge-platform:latest}
+    container_name: knowledge-platform-app
+    restart: always
+    depends_on:
+      - vllm-engine
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ADMIN_HOST=engineer-mgt.misruq.com
+      - LLM_PROVIDER=vllm
+      - LLM_BASE_URL=http://vllm-engine:8000/v1
+      - LLM_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
+      - ALLOW_CLOUD_FALLBACK=false
+      - DATA_DIR=/app/data
+      - SESSION_SECRET=${PROD_SESSION_SECRET:-changeme_prod_session_secret_at_least_32_bytes_long}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@misruq.com}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-SecureAdmin2026!Init}
+      - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET:-JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP}
+    volumes:
+      - platform-sqlite-data:/app/data
+      - platform-vault:/app/vault
+
+volumes:
+  platform-sqlite-data:
+  platform-vault:

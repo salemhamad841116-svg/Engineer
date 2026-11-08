@@ -115,32 +115,27 @@ function safeJson(val, fallback) {
  */
 async function callAiModel({ role = 'coder', prompt, systemPrompt, temperature = 0.2 }) {
   try {
-    const settingsService = require('../settingsService');
-    const openaiCompatClient = require('../ai/openaiCompatClient');
-    const aiConfig = settingsService.getAiConfig();
+    const { modelProvider, ModelUnavailableError, ModelResourceExhaustedError } = require('../ai/modelProviderInterface');
 
-    if (settingsService.hasUsableCloudKey() || aiConfig.aiProvider === 'ollama') {
-      const target = aiConfig.roles?.chat?.target || aiConfig.aiProvider || 'google';
-      const model = aiConfig.roles?.chat?.model || 'default';
+    const messages = [];
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'user', content: prompt });
 
-      const messages = [];
-      if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-      messages.push({ role: 'user', content: prompt });
+    const res = await modelProvider.chat({
+      messages,
+      temperature,
+      maxTokens: 4096,
+      timeoutMs: 60000,
+    });
 
-      const res = await openaiCompatClient.chat({
-        target,
-        model,
-        messages,
-        temperature,
-        maxTokens: 4096,
-        label: `engineer_${role}`,
-      });
-
-      if (res && res.text) {
-        return res.text;
-      }
+    if (res && res.text) {
+      return res.text;
     }
   } catch (err) {
+    if (err.name === 'ModelUnavailableError' || err.name === 'ModelResourceExhaustedError' || err.code === 'MODEL_UNAVAILABLE') {
+      console.warn('[orchestrator] Local AI model unavailable or exhausted (Declared Suspension):', err.message);
+      throw err;
+    }
     console.warn('[orchestrator] AI call failed or not configured, using built-in generator:', err.message);
   }
 

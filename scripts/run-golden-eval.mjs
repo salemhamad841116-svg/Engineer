@@ -22,6 +22,9 @@ async function main() {
   console.log('================================================================\n');
 
   getDb();
+  const { modelProvider } = await import('../server_backend/services/ai/modelProviderInterface.js');
+  const cfg = modelProvider.getActiveConfig();
+  console.log(`🤖 Active Model Provider: [${cfg.provider}] | Model: [${cfg.model}] | BaseURL: [${cfg.baseUrl}]\n`);
 
   // If specific batch requested, run only that batch. Otherwise run Batch 1 and Batch 2.
   if (requestedBatch) {
