@@ -22,7 +22,7 @@ if (!fs.existsSync(TEMP_DB_DIR)) {
 const tempDbFile = path.join(TEMP_DB_DIR, `fresh_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.sqlite`);
 
 console.log('================================================================');
-console.log('🏛️ RUNNING FRESH-DB MIGRATION SUITE (MIGRATIONS 1 TO 17)');
+console.log('🏛️ RUNNING FRESH-DB MIGRATION SUITE (MIGRATIONS 1 TO 18)');
 console.log('================================================================\n');
 
 let dbHandle = null;
@@ -79,7 +79,13 @@ try {
     'web_verification_cache',
     'document_tables',
     'document_figures',
-    'system_alert_logs'
+    'system_alert_logs',
+    'admin_users',
+    'admin_sessions',
+    'admin_recovery_codes',
+    'admin_audit_actions',
+    'admin_content_flags',
+    'admin_ip_whitelist'
   ];
 
   for (const t of requiredTables) {
@@ -117,6 +123,14 @@ try {
   assert.ok(alertCols.includes('level'), 'system_alert_logs missing level');
   assert.ok(alertCols.includes('category'), 'system_alert_logs missing category');
   assert.ok(alertCols.includes('details_json'), 'system_alert_logs missing details_json');
+
+  // 5. Verify admin_users has role and totp fields
+  const adminUserCols = dbHandle.prepare("PRAGMA table_info('admin_users')").all().map((c) => c.name);
+  assert.ok(adminUserCols.includes('role'), 'admin_users missing role');
+  assert.ok(adminUserCols.includes('totp_secret'), 'admin_users missing totp_secret');
+  assert.ok(adminUserCols.includes('totp_enabled'), 'admin_users missing totp_enabled');
+  assert.ok(adminUserCols.includes('failed_logins'), 'admin_users missing failed_logins');
+  assert.ok(adminUserCols.includes('locked_until'), 'admin_users missing locked_until');
 
   console.log('  ✅ Column structures, data types, and schema evolutions verified.');
 

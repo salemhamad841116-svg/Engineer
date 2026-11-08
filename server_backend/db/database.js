@@ -962,6 +962,90 @@ CREATE INDEX IF NOT EXISTS idx_alert_logs_cat ON system_alert_logs(category);
       `);
     },
   },
+  {
+    id: 18,
+    name: 'phase9_admin_subdomain_and_rbac',
+    up(handle) {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS admin_users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('super_admin', 'support_agent')),
+  password_hash TEXT NOT NULL,
+  totp_secret TEXT NOT NULL,
+  totp_enabled INTEGER NOT NULL DEFAULT 1,
+  failed_logins INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT,
+  status TEXT NOT NULL CHECK (status IN ('active', 'suspended')) DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  created_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users(email);
+CREATE INDEX IF NOT EXISTS idx_admin_users_role ON admin_users(role);
+
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  id TEXT PRIMARY KEY,
+  admin_user_id TEXT NOT NULL REFERENCES admin_users(id),
+  token_hash TEXT NOT NULL UNIQUE,
+  ip TEXT,
+  user_agent TEXT,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  ended_at TEXT,
+  ended_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_user ON admin_sessions(admin_user_id, ended_at);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON admin_sessions(token_hash);
+
+CREATE TABLE IF NOT EXISTS admin_recovery_codes (
+  id TEXT PRIMARY KEY,
+  admin_user_id TEXT NOT NULL REFERENCES admin_users(id),
+  code_hash TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_admin_recovery_user ON admin_recovery_codes(admin_user_id, used_at);
+
+CREATE TABLE IF NOT EXISTS admin_audit_actions (
+  id TEXT PRIMARY KEY,
+  admin_user_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  justification TEXT,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  ip TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_user ON admin_audit_actions(admin_user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_action ON admin_audit_actions(action);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_time ON admin_audit_actions(created_at);
+
+CREATE TABLE IF NOT EXISTS admin_content_flags (
+  id TEXT PRIMARY KEY,
+  content_type TEXT NOT NULL,
+  content_id TEXT NOT NULL,
+  reporter_user_id TEXT,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('new', 'in_review', 'resolved', 'dismissed')) DEFAULT 'new',
+  assigned_to TEXT REFERENCES admin_users(id),
+  resolved_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_admin_flags_status ON admin_content_flags(status);
+CREATE INDEX IF NOT EXISTS idx_admin_flags_content ON admin_content_flags(content_type, content_id);
+
+CREATE TABLE IF NOT EXISTS admin_ip_whitelist (
+  id TEXT PRIMARY KEY,
+  ip_or_cidr TEXT NOT NULL UNIQUE,
+  description TEXT,
+  created_at TEXT NOT NULL
+);
+      `);
+    },
+  },
 ];
 
 function openDb() {

@@ -260,8 +260,6 @@ export function attachBackendAndDatabase(app: Express) {
       saveDocumentFigure,
       seedReferenceFigures,
     } = require('../server_backend/services/research/pdfDiagramExtractor.js');
-    const { systemHealthMonitor } = require('../server_backend/services/operations/systemHealthMonitor.js');
-    const { BackupManager } = require('../server_backend/services/operations/backupManager.js');
 
     // التأكد من توفر مراجع المكتبة الأساسية ومواصفات الويب والجداول
     seedReferenceLibrary();
@@ -592,73 +590,15 @@ export function attachBackendAndDatabase(app: Express) {
     });
 
     // ----------------------------------------------------
-    // مسارات المراقبة والتنبيهات والنسخ الاحتياطي (Phase 8 Operations)
     // ----------------------------------------------------
-    // تقرير صحة النظام والذاكرة والقرص وقاعدة البيانات
-    app.get('/api/admin/system-health', (_req: Request, res: Response) => {
-      try {
-        const report = systemHealthMonitor.getSystemHealthReport();
-        res.json({ success: true, report });
-      } catch (err: unknown) {
-        res.status(500).json({ error: extractErrorMessage(err) });
-      }
-    });
-
-    // قائمة التنبيهات الإدارية المنقاة
-    app.get('/api/admin/system-alerts', (req: Request, res: Response) => {
-      try {
-        const { unresolvedOnly, level, category, limit } = req.query as Record<string, string>;
-        const alerts = systemHealthMonitor.listAlerts({
-          unresolvedOnly: unresolvedOnly !== 'false',
-          level,
-          category,
-          limit: limit ? parseInt(limit, 10) : 50,
-        });
-        res.json({ success: true, count: alerts.length, alerts });
-      } catch (err: unknown) {
-        res.status(500).json({ error: extractErrorMessage(err) });
-      }
-    });
-
-    // معالجة وإغلاق تنبيه إداري
-    app.post('/api/admin/system-alerts/:id/resolve', (req: AuthenticatedRequest, res: Response) => {
-      try {
-        const alertId = req.params.id;
-        const actor = req.user?.email || req.tenantContext?.userId || 'admin';
-        const resolved = systemHealthMonitor.resolveAlert(alertId, actor);
-        res.json({ success: resolved, alertId, resolvedBy: actor });
-      } catch (err: unknown) {
-        res.status(500).json({ error: extractErrorMessage(err) });
-      }
-    });
-
-    // إنشاء نسخة احتياطية فورية لـ SQLite
-    app.post('/api/admin/backup/trigger', (_req: AuthenticatedRequest, res: Response) => {
-      try {
-        const backupMgr = new BackupManager();
-        const backup = backupMgr.createBackup({ tag: 'admin_manual' });
-        systemHealthMonitor.recordAlert({
-          level: 'info',
-          category: 'backup',
-          message: `Manual backup created successfully: ${backup.filename}`,
-          details: { filename: backup.filename, sizeBytes: backup.sizeBytes },
-        });
-        res.json({ success: true, backup });
-      } catch (err: unknown) {
-        res.status(500).json({ error: extractErrorMessage(err) });
-      }
-    });
-
-    // استعراض النسخ الاحتياطية المتوفرة
-    app.get('/api/admin/backups', (_req: Request, res: Response) => {
-      try {
-        const backupMgr = new BackupManager();
-        const backups = backupMgr.listBackups();
-        res.json({ success: true, count: backups.length, backups });
-      } catch (err: unknown) {
-        res.status(500).json({ error: extractErrorMessage(err) });
-      }
-    });
+    // مسارات لوحة الإدارة المعزولة بنطاق منفصل (Phase 9 Admin Subdomain & Operations)
+    // ----------------------------------------------------
+    const { subdomainRouterMiddleware: bridgeSubdomainRouter } = require('../server_backend/middleware/subdomainRouter.js');
+    const bridgeAdminRoutes = require('../server_backend/routes/adminRoutes.js');
+    const { bootstrapAdminUsers: bridgeBootstrapAdmin } = require('../server_backend/auth/adminAuthService.js');
+    bridgeBootstrapAdmin();
+    app.use(bridgeSubdomainRouter);
+    app.use('/api/admin', bridgeAdminRoutes);
 
     // 6. مسارات الوكيل البرمجي المستقل (Autonomous Coding Agent Engine)
     const {

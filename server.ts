@@ -17,6 +17,12 @@ import {
 import { getInitialButtonRegistry, runAutomatedRegistryVerification } from './src/utils/buttonRegistry';
 import { AIAgentProfile, ButtonRegistryEntry, Project } from './src/types/platform';
 import { attachBackendAndDatabase } from './src/backendBridge';
+import { createRequire } from 'module';
+
+const serverRequire = createRequire(import.meta.url);
+const { subdomainRouterMiddleware } = serverRequire('./server_backend/middleware/subdomainRouter.js');
+const adminRoutes = serverRequire('./server_backend/routes/adminRoutes.js');
+const { bootstrapAdminUsers } = serverRequire('./server_backend/auth/adminAuthService.js');
 
 dotenv.config();
 
@@ -128,9 +134,32 @@ function getGeminiClient(): GoogleGenAI | null {
   });
 }
 
+interface AdminPortalRequest extends express.Request {
+  isAdminPortal?: boolean;
+}
+
 async function startServer() {
   const app = express();
+
+  // 1. Strict Subdomain Isolation Middleware (Top-level)
+  app.use(subdomainRouterMiddleware);
+
+  // 2. Serve Dedicated Admin Subdomain Portal SPA
+  const adminPortalHtmlPath = path.resolve(__dirname, 'server_backend/portal/adminPortal.html');
+  app.use((req, res, next) => {
+    if ((req as AdminPortalRequest).isAdminPortal && !req.path.startsWith('/api/')) {
+      res.sendFile(adminPortalHtmlPath);
+      return;
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '25mb' }));
+
+  // 3. Mount Admin Routes
+  bootstrapAdminUsers();
+  app.use('/api/admin', adminRoutes);
+
   attachBackendAndDatabase(app);
 
   const state = loadOrCreateState();

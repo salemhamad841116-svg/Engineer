@@ -187,9 +187,9 @@ runStep('Dockerfile Verification, Volume Mount & Container Health Probe', () => 
 });
 
 // ----------------------------------------------------
-// Step 7: Playwright End-to-End Verification (10 Scenarios & Verbatim Byte Assertion)
+// Step 7: Playwright End-to-End Verification (11 Scenarios & Verbatim Byte Assertion)
 // ----------------------------------------------------
-runStep('Playwright End-to-End Test Suite (10 Scenarios & Verbatim Byte Assertion)', () => {
+runStep('Playwright End-to-End Test Suite (11 Scenarios & Verbatim Byte Assertion)', () => {
   // Ensure port 3005 is free for Playwright webServer
   try {
     execSync('lsof -ti :3005 | xargs kill -9 2>/dev/null || true', { stdio: 'pipe' });
@@ -229,9 +229,9 @@ runStep('External Web Verification & PDF Structures Comprehensive Suite (10 Test
 });
 
 // ----------------------------------------------------
-// Step 11: Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 17)
+// Step 11: Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 18)
 // ----------------------------------------------------
-runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 17)', () => {
+runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 18)', () => {
   execSync('node server_backend/tests/freshDbMigrationSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
@@ -247,6 +247,13 @@ runStep('Automated SQLite Backup & Restore Drill Integrity Gate', () => {
 // ----------------------------------------------------
 runStep('Production Health Monitoring & Zero-Secrets Sanitization Gate', () => {
   execSync('node server_backend/tests/systemHealthAndAlertsSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 14: Phase 9 Dedicated Subdomain Admin Portal & Adversarial Security Gate
+// ----------------------------------------------------
+runStep('Phase 9 Dedicated Subdomain Admin Portal & Adversarial Security Gate', () => {
+  execSync('node server_backend/tests/adminSecurityAndAdversarialSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
 printSummaryAndExit(0);

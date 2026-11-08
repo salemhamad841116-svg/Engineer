@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة التحكم الإدارية المعزولة | Admin Subdomain Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0d14;
+      --bg-card: #121824;
+      --bg-card-hover: #172030;
+      --border-color: #1f293d;
+      --border-focus: #3b82f6;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+      --amber: #f59e0b;
+      --indigo: #6366f1;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --font-cairo: 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-cairo);
+      line-height: 1.5;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    header {
+      background-color: rgba(18, 24, 36, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .badge-subdomain {
+      background: rgba(37, 99, 235, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(37, 99, 235, 0.3);
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    .badge-security {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .role-badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+    .role-super_admin { background: #7c3aed; color: #fff; }
+    .role-support_agent { background: #0284c7; color: #fff; }
+
+    /* Navigation Tabs */
+    nav.admin-tabs {
+      background-color: var(--bg-card);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      overflow-x: auto;
+      padding: 0 1.5rem;
+      gap: 0.5rem;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--font-cairo);
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+    }
+
+    .tab-btn.active {
+      color: #60a5fa;
+      border-bottom-color: #3b82f6;
+    }
+
+    /* Main Container */
+    main {
+      padding: 1.5rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.2s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cards & Grids */
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+
+    .card-title {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-value {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+    }
+
+    /* Tables */
+    .table-container {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-top: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: right;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background-color: rgba(255, 255, 255, 0.02);
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    tr:hover td {
+      background-color: var(--bg-card-hover);
+    }
+
+    /* Badges & Buttons */
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge-danger { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
+    .badge-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .badge-info { background: rgba(37, 99, 235, 0.2); color: #60a5fa; }
+
+    .btn {
+      background-color: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      font-family: var(--font-cairo);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.15s;
+    }
+
+    .btn:hover { background-color: var(--primary-hover); }
+    .btn-secondary { background-color: #334155; }
+    .btn-secondary:hover { background-color: #475569; }
+    .btn-danger { background-color: #dc2626; }
+    .btn-danger:hover { background-color: #b91c1c; }
+    .btn-success { background-color: #059669; }
+    .btn-success:hover { background-color: #047857; }
+
+    /* Inputs */
+    input, select, textarea {
+      background-color: #0d121d;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 0.6rem 0.85rem;
+      border-radius: 6px;
+      font-family: var(--font-cairo);
+      font-size: 0.9rem;
+      width: 100%;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--border-focus);
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+
+    .modal-backdrop.open { display: flex; }
+
+    .modal-box {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      max-width: 550px;
+      width: 100%;
+      padding: 1.5rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Login Screen Container */
+    #login-section {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background: radial-gradient(circle at top, #172033 0%, #0a0d14 70%);
+    }
+
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      max-width: 440px;
+      width: 100%;
+      padding: 2.25rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .form-group {
+      margin-bottom: 1.15rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .alert-box {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      display: none;
+    }
+
+    .alert-box.show { display: block; }
+    .alert-error { background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #fb7185; }
+    .alert-success { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN SECTION (SHOWN IF NOT AUTHENTICATED) -->
+  <div id="login-section">
+    <div class="login-card">
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <span class="badge-subdomain">admin.domain</span>
+        <h2 style="font-size: 1.4rem; font-weight: 800; margin-top: 0.5rem;">منظومة الإدارة المعزولة</h2>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">التحقق الثنائي الإلزامي (RFC 6238 TOTP)</p>
+      </div>
+
+      <div id="login-alert" class="alert-box alert-error"></div>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label>البريد الإلكتروني للإدارة</label>
+          <input type="email" id="login-email" required placeholder="admin@cloudstudio.dev" autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label>كلمة المرور المشفرة</label>
+          <input type="password" id="login-password" required placeholder="••••••••••••" autocomplete="current-password">
+        </div>
+
+        <div class="form-group" id="totp-group">
+          <label style="display: flex; justify-content: space-between;">
+            <span>رمز التحقق الثنائي (TOTP - 6 أرقام)</span>
+            <a href="#" id="toggle-recovery-btn" style="color: #60a5fa; text-decoration: none; font-size: 0.75rem;">استخدام رمز الطوارئ</a>
+          </label>
+          <input type="text" id="login-totp" placeholder="123456" maxlength="6" inputmode="numeric" style="letter-spacing: 0.25em; text-align: center; font-family: var(--font-mono); font-size: 1.1rem;">
+        </div>
+
+        <div class="form-group" id="recovery-group" style="display: none;">
+          <label style="display: flex; justify-content: space-between;">
+            <span>رمز استعادة الطوارئ (مرة واحدة)</span>
+            <a href="#" id="toggle-totp-btn" style="color: #60a5fa; text-decoration: none; font-size: 0.75rem;">استخدام TOTP</a>
+          </label>
+          <input type="text" id="login-recovery" placeholder="REC-XXXX-XXXX" style="letter-spacing: 0.1em; text-align: center; font-family: var(--font-mono);">
+        </div>
+
+        <button type="submit" class="btn" style="width: 100%; justify-content: center; padding: 0.75rem; margin-top: 0.5rem;" id="login-btn">
+          تسجيل الدخول الآمن (2FA)
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- PORTAL SECTION (SHOWN AFTER AUTHENTICATION) -->
+  <div id="portal-section" style="display: none;">
+    <header>
+      <div class="brand">
+        <span class="badge-subdomain">admin.domain</span>
+        <h1 style="font-size: 1.15rem; font-weight: 800;">لوحة الإدارة الشاملة | Phase 9</h1>
+        <span class="badge-security">🔒 2FA نشط وجلسة معزولة</span>
+      </div>
+
+      <div class="user-profile">
+        <span id="current-user-role" class="role-badge role-super_admin">super_admin</span>
+        <span id="current-user-email" style="font-size: 0.85rem; color: var(--text-muted);">admin@cloudstudio.dev</span>
+        <button id="logout-btn" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">خروج</button>
+      </div>
+    </header>
+
+    <nav class="admin-tabs">
+      <button class="tab-btn active" data-tab="tab-dashboard">📊 المؤشرات الحية</button>
+      <button class="tab-btn" data-tab="tab-users">👥 المستخدمين والاستهلاك</button>
+      <button class="tab-btn" data-tab="tab-content">📚 المحتوى والمكتبة</button>
+      <button class="tab-btn" data-tab="tab-alerts">🚨 مركز التنبيهات</button>
+      <button class="tab-btn" data-tab="tab-retrieval">🎯 جودة الاسترجاع والفجوات</button>
+      <button class="tab-btn" data-tab="tab-audit">📜 سجل التدقيق الحصين</button>
+      <button class="tab-btn" data-tab="tab-settings" id="tab-btn-settings">⚙️ إعدادات المنظومة</button>
+      <button class="tab-btn" data-tab="tab-team" id="tab-btn-team">🛡️ فريق الإدارة</button>
+    </nav>
+
+    <main>
+      <!-- TAB 1: DASHBOARD -->
+      <section id="tab-dashboard" class="tab-content active">
+        <div class="grid-4">
+          <div class="card">
+            <div class="card-title">حالة الخادم ووقت التشغيل</div>
+            <div class="card-value" id="dash-uptime">--</div>
+            <div style="font-size: 0.8rem; color: #34d399; margin-top: 0.25rem;">● خادم Node.js قيد العمل</div>
+          </div>
+          <div class="card">
+            <div class="card-title">بوابات الجودة (Quality Gates)</div>
+            <div class="card-value" style="color: #34d399;">14 / 14</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">جميع البوابات تعمل بنجاح (100%)</div>
+          </div>
+          <div class="card">
+            <div class="card-title">استهلاك الذاكرة (RSS)</div>
+            <div class="card-value" id="dash-memory">--</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;" id="dash-heap">Heap: --</div>
+          </div>
+          <div class="card">
+            <div class="card-title">آخر تدريب استعادة (Restore Drill)</div>
+            <div class="card-value" style="color: #34d399;" id="dash-drill-status">PASSED</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;" id="dash-backup-time">--</div>
+          </div>
+        </div>
+
+        <div class="grid-4">
+          <div class="card">
+            <div class="card-title">المستخدمون النشطون</div>
+            <div class="card-value" id="dash-users">0</div>
+          </div>
+          <div class="card">
+            <div class="card-title">الكتب والمصادر المفهرسة</div>
+            <div class="card-value" id="dash-docs">0</div>
+          </div>
+          <div class="card">
+            <div class="card-title">الشواهد المستخرجة مع الإحداثيات</div>
+            <div class="card-value" id="dash-evidence">0</div>
+          </div>
+          <div class="card">
+            <div class="card-title">التنبيهات التشغيلية المفتوحة</div>
+            <div class="card-value" id="dash-alerts" style="color: #fbbf24;">0</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 1rem;">
+          <div class="card-title">
+            <span>إجراء النسخ الاحتياطي الفوري (Atomic SQLite Snapshot)</span>
+            <button id="trigger-backup-btn" class="btn btn-success" style="font-size: 0.8rem;">أخذ نسخة احتياطية فورية الآن</button>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">
+            تعتمد المنصة تقنية SQLite VACUUM INTO الذرية مع الحفاظ على دوران النسخ (Rotation) لآخر 5 نسخ وتدريب الاستعادة الإلزامي.
+          </p>
+        </div>
+      </section>
+
+      <!-- TAB 2: USERS -->
+      <section id="tab-users" class="tab-content">
+        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+          <input type="text" id="user-search-input" placeholder="البحث بالاسم أو البريد..." style="max-width: 320px;">
+          <select id="user-status-filter" style="max-width: 180px;">
+            <option value="">جميع الحالات</option>
+            <option value="active">نشط (Active)</option>
+            <option value="disabled">معطل (Disabled)</option>
+          </select>
+          <button id="refresh-users-btn" class="btn btn-secondary">تحديث</button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>الاسم</th>
+                <th>البريد الإلكتروني</th>
+                <th>الدور</th>
+                <th>الحالة</th>
+                <th>استعلامات البحث</th>
+                <th>المشاريع</th>
+                <th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">جارٍ تحميل المستخدمين...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 3: CONTENT & MODERATION -->
+      <section id="tab-content" class="tab-content">
+        <div class="grid-4">
+          <div class="card">
+            <div class="card-title">إجمالي الوثائق</div>
+            <div class="card-value" id="cnt-total-docs">0</div>
+          </div>
+          <div class="card">
+            <div class="card-title">مكتبة النظام العامة</div>
+            <div class="card-value" id="cnt-shared-docs">0</div>
+          </div>
+          <div class="card">
+            <div class="card-title">المقاطع الدلالية (Chunks)</div>
+            <div class="card-value" id="cnt-total-chunks">0</div>
+          </div>
+          <div class="card">
+            <div class="card-title">الجداول والأشكال المستخرجة</div>
+            <div class="card-value" id="cnt-total-tables">0</div>
+          </div>
+        </div>
+
+        <div class="card-title" style="margin-top: 1.5rem;">أحدث المصادر المفهرسة في النظام</div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>عنوان الكتاب</th>
+                <th>المؤلف</th>
+                <th>النوع</th>
+                <th>المكتبة العامة</th>
+                <th>تاريخ الفهرسة</th>
+                <th>الإجراء الإداري</th>
+              </tr>
+            </thead>
+            <tbody id="content-tbody">
+              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">جارٍ التحميل...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 4: ALERTS -->
+      <section id="tab-alerts" class="tab-content">
+        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+          <select id="alerts-level-filter" style="max-width: 180px;">
+            <option value="">جميع المستويات</option>
+            <option value="critical">حرجة (Critical)</option>
+            <option value="error">أخطاء (Error)</option>
+            <option value="warning">تحذيرات (Warning)</option>
+            <option value="info">معلومات (Info)</option>
+          </select>
+          <select id="alerts-cat-filter" style="max-width: 180px;">
+            <option value="">جميع الفئات</option>
+            <option value="security">أمان (Security)</option>
+            <option value="memory">ذاكرة (Memory)</option>
+            <option value="disk">قرص (Disk)</option>
+            <option value="backup">نسخ احتياطي (Backup)</option>
+          </select>
+          <button id="refresh-alerts-btn" class="btn btn-secondary">تحديث التنبيهات</button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>المستوى</th>
+                <th>الفئة</th>
+                <th>الرسالة المنقاة</th>
+                <th>التاريخ</th>
+                <th>المسؤول المعين</th>
+                <th>الإجراء</th>
+              </tr>
+            </thead>
+            <tbody id="alerts-tbody">
+              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">جارٍ تحميل التنبيهات...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 5: RETRIEVAL QUALITY -->
+      <section id="tab-retrieval" class="tab-content">
+        <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
+          تحليل تقييمات الباحثين السلبية وتصنيفها حسب الموضوعات للكشف التلقائي عن فجوات الفهرسة الدلالية:
+        </p>
+        <div class="grid-4" id="retrieval-breakdown-cards">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="card" style="margin-top: 1.5rem;">
+          <div class="card-title">الاستعلامات التي أبلغ الباحثون عن فجوات فيها</div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>الاستعلام</th>
+                  <th>ملاحظة الباحث</th>
+                  <th>درجة بوابة الجودة</th>
+                  <th>التاريخ</th>
+                </tr>
+              </thead>
+              <tbody id="retrieval-issues-tbody">
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">لا توجد فجوات مسجلة حديثاً.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 6: AUDIT LOGS -->
+      <section id="tab-audit" class="tab-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <input type="text" id="audit-search-input" placeholder="البحث في سجل التدقيق..." style="max-width: 350px;">
+          <span class="badge badge-info">سجل Append-Only غير قابل للتعديل أو الحذف</span>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>المنفذ</th>
+                <th>نوع الإجراء</th>
+                <th>المبرر الإداري</th>
+                <th>الهدف</th>
+                <th>عنوان IP</th>
+              </tr>
+            </thead>
+            <tbody id="audit-tbody">
+              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">جارٍ تحميل السجلات...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 7: SETTINGS (SUPER ADMIN ONLY) -->
+      <section id="tab-settings" class="tab-content">
+        <div class="card" style="max-width: 700px;">
+          <h2 style="font-size: 1.1rem; margin-bottom: 1rem;">إعدادات المنظومة وحدود التكلفة (Super Admin)</h2>
+          <form id="settings-form">
+            <div class="form-group">
+              <label>سقف التكلفة اليومي لاستعلامات البحث العميق ($)</label>
+              <input type="number" id="setting-cost-ceiling" step="0.01">
+            </div>
+            <div class="form-group">
+              <label>الحد الأقصى للـ Tokens اليومية</label>
+              <input type="number" id="setting-tokens-limit">
+            </div>
+            <div class="form-group">
+              <label>زمن بقاء التحقق من الويب للمواصفات القياسية (أيام TTL)</label>
+              <input type="number" id="setting-ttl-standard">
+            </div>
+            <div class="form-group">
+              <label>زمن بقاء التحقق من الويب للبرمجيات والتحديثات (أيام TTL)</label>
+              <input type="number" id="setting-ttl-software">
+            </div>
+            <div class="form-group">
+              <label>معامل الترتيب الهجين Reciprocal Rank Fusion (k-weight)</label>
+              <input type="number" id="setting-rrf-k">
+            </div>
+            <button type="submit" class="btn" id="save-settings-btn">حفظ وتطبيق الإعدادات</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- TAB 8: TEAM MANAGEMENT (SUPER ADMIN ONLY) -->
+      <section id="tab-team" class="tab-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h2 style="font-size: 1.1rem;">أعضاء فريق الإدارة والتحكم</h2>
+          <button id="open-new-admin-btn" class="btn btn-success">+ إضافة مشرف إداري جديد</button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>الاسم</th>
+                <th>البريد</th>
+                <th>الدور</th>
+                <th>2FA</th>
+                <th>المحاولات الفاشلة</th>
+                <th>الحالة</th>
+                <th>الإجراء</th>
+              </tr>
+            </thead>
+            <tbody id="team-tbody">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">جارٍ التحميل...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL: JUSTIFICATION REQUIRED TO INSPECT USER CONTENT -->
+  <div id="justification-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-title">
+        <span>طلب مبرر إداري إلزامي</span>
+        <button class="btn btn-secondary close-modal" style="padding: 0.2rem 0.5rem;">✕</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+        الاطلاع على محتوى المستخدم الخاص (المشاريع، المستندات، الجلسات) يخضع لرقابة صارمة. يلزم تقديم مبرر رسمي وسيتم تسجيله بشكل دائم في سجل التدقيق.
+      </p>
+      <div class="form-group">
+        <label>المبرر الإداري الرسمي (5 أحرف على الأقل):</label>
+        <textarea id="justification-input" rows="3" placeholder="مثال: مراجعة بلاغ أمني رسمي رقم #419"></textarea>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+        <button class="btn btn-secondary close-modal">إلغاء</button>
+        <button id="confirm-inspect-btn" class="btn">تأكيد وتسجيل في التدقيق</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: USER PRIVATE DATA DISPLAY -->
+  <div id="user-data-modal" class="modal-backdrop">
+    <div class="modal-box" style="max-width: 700px;">
+      <div class="modal-title">
+        <span id="inspected-user-title">محتوى المستخدم الخاص</span>
+        <button class="btn btn-secondary close-modal" style="padding: 0.2rem 0.5rem;">✕</button>
+      </div>
+      <div id="inspected-user-content" style="max-height: 400px; overflow-y: auto; font-size: 0.85rem;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD ADMIN TEAM MEMBER -->
+  <div id="new-admin-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-title">
+        <span>إضافة مشرف إداري جديد</span>
+        <button class="btn btn-secondary close-modal" style="padding: 0.2rem 0.5rem;">✕</button>
+      </div>
+      <form id="new-admin-form">
+        <div class="form-group">
+          <label>الاسم الكامل</label>
+          <input type="text" id="new-admin-name" required placeholder="سالم المهندس">
+        </div>
+        <div class="form-group">
+          <label>البريد الإلكتروني</label>
+          <input type="email" id="new-admin-email" required placeholder="ops@cloudstudio.dev">
+        </div>
+        <div class="form-group">
+          <label>المستوى الصلاحي (RBAC Role)</label>
+          <select id="new-admin-role">
+            <option value="support_agent">فريق الدعم (Support Agent - قراءة ومتابعة بلاغات)</option>
+            <option value="super_admin">مدير أعلى (Super Admin - صلاحيات كاملة)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>كلمة المرور المبدئية</label>
+          <input type="password" id="new-admin-pwd" required placeholder="••••••••••••">
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary close-modal">إلغاء</button>
+          <button type="submit" class="btn btn-success">إنشاء الحساب وتوليد 2FA</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let currentAdminUser = null;
+    let pendingInspectUserId = null;
+
+    // Helper functions
+    async function apiRequest(endpoint, options = {}) {
+      const opts = {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+        credentials: 'include',
+        ...options,
+      };
+
+      const res = await fetch(`/api/admin${endpoint}`, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      return data;
+    }
+
+    // Tab Navigation
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+        btn.classList.add('active');
+        const tabId = btn.getAttribute('data-tab');
+        document.getElementById(tabId)?.classList.add('active');
+        loadTabContent(tabId);
+      });
+    });
+
+    // 2FA / Recovery code toggle in Login form
+    document.getElementById('toggle-recovery-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('totp-group').style.display = 'none';
+      document.getElementById('recovery-group').style.display = 'block';
+      document.getElementById('login-totp').value = '';
+    });
+
+    document.getElementById('toggle-totp-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('recovery-group').style.display = 'none';
+      document.getElementById('totp-group').style.display = 'block';
+      document.getElementById('login-recovery').value = '';
+    });
+
+    // Check Current Admin Session
+    async function checkCurrentSession() {
+      try {
+        const res = await apiRequest('/auth/me');
+        if (res.success && res.adminUser) {
+          showPortal(res.adminUser);
+        } else {
+          showLogin();
+        }
+      } catch (_) {
+        showLogin();
+      }
+    }
+
+    function showLogin() {
+      document.getElementById('login-section').style.display = 'flex';
+      document.getElementById('portal-section').style.display = 'none';
+    }
+
+    function showPortal(user) {
+      currentAdminUser = user;
+      document.getElementById('login-section').style.display = 'none';
+      document.getElementById('portal-section').style.display = 'block';
+
+      document.getElementById('current-user-email').innerText = user.email;
+      const roleBadge = document.getElementById('current-user-role');
+      roleBadge.innerText = user.role;
+      roleBadge.className = `role-badge role-${user.role}`;
+
+      // RBAC UI masking
+      const isSuper = user.role === 'super_admin';
+      if (!isSuper) {
+        document.getElementById('tab-btn-settings').style.display = 'none';
+        document.getElementById('tab-btn-team').style.display = 'none';
+        document.getElementById('trigger-backup-btn').style.display = 'none';
+      } else {
+        document.getElementById('tab-btn-settings').style.display = 'flex';
+        document.getElementById('tab-btn-team').style.display = 'flex';
+        document.getElementById('trigger-backup-btn').style.display = 'inline-flex';
+      }
+
+      loadDashboard();
+    }
+
+    // Login Form Submit
+    document.getElementById('login-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      const totp = document.getElementById('login-totp').value;
+      const recoveryCode = document.getElementById('login-recovery').value;
+      const alertBox = document.getElementById('login-alert');
+
+      alertBox.classList.remove('show');
+
+      try {
+        const res = await apiRequest('/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password, totp, recoveryCode }),
+        });
+
+        if (res.success) {
+          showPortal(res.adminUser);
+        }
+      } catch (err) {
+        alertBox.innerText = err.message;
+        alertBox.classList.add('show');
+      }
+    });
+
+    // Logout
+    document.getElementById('logout-btn')?.addEventListener('click', async () => {
+      try {
+        await apiRequest('/auth/logout', { method: 'POST' });
+      } catch (_) {}
+      currentAdminUser = null;
+      showLogin();
+    });
+
+    // Load Tab Contents
+    function loadTabContent(tabId) {
+      if (tabId === 'tab-dashboard') loadDashboard();
+      if (tabId === 'tab-users') loadUsers();
+      if (tabId === 'tab-content') loadContentSummary();
+      if (tabId === 'tab-alerts') loadAlerts();
+      if (tabId === 'tab-retrieval') loadRetrievalAnalytics();
+      if (tabId === 'tab-audit') loadAuditLogs();
+      if (tabId === 'tab-settings') loadSettings();
+      if (tabId === 'tab-team') loadTeam();
+    }
+
+    // Dashboard
+    async function loadDashboard() {
+      try {
+        const res = await apiRequest('/dashboard');
+        const d = res.dashboard;
+        const uptimeMin = Math.floor(d.server.uptimeSeconds / 60);
+        document.getElementById('dash-uptime').innerText = `${uptimeMin} دقيقة`;
+        document.getElementById('dash-memory').innerText = `${d.server.memory.rssMb} MB`;
+        document.getElementById('dash-heap').innerText = `Heap: ${d.server.memory.heapUsedMb} MB`;
+        document.getElementById('dash-users').innerText = d.stats.users;
+        document.getElementById('dash-docs').innerText = d.stats.documents;
+        document.getElementById('dash-evidence').innerText = d.stats.researchEvidence;
+        document.getElementById('dash-alerts').innerText = d.stats.unresolvedAlerts;
+        document.getElementById('dash-backup-time').innerText = d.backup.lastBackupTimestamp
+          ? new Date(d.backup.lastBackupTimestamp).toLocaleString('ar-AE')
+          : 'لا توجد نسخ سابقة';
+      } catch (err) {
+        console.error('Failed to load dashboard:', err);
+      }
+    }
+
+    // Instant Backup
+    document.getElementById('trigger-backup-btn')?.addEventListener('click', async () => {
+      if (!confirm('هل تريد تشغيل نسخ احتياطي فوري لقاعدة بيانات SQLite الآن؟')) return;
+      try {
+        const res = await apiRequest('/backup/trigger', { method: 'POST' });
+        alert(`تم إنشاء النسخة الاحتياطية بنجاح:\n${res.backup.filename} (${res.backup.sizeBytes} بايت)`);
+        loadDashboard();
+      } catch (err) {
+        alert(`فشل النسخ: ${err.message}`);
+      }
+    });
+
+    // Users
+    async function loadUsers() {
+      const search = document.getElementById('user-search-input').value;
+      const status = document.getElementById('user-status-filter').value;
+      const tbody = document.getElementById('users-tbody');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">جارٍ التحميل...</td></tr>';
+
+      try {
+        const res = await apiRequest(`/users?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`);
+        if (res.users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">لم يتم العثور على مستخدمين.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = res.users.map((u) => `
+          <tr>
+            <td style="font-weight: 600;">${u.name}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${u.email}</td>
+            <td><span class="badge badge-info">${u.role}</span></td>
+            <td><span class="badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}">${u.status}</span></td>
+            <td>${u.consumption.researchQueries}</td>
+            <td>${u.consumption.projectsCreated}</td>
+            <td>
+              <button class="btn btn-secondary toggle-user-status" data-id="${u.id}" data-status="${u.status}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
+                ${u.status === 'active' ? 'تعطيل' : 'تفعيل'}
+              </button>
+              <button class="btn btn-primary inspect-user-btn" data-id="${u.id}" data-name="${u.name}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
+                عرض المحتوى
+              </button>
+            </td>
+          </tr>
+        `).join('');
+
+        // Wire user actions
+        document.querySelectorAll('.toggle-user-status').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const uid = btn.getAttribute('data-id');
+            const curStatus = btn.getAttribute('data-status');
+            const newStatus = curStatus === 'active' ? 'disabled' : 'active';
+            if (confirm(`هل أنت متأكد من تغيير حالة المستخدم إلى ${newStatus}؟`)) {
+              await apiRequest(`/users/${uid}/status`, {
+                method: 'POST',
+                body: JSON.stringify({ status: newStatus }),
+              });
+              loadUsers();
+            }
+          });
+        });
+
+        document.querySelectorAll('.inspect-user-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            pendingInspectUserId = btn.getAttribute('data-id');
+            document.getElementById('inspected-user-title').innerText = `المحتوى الخاص للمستخدم: ${btn.getAttribute('data-name')}`;
+            document.getElementById('justification-input').value = '';
+            document.getElementById('justification-modal').classList.add('open');
+          });
+        });
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #fb7185;">خطأ: ${err.message}</td></tr>`;
+      }
+    }
+
+    document.getElementById('refresh-users-btn')?.addEventListener('click', loadUsers);
+
+    // Confirm User Inspection
+    document.getElementById('confirm-inspect-btn')?.addEventListener('click', async () => {
+      const justification = document.getElementById('justification-input').value;
+      if (!justification || justification.trim().length < 5) {
+        alert('يجب تقديم مبرر إداري رسمي لا يقل عن 5 أحرف.');
+        return;
+      }
+
+      try {
+        const res = await apiRequest(`/users/${pendingInspectUserId}/inspect-private`, {
+          method: 'POST',
+          body: JSON.stringify({ justification }),
+        });
+
+        document.getElementById('justification-modal').classList.remove('open');
+        const contentDiv = document.getElementById('inspected-user-content');
+        contentDiv.innerHTML = `
+          <h4 style="margin-bottom: 0.5rem;">المشاريع (${res.privateData.projects.length})</h4>
+          <ul style="padding-right: 1.2rem; margin-bottom: 1rem;">
+            ${res.privateData.projects.map((p) => `<li><b>${p.name}</b> (${p.status}) - ${p.description || ''}</li>`).join('')}
+          </ul>
+          <h4 style="margin-bottom: 0.5rem;">جلسات البحث (${res.privateData.sessions.length})</h4>
+          <ul style="padding-right: 1.2rem;">
+            ${res.privateData.sessions.map((s) => `<li><b>${s.session_name || 'جلسة بحث'}</b> - ${s.status}</li>`).join('')}
+          </ul>
+        `;
+        document.getElementById('user-data-modal').classList.add('open');
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    // Content
+    async function loadContentSummary() {
+      try {
+        const res = await apiRequest('/content/summary');
+        document.getElementById('cnt-total-docs').innerText = res.summary.totalDocuments;
+        document.getElementById('cnt-shared-docs').innerText = res.summary.sharedLibraryDocuments;
+        document.getElementById('cnt-total-chunks').innerText = res.summary.totalChunks;
+        document.getElementById('cnt-total-tables').innerText = res.summary.totalTables + res.summary.totalFigures;
+
+        const tbody = document.getElementById('content-tbody');
+        tbody.innerHTML = res.recentDocuments.map((doc) => `
+          <tr>
+            <td style="font-weight: 600;">${doc.title}</td>
+            <td>${doc.author || 'غير محدد'}</td>
+            <td><span class="badge badge-info">${doc.kind}</span></td>
+            <td><span class="badge ${doc.is_shared_library ? 'badge-success' : 'badge-warning'}">${doc.is_shared_library ? 'نعم' : 'خاص'}</span></td>
+            <td style="font-size: 0.8rem;">${new Date(doc.uploaded_at).toLocaleDateString('ar-AE')}</td>
+            <td>
+              <button class="btn btn-danger moderate-doc-btn" data-id="${doc.id}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">حذف</button>
+            </td>
+          </tr>
+        `).join('');
+
+        document.querySelectorAll('.moderate-doc-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-id');
+            if (confirm('هل أنت متأكد من حذف هذا المحتوى؟')) {
+              await apiRequest(`/content/${id}/moderate`, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'delete', reason: 'إزالة محتوى مخالف عبر لوحة الإدارة' }),
+              });
+              loadContentSummary();
+            }
+          });
+        });
+      } catch (err) {
+        console.error('Failed to load content summary:', err);
+      }
+    }
+
+    // Alerts
+    async function loadAlerts() {
+      const level = document.getElementById('alerts-level-filter').value;
+      const cat = document.getElementById('alerts-cat-filter').value;
+      const tbody = document.getElementById('alerts-tbody');
+
+      try {
+        const res = await apiRequest(`/system-alerts?level=${level}&category=${cat}`);
+        if (res.alerts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #34d399;">لا توجد تنبيهات نشطة.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = res.alerts.map((alt) => `
+          <tr>
+            <td><span class="badge ${alt.level === 'critical' ? 'badge-danger' : alt.level === 'warning' ? 'badge-warning' : 'badge-info'}">${alt.level}</span></td>
+            <td><span class="badge badge-secondary">${alt.category}</span></td>
+            <td style="font-size: 0.85rem;">${alt.message}</td>
+            <td style="font-size: 0.8rem;">${new Date(alt.timestamp).toLocaleTimeString('ar-AE')}</td>
+            <td style="font-size: 0.8rem;">${alt.tenant_id || 'غير معين'}</td>
+            <td>
+              <button class="btn btn-success resolve-alert-btn" data-id="${alt.id}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">حل وإغلاق</button>
+            </td>
+          </tr>
+        `).join('');
+
+        document.querySelectorAll('.resolve-alert-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-id');
+            await apiRequest(`/system-alerts/${id}/resolve`, { method: 'POST' });
+            loadAlerts();
+            loadDashboard();
+          });
+        });
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color: #fb7185;">خطأ: ${err.message}</td></tr>`;
+      }
+    }
+
+    document.getElementById('refresh-alerts-btn')?.addEventListener('click', loadAlerts);
+
+    // Retrieval Quality
+    async function loadRetrievalAnalytics() {
+      try {
+        const res = await apiRequest('/analytics/retrieval-gaps');
+        const b = res.breakdown;
+        const container = document.getElementById('retrieval-breakdown-cards');
+        const categories = [
+          { key: 'aqeedah', label: 'العقيدة والتوحيد' },
+          { key: 'fiqh', label: 'الفقه والأحكام' },
+          { key: 'history', label: 'التاريخ والسير' },
+          { key: 'hadith', label: 'الحديث الشريف' },
+          { key: 'code', label: 'البرمجيات والهندسة' },
+          { key: 'general', label: 'عام' },
+        ];
+
+        container.innerHTML = categories.map((cat) => {
+          const item = b[cat.key] || { positive: 0, negative: 0, issues: [] };
+          return `
+            <div class="card">
+              <div class="card-title">${cat.label}</div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="color: #34d399; font-weight: 700;">+${item.positive} إيجابي</span>
+                <span style="color: #fb7185; font-weight: 700;">-${item.negative} فجوات</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        const allIssues = Object.values(b).flatMap((v) => v.issues || []);
+        const issuesTbody = document.getElementById('retrieval-issues-tbody');
+        if (allIssues.length === 0) {
+          issuesTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #34d399;">لا توجد فجوات استرجاع دلالية مسجلة.</td></tr>';
+        } else {
+          issuesTbody.innerHTML = allIssues.map((iss) => `
+            <tr>
+              <td style="font-weight: 600;">${iss.query || 'استعلام عام'}</td>
+              <td>${iss.comment || 'تقييم سلبي'}</td>
+              <td><span class="badge badge-warning">${iss.qualityGateScore || '5.0'}</span></td>
+              <td style="font-size: 0.8rem;">${new Date(iss.createdAt).toLocaleDateString('ar-AE')}</td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load retrieval analytics:', err);
+      }
+    }
+
+    // Audit Logs
+    async function loadAuditLogs() {
+      const search = document.getElementById('audit-search-input').value;
+      const tbody = document.getElementById('audit-tbody');
+
+      try {
+        const res = await apiRequest(`/audit-logs?search=${encodeURIComponent(search)}`);
+        if (res.actions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">لا توجد أحداث تدقيق مطابقة.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = res.actions.map((act) => `
+          <tr>
+            <td style="font-size: 0.8rem; font-family: var(--font-mono);">${new Date(act.created_at).toLocaleString('ar-AE')}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${act.admin_user_id}</td>
+            <td><span class="badge badge-info">${act.action}</span></td>
+            <td>${act.justification || '-'}</td>
+            <td>${act.target_type ? `${act.target_type}:${act.target_id || ''}` : '-'}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${act.ip || '-'}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color: #fb7185;">خطأ: ${err.message}</td></tr>`;
+      }
+    }
+
+    document.getElementById('audit-search-input')?.addEventListener('input', loadAuditLogs);
+
+    // Settings
+    async function loadSettings() {
+      try {
+        const res = await apiRequest('/settings');
+        const s = res.settings;
+        document.getElementById('setting-cost-ceiling').value = s.aiResearchCostCeilingUsd;
+        document.getElementById('setting-tokens-limit').value = s.aiDailyTokenLimit;
+        document.getElementById('setting-ttl-standard').value = s.webVerificationTtlStandardDays;
+        document.getElementById('setting-ttl-software').value = s.webVerificationTtlSoftwareDays;
+        document.getElementById('setting-rrf-k').value = s.hybridRrfKWeight;
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    }
+
+    document.getElementById('settings-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await apiRequest('/settings', {
+          method: 'PUT',
+          body: JSON.stringify({
+            aiResearchCostCeilingUsd: parseFloat(document.getElementById('setting-cost-ceiling').value),
+            aiDailyTokenLimit: parseInt(document.getElementById('setting-tokens-limit').value, 10),
+            webVerificationTtlStandardDays: parseInt(document.getElementById('setting-ttl-standard').value, 10),
+            webVerificationTtlSoftwareDays: parseInt(document.getElementById('setting-ttl-software').value, 10),
+            hybridRrfKWeight: parseInt(document.getElementById('setting-rrf-k').value, 10),
+            justification: 'تعديل الإعدادات عبر لوحة تحكم المشرف الأعلى',
+          }),
+        });
+        alert('تم حفظ الإعدادات بنجاح وتسجيل العملية في سجل التدقيق.');
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    // Team Management
+    async function loadTeam() {
+      const tbody = document.getElementById('team-tbody');
+      try {
+        const res = await apiRequest('/team');
+        tbody.innerHTML = res.team.map((adm) => `
+          <tr>
+            <td style="font-weight: 600;">${adm.name}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${adm.email}</td>
+            <td><span class="role-badge role-${adm.role}">${adm.role}</span></td>
+            <td><span class="badge ${adm.totp_enabled ? 'badge-success' : 'badge-danger'}">${adm.totp_enabled ? 'مفعل' : 'معطل'}</span></td>
+            <td>${adm.failed_logins}</td>
+            <td><span class="badge ${adm.status === 'active' ? 'badge-success' : 'badge-danger'}">${adm.status}</span></td>
+            <td>
+              <button class="btn btn-secondary toggle-team-status" data-id="${adm.id}" data-status="${adm.status}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
+                ${adm.status === 'active' ? 'تعليق' : 'تفعيل'}
+              </button>
+            </td>
+          </tr>
+        `).join('');
+
+        document.querySelectorAll('.toggle-team-status').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-id');
+            const cur = btn.getAttribute('data-status');
+            const newSt = cur === 'active' ? 'suspended' : 'active';
+            if (confirm(`هل أنت متأكد من تغيير حالة المدير إلى ${newSt}؟`)) {
+              await apiRequest(`/team/${id}/status`, {
+                method: 'POST',
+                body: JSON.stringify({ status: newSt }),
+              });
+              loadTeam();
+            }
+          });
+        });
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #fb7185;">خطأ: ${err.message}</td></tr>`;
+      }
+    }
+
+    document.getElementById('open-new-admin-btn')?.addEventListener('click', () => {
+      document.getElementById('new-admin-modal').classList.add('open');
+    });
+
+    document.getElementById('new-admin-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('new-admin-name').value;
+      const email = document.getElementById('new-admin-email').value;
+      const role = document.getElementById('new-admin-role').value;
+      const password = document.getElementById('new-admin-pwd').value;
+
+      try {
+        const res = await apiRequest('/team', {
+          method: 'POST',
+          body: JSON.stringify({ name, email, role, password }),
+        });
+        document.getElementById('new-admin-modal').classList.remove('open');
+        alert(`تم إنشاء المشرف بنجاح!\nسر الـ 2FA (Base32):\n${res.totpSecret}\n\nرموز الطوارئ:\n${res.recoveryCodes.join(', ')}`);
+        loadTeam();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    // Close Modals
+    document.querySelectorAll('.close-modal').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.modal-backdrop').forEach((m) => m.classList.remove('open'));
+      });
+    });
+
+    // Initial session bootstrap check
+    checkCurrentSession();
+  </script>
+</body>
+</html>

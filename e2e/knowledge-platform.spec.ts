@@ -4,8 +4,11 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
+import { createRequire } from 'node:module';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const specRequire = createRequire(import.meta.url);
 
 test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', () => {
   let page: Page;
@@ -432,5 +435,64 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
     await expect(researchModal).not.toBeVisible();
 
     console.log('[E2E Gate Verification] ✅ Scenario 10: External Web Verification & PDF Structures verified.');
+  });
+
+  test('Scenario 11: Dedicated Subdomain Admin Portal & 2FA TOTP Flow', async ({ page }) => {
+    // 1. Verify Hard 404 on Main Domain when attempting to access /admin or /api/admin/*
+    const mainAdminRes = await page.request.get('/admin', {
+      headers: { 'x-forwarded-host': 'localhost:3005' },
+    });
+    expect(mainAdminRes.status()).toBe(404);
+    const mainAdminText = await mainAdminRes.text();
+    expect(mainAdminText).toContain('404 Not Found');
+
+    const mainApiAdminRes = await page.request.get('/api/admin/dashboard', {
+      headers: { 'x-forwarded-host': 'localhost:3005' },
+    });
+    expect(mainApiAdminRes.status()).toBe(404);
+
+    // 2. Access Admin Portal on admin subdomain
+    await page.setExtraHTTPHeaders({ 'x-forwarded-host': 'admin.localhost:3005' });
+    await page.goto('/');
+
+    // Verify Admin Portal login screen is displayed
+    await expect(page.locator('#login-section')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#login-email')).toBeVisible();
+
+    // 3. Perform 2FA Login using standard RFC 6238 TOTP
+    const { generateTOTP } = specRequire('../server_backend/auth/totp.js');
+    const { DEFAULT_SUPER_TOTP } = specRequire('../server_backend/auth/adminAuthService.js');
+    const totpCode = generateTOTP(DEFAULT_SUPER_TOTP);
+
+    await page.locator('#login-email').fill('admin@cloudstudio.dev');
+    await page.locator('#login-password').fill('Admin@Secure2026!');
+    await page.locator('#login-totp').fill(totpCode);
+    await page.locator('#login-btn').click();
+
+    // 4. Verify successful authentication and Portal view
+    await expect(page.locator('#portal-section')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#current-user-role')).toContainText('super_admin');
+    await expect(page.locator('#current-user-email')).toContainText('admin@cloudstudio.dev');
+
+    // 5. Verify Dashboard stats loaded
+    await expect(page.locator('#dash-uptime')).toBeVisible();
+    await expect(page.locator('text=14 / 14')).toBeVisible();
+
+    // 6. Test User Management tab
+    await page.locator('button[data-tab="tab-users"]').click();
+    await expect(page.locator('#tab-users')).toBeVisible();
+    await expect(page.locator('#users-tbody')).toBeVisible();
+
+    // 7. Test Settings tab (Super Admin)
+    await page.locator('button[data-tab="tab-settings"]').click();
+    await expect(page.locator('#tab-settings')).toBeVisible();
+    const costCeilingInput = page.locator('#setting-cost-ceiling');
+    await expect(costCeilingInput).toBeVisible();
+
+    // 8. Logout
+    await page.locator('#logout-btn').click();
+    await expect(page.locator('#login-section')).toBeVisible({ timeout: 10000 });
+
+    console.log('[E2E Gate Verification] ✅ Scenario 11: Dedicated Subdomain Admin Portal & 2FA TOTP Flow verified.');
   });
 });
