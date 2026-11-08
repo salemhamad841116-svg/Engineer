@@ -1046,6 +1046,39 @@ CREATE TABLE IF NOT EXISTS admin_ip_whitelist (
       `);
     },
   },
+  {
+    id: 19,
+    name: 'user_profile_and_settings',
+    up: (handle) => {
+      function ensureCol(table, colName, colDef) {
+        const cols = handle.prepare(`PRAGMA table_info('${table}')`).all();
+        if (!cols.some((c) => c.name === colName)) {
+          handle.exec(`ALTER TABLE ${table} ADD COLUMN ${colName} ${colDef}`);
+        }
+      }
+
+      ensureCol('users', 'avatar_url', 'TEXT DEFAULT NULL');
+      ensureCol('users', 'storage_quota_bytes', 'INTEGER NOT NULL DEFAULT 104857600');
+      ensureCol('admin_users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0');
+      handle.exec("UPDATE admin_users SET must_change_password = 1 WHERE created_by = 'system_bootstrap'");
+
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  language TEXT NOT NULL DEFAULT 'ar' CHECK (language IN ('ar', 'en')),
+  theme TEXT NOT NULL DEFAULT 'dark' CHECK (theme IN ('dark', 'light', 'system')),
+  default_research_tier TEXT NOT NULL DEFAULT 'deep' CHECK (default_research_tier IN ('quick', 'deep', 'expert')),
+  show_page_numbers INTEGER NOT NULL DEFAULT 1 CHECK (show_page_numbers IN (0, 1)),
+  answer_length TEXT NOT NULL DEFAULT 'detailed' CHECK (answer_length IN ('concise', 'detailed')),
+  show_quality_badges INTEGER NOT NULL DEFAULT 1 CHECK (show_quality_badges IN (0, 1)),
+  retain_search_history INTEGER NOT NULL DEFAULT 1 CHECK (retain_search_history IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_settings_user ON user_settings(user_id);
+      `);
+    },
+  },
 ];
 
 function openDb() {

@@ -269,9 +269,11 @@ export function attachBackendAndDatabase(app: Express) {
 
     // مسارات المصادقة وتسجيل الدخول والحسابات
     const authRoutes = require('../server_backend/auth/authRoutes.js');
+    const userRoutes = require('../server_backend/routes/userRoutes.js');
     const { extractToken } = require('../server_backend/auth/middleware.js');
     const authService = require('../server_backend/auth/authService.js');
     app.use('/api/auth', authRoutes);
+    app.use('/api/user', userRoutes);
 
     // استخراج جلسة المستخدم النشطة تلقائياً من الكوكي إن وجدت
     app.use((req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
@@ -437,6 +439,21 @@ export function attachBackendAndDatabase(app: Express) {
         }
         const pdfBuffer = Buffer.from(pdfBase64, 'base64');
         const pdfText = pdfBuffer.toString('utf-8');
+
+        // فحص حصة تخزين المستخدم (Phase 10 Storage Quota Enforcement)
+        const { checkStorageQuota } = require('../server_backend/services/userService.js');
+        const effectiveUserId = req.user?.id || req.tenantContext?.userId || req.tenantContext?.tenantId;
+        if (effectiveUserId) {
+          try {
+            checkStorageQuota(effectiveUserId, pdfBuffer.length);
+          } catch (quotaErr: unknown) {
+            return res.status(413).json({
+              error: extractErrorMessage(quotaErr),
+              code: 'STORAGE_QUOTA_EXCEEDED',
+              statusCode: 413,
+            });
+          }
+        }
 
         // استخراج ذكي للنصوص من تيارات الـ PDF القياسية (BT ... ET أو نصوص صريحة)
         let extractedText = '';

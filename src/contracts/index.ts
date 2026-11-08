@@ -460,7 +460,7 @@ export interface PlatformSettingsContract {
 }
 
 export interface ModalPayloadMap {
-  settings?: { tab?: 'general' | 'models' | 'api-keys' | 'database' | 'audit' | 'team' | 'billing' | 'advanced' };
+  settings?: { tab?: 'general' | 'models' | 'api-keys' | 'database' | 'audit' | 'team' | 'billing' | 'advanced' | 'profile' | 'activity' | 'security' | 'danger' };
   'export-code'?: { project?: unknown; files?: unknown[] };
   'import-code'?: { targetProjectId?: string };
   diagnostics?: { project?: unknown; issues?: unknown[] };
@@ -468,5 +468,79 @@ export interface ModalPayloadMap {
   auth?: { mode?: 'login' | 'register' };
   'deep-research'?: { initialQuery?: string };
   'autonomous-agent'?: { initialTask?: string };
+  'user-profile'?: { tab?: 'profile' | 'activity' | 'security' | 'settings' | 'danger' };
   [key: string]: Record<string, unknown> | undefined;
 }
+
+// ------------------------------------------------------------------------------
+// 7. Phase 10: User Profile, App Settings & Account Lifecycle Contracts
+// ------------------------------------------------------------------------------
+
+export interface UserProfileContract {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl?: string | null;
+  role: 'admin' | 'supervisor' | 'user';
+  createdAt: string;
+  lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
+  booksCount: number;
+  searchesCount: number;
+  feedbacksCount: number;
+  storageQuotaBytes: number;
+  storageUsedBytes: number;
+  storageUsedPercentage: number;
+}
+
+export interface UserSettingsContract {
+  userId: string;
+  language: 'ar' | 'en';
+  theme: 'dark' | 'light' | 'system';
+  defaultResearchTier: 'quick' | 'deep' | 'expert';
+  showPageNumbers: boolean;
+  answerLength: 'concise' | 'detailed';
+  showQualityBadges: boolean;
+  retainSearchHistory: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ActiveSessionContract {
+  id: string;
+  client: string;
+  ip?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  lastActivityAt: string;
+  isCurrent: boolean;
+}
+
+export interface ChangePasswordRequestContract {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface DeleteAccountRequestContract {
+  password: string;
+  confirmationPhrase: string;
+}
+
+export interface UserFeedbackExportItemContract {
+  id: string;
+  sessionId: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+}
+
+export interface UserDataExportContract {
+  user: UserProfileContract;
+  settings: UserSettingsContract;
+  books: BookItemContract[];
+  researchSessions: ResearchSessionContract[];
+  feedbacks: UserFeedbackExportItemContract[];
+  exportedAt: string;
+}
+

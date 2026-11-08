@@ -2,7 +2,7 @@ const { getDb } = require('../db/database');
 const { newId, randomToken, sha256Hex } = require('../utils/ids');
 const { nowMs, nowIso, toIso } = require('../utils/clock');
 const { AppError } = require('../utils/errors');
-const { hashPassword, verifyPassword, verifyDummy } = require('./password');
+const { hashPassword, verifyPassword, verifyDummy, validatePasswordStrength } = require('./password');
 const { generateSecret, verifyTOTP, generateTOTP } = require('./totp');
 const { systemHealthMonitor } = require('../services/operations/systemHealthMonitor');
 
@@ -27,8 +27,8 @@ function bootstrapAdminUsers() {
     const totpSecret = process.env.ADMIN_TOTP_SECRET || DEFAULT_SUPER_TOTP;
 
     db.prepare(`
-      INSERT OR REPLACE INTO admin_users (id, email, name, role, password_hash, totp_secret, totp_enabled, failed_logins, status, created_at, created_by)
-      VALUES (?, ?, ?, 'super_admin', ?, ?, 1, 0, 'active', ?, 'system_bootstrap')
+      INSERT OR REPLACE INTO admin_users (id, email, name, role, password_hash, totp_secret, totp_enabled, failed_logins, status, created_at, created_by, must_change_password)
+      VALUES (?, ?, ?, 'super_admin', ?, ?, 1, 0, 'active', ?, 'system_bootstrap', 1)
     `).run(superId, email, name, passwordHash, totpSecret, now);
 
     // Seed 8 emergency recovery codes
@@ -235,6 +235,7 @@ function login({ email, password, totp, recoveryCode, ip = '127.0.0.1', userAgen
       name: user.name,
       role: user.role,
       status: user.status,
+      mustChangePassword: Boolean(user.must_change_password),
     },
   };
 }
@@ -247,7 +248,7 @@ function resolveAdminSession(token) {
   const tokenHash = sha256Hex(token);
   const db = getDb();
   const session = db.prepare(`
-    SELECT s.*, u.email, u.name, u.role, u.status as user_status
+    SELECT s.*, u.email, u.name, u.role, u.status as user_status, u.must_change_password
     FROM admin_sessions s
     JOIN admin_users u ON u.id = s.admin_user_id
     WHERE s.token_hash = ?
@@ -279,8 +280,43 @@ function resolveAdminSession(token) {
       name: session.name,
       role: session.role,
       status: session.user_status,
+      mustChangePassword: Boolean(session.must_change_password),
     },
   };
+}
+
+function forceChangeAdminPassword({ adminUserId, currentPassword, newPassword, newTotpSecret }) {
+  const db = getDb();
+  const user = db.prepare('SELECT * FROM admin_users WHERE id = ?').get(adminUserId);
+  if (!user) throw new AppError(404, 'ADMIN_NOT_FOUND', 'Admin user not found.');
+
+  if (!verifyPassword(currentPassword, user.password_hash)) {
+    throw new AppError(401, 'INVALID_CREDENTIALS', 'Current initial password is incorrect.');
+  }
+
+  const weak = validatePasswordStrength(newPassword);
+  if (weak) throw new AppError(400, 'PASSWORD_WEAK', weak);
+
+  const newHash = hashPassword(newPassword);
+  const totpToSet = newTotpSecret ? String(newTotpSecret).trim() : user.totp_secret;
+
+  db.prepare(`
+    UPDATE admin_users 
+    SET password_hash = ?, totp_secret = ?, must_change_password = 0 
+    WHERE id = ?
+  `).run(newHash, totpToSet, adminUserId);
+
+  recordAdminAction({
+    adminUserId,
+    action: 'admin.initial_password_changed',
+    targetType: 'admin_user',
+    targetId: adminUserId,
+    justification: 'Completed mandatory initial password and credential rotation',
+    ip: '127.0.0.1',
+    details: { initialPasswordOverwritten: true },
+  });
+
+  return { success: true, message: 'Initial password updated successfully. Must change password restriction lifted.' };
 }
 
 function logout(session, actor, ip) {
@@ -304,6 +340,7 @@ module.exports = {
   recordAdminAction,
   login,
   resolveAdminSession,
+  forceChangeAdminPassword,
   logout,
   DEFAULT_SUPER_TOTP,
   DEFAULT_SUPPORT_TOTP,

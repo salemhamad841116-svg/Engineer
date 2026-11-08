@@ -22,7 +22,7 @@ if (!fs.existsSync(TEMP_DB_DIR)) {
 const tempDbFile = path.join(TEMP_DB_DIR, `fresh_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.sqlite`);
 
 console.log('================================================================');
-console.log('🏛️ RUNNING FRESH-DB MIGRATION SUITE (MIGRATIONS 1 TO 18)');
+console.log('🏛️ RUNNING FRESH-DB MIGRATION SUITE (MIGRATIONS 1 TO 19)');
 console.log('================================================================\n');
 
 let dbHandle = null;
@@ -85,7 +85,8 @@ try {
     'admin_recovery_codes',
     'admin_audit_actions',
     'admin_content_flags',
-    'admin_ip_whitelist'
+    'admin_ip_whitelist',
+    'user_settings'
   ];
 
   for (const t of requiredTables) {
@@ -124,13 +125,30 @@ try {
   assert.ok(alertCols.includes('category'), 'system_alert_logs missing category');
   assert.ok(alertCols.includes('details_json'), 'system_alert_logs missing details_json');
 
-  // 5. Verify admin_users has role and totp fields
+  // 5. Verify admin_users has role and totp and must_change_password fields
   const adminUserCols = dbHandle.prepare("PRAGMA table_info('admin_users')").all().map((c) => c.name);
   assert.ok(adminUserCols.includes('role'), 'admin_users missing role');
   assert.ok(adminUserCols.includes('totp_secret'), 'admin_users missing totp_secret');
   assert.ok(adminUserCols.includes('totp_enabled'), 'admin_users missing totp_enabled');
   assert.ok(adminUserCols.includes('failed_logins'), 'admin_users missing failed_logins');
   assert.ok(adminUserCols.includes('locked_until'), 'admin_users missing locked_until');
+  assert.ok(adminUserCols.includes('must_change_password'), 'admin_users missing must_change_password');
+
+  // 6. Verify users table has avatar_url and storage_quota_bytes
+  const userCols = dbHandle.prepare("PRAGMA table_info('users')").all().map((c) => c.name);
+  assert.ok(userCols.includes('avatar_url'), 'users missing avatar_url');
+  assert.ok(userCols.includes('storage_quota_bytes'), 'users missing storage_quota_bytes');
+
+  // 7. Verify user_settings table has all required preferences
+  const userSettingsCols = dbHandle.prepare("PRAGMA table_info('user_settings')").all().map((c) => c.name);
+  assert.ok(userSettingsCols.includes('user_id'), 'user_settings missing user_id');
+  assert.ok(userSettingsCols.includes('language'), 'user_settings missing language');
+  assert.ok(userSettingsCols.includes('theme'), 'user_settings missing theme');
+  assert.ok(userSettingsCols.includes('default_research_tier'), 'user_settings missing default_research_tier');
+  assert.ok(userSettingsCols.includes('show_page_numbers'), 'user_settings missing show_page_numbers');
+  assert.ok(userSettingsCols.includes('answer_length'), 'user_settings missing answer_length');
+  assert.ok(userSettingsCols.includes('show_quality_badges'), 'user_settings missing show_quality_badges');
+  assert.ok(userSettingsCols.includes('retain_search_history'), 'user_settings missing retain_search_history');
 
   console.log('  ✅ Column structures, data types, and schema evolutions verified.');
 

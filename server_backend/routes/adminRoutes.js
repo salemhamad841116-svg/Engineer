@@ -86,6 +86,22 @@ router.get('/auth/me', requireAdminAuth(), (req, res) => {
   });
 });
 
+router.post('/auth/force-password-change', requireAdminAuth(), (req, res) => {
+  try {
+    const { currentPassword, newPassword, newTotpSecret } = req.body || {};
+    const result = adminAuthService.forceChangeAdminPassword({
+      adminUserId: req.adminUser.id,
+      currentPassword,
+      newPassword,
+      newTotpSecret,
+    });
+    res.json(result);
+  } catch (err) {
+    const status = err.status || 400;
+    res.status(status).json({ success: false, error: err.code || 'BAD_REQUEST', message: err.message });
+  }
+});
+
 // ----------------------------------------------------
 // Section 1: Live System Dashboard
 // ----------------------------------------------------

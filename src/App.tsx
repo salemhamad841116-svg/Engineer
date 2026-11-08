@@ -42,6 +42,7 @@ import { ServersView } from './components/ServersView';
 import DeepResearchModal from './components/DeepResearchModal';
 import { AutonomousAgentModal } from './components/AutonomousAgentModal';
 import { AuthModal } from './components/AuthModal';
+import { UserProfileAndSettingsModal } from './components/UserProfileAndSettingsModal';
 
 export default function App() {
   // Primary State
@@ -82,6 +83,8 @@ export default function App() {
   const [modalPayload, setModalPayload] = useState<unknown>(null);
   const [infoDrawer, setInfoDrawer] = useState<'help' | 'releases' | 'status' | 'referral' | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [userProfileModalOpen, setUserProfileModalOpen] = useState(false);
+  const [userProfileInitialTab, setUserProfileInitialTab] = useState<'profile' | 'activity' | 'security' | 'settings' | 'danger'>('profile');
 
   // AI Execution Pipeline State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -96,6 +99,17 @@ export default function App() {
       setToast((prev) => (prev?.message === message ? null : prev));
     }, 4000);
   }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // offline / ignored
+    }
+    setCurrentUser(null);
+    setUserProfileModalOpen(false);
+    notify('info', settings.language === 'ar' ? 'تم تسجيل الخروج بنجاح' : 'Logged out successfully');
+  }, [notify, settings.language]);
 
   // Check current session on mount
   useEffect(() => {
@@ -157,6 +171,15 @@ export default function App() {
   const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
 
   const handleOpenModal = (modal: string, payload?: unknown) => {
+    if (modal === 'user-profile' || modal === 'profile' || modal === 'user-settings') {
+      const initial =
+        payload && typeof payload === 'object' && 'tab' in payload && typeof (payload as { tab: unknown }).tab === 'string'
+          ? ((payload as { tab: string }).tab as 'profile' | 'activity' | 'security' | 'settings' | 'danger')
+          : (modal === 'user-settings' ? 'settings' : 'profile');
+      setUserProfileInitialTab(initial);
+      setUserProfileModalOpen(true);
+      return;
+    }
     setModalPayload(payload || null);
     setActiveModal(modal);
   };
@@ -538,14 +561,19 @@ export default function App() {
           {sidebarOpen && (
             <button
               type="button"
-              onClick={() => handleOpenModal('settings', { tab: 'account' })}
+              id="sidebar-user-profile-btn"
+              data-testid="sidebar-user-profile-btn"
+              onClick={() => {
+                setUserProfileInitialTab('profile');
+                setUserProfileModalOpen(true);
+              }}
               className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl bg-[#161820] hover:bg-[#1c1f2a] border border-white/10 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-6 h-6 rounded-md bg-sky-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                  S
+                  {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : (settings.userName ? settings.userName.charAt(0).toUpperCase() : 'S')}
                 </div>
-                <span className="text-xs font-semibold text-zinc-100 truncate">{settings.userName}</span>
+                <span className="text-xs font-semibold text-zinc-100 truncate">{currentUser?.name || settings.userName}</span>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="text-[11px] font-medium text-zinc-300 bg-white/8 px-2 py-0.5 rounded-md">
@@ -699,7 +727,12 @@ export default function App() {
           {/* Settings Button (زر الإعدادات) */}
           <button
             type="button"
-            onClick={() => handleOpenModal('settings')}
+            id="sidebar-settings-btn"
+            data-testid="sidebar-settings-btn"
+            onClick={() => {
+              setUserProfileInitialTab('settings');
+              setUserProfileModalOpen(true);
+            }}
             title={isAr ? 'الإعدادات والحساب' : 'Settings'}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer border border-white/5"
           >
@@ -917,6 +950,22 @@ export default function App() {
             userEmail: user.email,
           }));
           notify('success', language === 'ar' ? `مرحباً بك ${user.name}` : `Welcome ${user.name}`);
+        }}
+      />
+
+      {/* User Profile & App Settings Modal (Phase 10) */}
+      <UserProfileAndSettingsModal
+        isOpen={userProfileModalOpen}
+        initialTab={userProfileInitialTab}
+        language={language}
+        onClose={() => setUserProfileModalOpen(false)}
+        onLogout={handleLogout}
+        onNotify={notify}
+        onProfileUpdated={(updated) => {
+          if (updated.name) {
+            setCurrentUser((prev) => (prev ? { ...prev, name: updated.name! } : null));
+            setSettings((prev) => ({ ...prev, userName: updated.name! }));
+          }
         }}
       />
 

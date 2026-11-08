@@ -479,12 +479,12 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
     await expect(page.locator('text=14 / 14')).toBeVisible();
 
     // 6. Test User Management tab
-    await page.locator('button[data-tab="tab-users"]').click();
+    await page.locator('button[data-tab="tab-users"]').click({ noWaitAfter: true });
     await expect(page.locator('#tab-users')).toBeVisible();
     await expect(page.locator('#users-tbody')).toBeVisible();
 
     // 7. Test Settings tab (Super Admin)
-    await page.locator('button[data-tab="tab-settings"]').click();
+    await page.locator('button[data-tab="tab-settings"]').click({ noWaitAfter: true });
     await expect(page.locator('#tab-settings')).toBeVisible();
     const costCeilingInput = page.locator('#setting-cost-ceiling');
     await expect(costCeilingInput).toBeVisible();
@@ -495,4 +495,70 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
 
     console.log('[E2E Gate Verification] ✅ Scenario 11: Dedicated Subdomain Admin Portal & 2FA TOTP Flow verified.');
   });
+
+  // --------------------------------------------------------------------------
+  // Scenario 12: User Profile, Live Stats, Synchronized Settings & Security
+  // --------------------------------------------------------------------------
+  test('Scenario 12: User Profile, Real-Time Stats, Settings Synchronization & Account Lifecycle Flow', async () => {
+    // 1. Navigate back to main workspace
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 2. Open User Profile and Settings modal via sidebar profile button
+    const userProfileBtn = page.locator('[data-testid="sidebar-user-profile-btn"]');
+    await expect(userProfileBtn).toBeVisible({ timeout: 15000 });
+    await userProfileBtn.click();
+
+    // 3. Verify modal opens
+    const userProfileModal = page.locator('[data-testid="user-profile-modal"]');
+    await expect(userProfileModal).toBeVisible({ timeout: 10000 });
+
+    // 4. Verify Live Storage Quota & Metric Badges
+    const storageText = page.locator('[data-testid="profile-storage-text"]');
+    await expect(storageText).toBeVisible();
+    await expect(storageText).toContainText('100 MB');
+
+    await expect(page.locator('[data-testid="profile-stat-books"]')).toBeVisible();
+    await expect(page.locator('[data-testid="profile-stat-searches"]')).toBeVisible();
+    await expect(page.locator('[data-testid="profile-stat-feedbacks"]')).toBeVisible();
+
+    // 5. Update Profile Display Name
+    const nameInput = page.locator('[data-testid="profile-name-input"]');
+    await expect(nameInput).toBeVisible();
+    await nameInput.fill('Dr. Tariq Al-Mansoor (Updated)');
+    await page.locator('[data-testid="profile-save-btn"]').click();
+
+    // 6. Test App Preferences & Server Synchronization
+    await page.locator('[data-testid="tab-btn-settings"]').click();
+    const tierSelect = page.locator('[data-testid="settings-tier-select"]');
+    await expect(tierSelect).toBeVisible();
+    await tierSelect.selectOption('expert');
+
+    const pageNumbersToggle = page.locator('[data-testid="settings-page-numbers-toggle"]');
+    await expect(pageNumbersToggle).toBeVisible();
+    await pageNumbersToggle.click();
+
+    const exportBtn = page.locator('[data-testid="settings-export-json-btn"]');
+    await expect(exportBtn).toBeVisible();
+
+    // 7. Test Security & Sessions tab
+    await page.locator('[data-testid="tab-btn-security"]').click();
+    await expect(page.locator('[data-testid="security-current-password"]')).toBeVisible();
+    await expect(page.locator('[data-testid="security-new-password"]')).toBeVisible();
+    await expect(page.locator('[data-testid="security-confirm-password"]')).toBeVisible();
+    await expect(page.locator('[data-testid="security-change-password-btn"]')).toBeVisible();
+
+    // 8. Test Danger Zone Tab
+    await page.locator('[data-testid="tab-btn-danger"]').click();
+    await expect(page.locator('[data-testid="danger-delete-password"]')).toBeVisible();
+    await expect(page.locator('[data-testid="danger-delete-phrase"]')).toBeVisible();
+    await expect(page.locator('[data-testid="danger-delete-account-btn"]')).toBeVisible();
+
+    // 9. Close modal
+    await page.locator('[data-testid="user-profile-close-btn"]').click();
+    await expect(userProfileModal).not.toBeVisible({ timeout: 5000 });
+
+    console.log('[E2E Gate Verification] ✅ Scenario 12: User Profile, Real-Time Stats & Synchronized Settings Flow verified.');
+  });
 });
+

@@ -28,6 +28,19 @@ function extractTenantContext(req) {
     throw new AccessDeniedError(`Tenant mismatch detected: Header [${headerTenant}] does not match Body [${bodyTenant}]`, 403);
   }
 
+  // Non-admin authenticated user cannot claim or access a foreign tenant
+  if (userTenant && !['admin'].includes(userRole) && !req.user?.is_admin) {
+    if (headerTenant && headerTenant !== userTenant) {
+      throw new AccessDeniedError(`Cross-tenant violation: user [${userTenant}] cannot access foreign tenant [${headerTenant}]`, 403);
+    }
+    if (bodyTenant && bodyTenant !== userTenant) {
+      throw new AccessDeniedError(`Cross-tenant violation: user [${userTenant}] cannot access foreign tenant [${bodyTenant}]`, 403);
+    }
+    if (queryTenant && queryTenant !== userTenant) {
+      throw new AccessDeniedError(`Cross-tenant violation: user [${userTenant}] cannot access foreign tenant [${queryTenant}]`, 403);
+    }
+  }
+
   return {
     tenantId: String(resolvedTenantId).trim(),
     userId: String(userTenant || headerTenant || 'anonymous_user').trim(),
