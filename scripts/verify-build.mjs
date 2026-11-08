@@ -14,6 +14,9 @@
  * 8. Autonomous Coding Agent Comprehensive Suite & Adversarial Hardening (25 tests)
  * 9. Deep Research & Book Intelligence Engine Comprehensive Suite (11 tests & Golden Dataset)
  * 10. External Web Verification & PDF Structures Comprehensive Suite (10 tests)
+ * 11. Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 17)
+ * 12. Automated SQLite Backup & Restore Drill Integrity Gate
+ * 13. Production Health Monitoring & Zero-Secrets Sanitization Gate
  */
 
 import { execSync } from 'child_process';
@@ -223,6 +226,27 @@ runStep('Deep Research & Book Intelligence Engine Comprehensive Suite (11 Tests 
 // ----------------------------------------------------
 runStep('External Web Verification & PDF Structures Comprehensive Suite (10 Tests)', () => {
   execSync('node server_backend/tests/phase7WebAndPdfSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 11: Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 17)
+// ----------------------------------------------------
+runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 17)', () => {
+  execSync('node server_backend/tests/freshDbMigrationSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 12: Automated SQLite Backup & Restore Drill Integrity Gate
+// ----------------------------------------------------
+runStep('Automated SQLite Backup & Restore Drill Integrity Gate', () => {
+  execSync('node server_backend/tests/backupRestoreDrillSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 13: Production Health Monitoring & Zero-Secrets Sanitization Gate
+// ----------------------------------------------------
+runStep('Production Health Monitoring & Zero-Secrets Sanitization Gate', () => {
+  execSync('node server_backend/tests/systemHealthAndAlertsSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
 printSummaryAndExit(0);

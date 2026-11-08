@@ -939,6 +939,29 @@ CREATE INDEX IF NOT EXISTS idx_doc_figures_doc ON document_figures(document_id);
       `);
     },
   },
+  {
+    id: 17,
+    name: 'phase8_operations_and_sanitized_alerts',
+    up(handle) {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS system_alert_logs (
+  id TEXT PRIMARY KEY,
+  timestamp TEXT NOT NULL,
+  level TEXT NOT NULL CHECK(level IN ('info', 'warning', 'error', 'critical')),
+  category TEXT NOT NULL CHECK(category IN ('memory', 'disk', 'health', 'security', 'backup', 'general')),
+  message TEXT NOT NULL,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  is_resolved INTEGER NOT NULL DEFAULT 0,
+  resolved_at TEXT,
+  resolved_by TEXT,
+  tenant_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_alert_logs_time ON system_alert_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_alert_logs_level ON system_alert_logs(level);
+CREATE INDEX IF NOT EXISTS idx_alert_logs_cat ON system_alert_logs(category);
+      `);
+    },
+  },
 ];
 
 function openDb() {
@@ -1033,4 +1056,4 @@ function run(sql, ...params) {
   return getDb().prepare(sql).run(...params);
 }
 
-module.exports = { getDb, closeDb, tx, get, all, run, MIGRATIONS };
+module.exports = { getDb, closeDb, tx, get, all, run, MIGRATIONS, runMigrations };
