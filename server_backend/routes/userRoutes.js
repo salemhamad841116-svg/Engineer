@@ -180,4 +180,39 @@ router.post('/delete-account', (req, res, next) => {
   }
 });
 
+// Phase 12: Launch Pack User Extensions
+
+/**
+ * GET /api/user/quota-balance
+ * Returns real-time daily quota points balance, tier costs, and UTC reset timer
+ */
+router.get('/quota-balance', (req, res, next) => {
+  try {
+    const { getQuotaBalance } = require('../services/quotas/quotaService');
+    const balance = getQuotaBalance(req.user.id, req.user);
+    res.json({ success: true, balance });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/user/onboarding
+ * Updates onboarding tour completion state in user_settings
+ */
+router.post('/onboarding', (req, res, next) => {
+  try {
+    const { completed, step } = req.body || {};
+    const { getDb } = require('../db/database');
+    const db = getDb();
+    const isCompleted = completed === false || completed === 0 ? 0 : 1;
+    const currentStep = Number.isInteger(step) ? step : 3;
+    db.prepare('UPDATE user_settings SET onboarding_completed = ?, onboarding_step = ?, updated_at = ? WHERE user_id = ?')
+      .run(isCompleted, currentStep, new Date().toISOString(), req.user.id);
+    res.json({ success: true, onboardingCompleted: Boolean(isCompleted), onboardingStep: currentStep });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

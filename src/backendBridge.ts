@@ -295,6 +295,8 @@ export function attachBackendAndDatabase(app: Express) {
     // تفعيل حارس عزل المستأجرين (TenantGuard Middleware) لجميع مسارات البحث والمعرفة
     app.use('/api/research', tenantGuard);
 
+    const { checkAndConsumeQuota } = require('../server_backend/services/quotas/quotaService.js');
+
     // تشغيل جلسة بحث معرفي عميق
     app.post('/api/research/execute', async (req: AuthenticatedRequest, res: Response) => {
       try {
@@ -302,21 +304,54 @@ export function attachBackendAndDatabase(app: Express) {
         if (!query || !query.trim()) {
           return res.status(400).json({ error: 'يرجى إدخال سؤال البحث' });
         }
+
+        // Phase 12: Daily Quota & Email Verification Enforcement
+        const targetUserId = req.user?.id || userId || req.tenantContext?.userId || 'usr_anonymous';
+        let userRow = req.user;
+        if (!userRow && targetUserId && targetUserId !== 'usr_anonymous') {
+          userRow = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
+        }
+
+        const quotaDecision = checkAndConsumeQuota({
+          userId: targetUserId,
+          user: userRow,
+          level: level || 'deep',
+        });
+
+        if (!quotaDecision.allowed) {
+          return res.status(quotaDecision.statusCode || 429).json({
+            error: quotaDecision.message,
+            code: quotaDecision.code,
+            statusCode: quotaDecision.statusCode || 429,
+            cost: quotaDecision.cost,
+            available: quotaDecision.available,
+            resetAt: quotaDecision.resetAt,
+          });
+        }
+
         const result = await executeDeepResearch({
           query: query.trim(),
           manualLevel: level,
           bookIds,
           sessionId,
-          userId,
+          userId: targetUserId,
           tenantContext: req.tenantContext,
         });
-        res.json({ success: true, ...result });
+        res.json({ success: true, quota: quotaDecision, ...result });
       } catch (err: unknown) {
         if (isForbiddenError(err, AccessDeniedError)) {
           return res.status(403).json({ error: extractErrorMessage(err), code: 'CROSS_TENANT_FORBIDDEN', statusCode: 403 });
         }
         res.status(500).json({ error: extractErrorMessage(err) });
       }
+    });
+
+    // Phase 12: Public Legal Content Endpoints (Accessible without authentication)
+    app.get('/api/legal/terms', (_req: Request, res: Response) => {
+      res.json(require('../content/legal/terms.json'));
+    });
+    app.get('/api/legal/privacy', (_req: Request, res: Response) => {
+      res.json(require('../content/legal/privacy.json'));
     });
 
     // استرجاع تفاصيل جلسة بحث

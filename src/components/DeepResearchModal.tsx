@@ -15,6 +15,7 @@ import {
   Bookmark,
   RefreshCw,
   Library,
+  Coins,
 } from 'lucide-react';
 import { Language } from '../types/platform';
 
@@ -109,6 +110,28 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Phase 12: Quota State & Reset Timer
+  const [quotaInfo, setQuotaInfo] = useState<{
+    allocated: number;
+    used: number;
+    remaining: number;
+    resetAt: string;
+    resetMessage: string;
+    emailVerified: boolean;
+  } | null>(null);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
+
+  const reloadQuota = () => {
+    fetch('/api/user/quota-balance')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.balance) {
+          setQuotaInfo(data.balance);
+        }
+      })
+      .catch((_) => {});
+  };
+
   const reloadBooks = () => {
     fetch('/api/research/books')
       .then((r) => r.json())
@@ -120,10 +143,11 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
       .catch((err) => console.warn('Failed to load books:', err));
   };
 
-  // Load books library on open
+  // Load books library and quota on open
   useEffect(() => {
     if (!isOpen) return;
     reloadBooks();
+    reloadQuota();
   }, [isOpen]);
 
   const handlePdfUploadSubmit = async () => {
@@ -499,29 +523,69 @@ export default function DeepResearchModal({ isOpen, onClose, language }: DeepRes
               />
             </div>
 
+            {/* Quota Error / Limit Alert */}
+            {quotaError && (
+              <div
+                data-testid="quota-error-banner"
+                className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{quotaError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQuotaError(null)}
+                  className="text-amber-400 hover:text-white cursor-pointer px-1"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             {/* Research Controls: Level Selector & Books Selector */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/[0.06] text-xs">
-              {/* Level Selector */}
-              <div className="flex items-center gap-2" data-testid="research-level-selector">
-                <span className="text-zinc-400 font-medium">{isAr ? 'مستوى البحث:' : 'Research Level:'}</span>
-                <div className="inline-flex rounded-lg bg-black/40 p-1 border border-white/10">
-                  {(['quick', 'deep', 'expert'] as const).map((lvl) => (
-                    <button
-                      key={lvl}
-                      type="button"
-                      data-testid={`research-level-${lvl}`}
-                      onClick={() => setResearchLevel(lvl)}
-                      className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer font-medium ${
-                        researchLevel === lvl
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      {lvl === 'quick' && (isAr ? 'إجابة سريعة' : 'Quick Answer')}
-                      {lvl === 'deep' && (isAr ? 'بحث عميق' : 'Deep Research')}
-                      {lvl === 'expert' && (isAr ? 'بحث خبير' : 'Expert Research')}
-                    </button>
-                  ))}
+              {/* Level Selector & Quota Badge */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2" data-testid="research-level-selector">
+                  <span className="text-zinc-400 font-medium">{isAr ? 'مستوى البحث:' : 'Research Level:'}</span>
+                  <div className="inline-flex rounded-lg bg-black/40 p-1 border border-white/10">
+                    {(['quick', 'deep', 'expert'] as const).map((lvl) => (
+                      <button
+                        key={lvl}
+                        type="button"
+                        data-testid={`research-level-${lvl}`}
+                        onClick={() => setResearchLevel(lvl)}
+                        className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer font-medium ${
+                          researchLevel === lvl
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {lvl === 'quick' && (isAr ? 'إجابة سريعة (1ن)' : 'Quick (1 pt)')}
+                        {lvl === 'deep' && (isAr ? 'بحث عميق (3ن)' : 'Deep (3 pts)')}
+                        {lvl === 'expert' && (isAr ? 'بحث خبير (10ن)' : 'Expert (10 pts)')}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quota Balance Badge */}
+                <div
+                  data-testid="daily-quota-badge"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 font-medium select-none"
+                  title={quotaInfo?.resetMessage ? (isAr ? `تتجدد الحصة خلال ${quotaInfo.resetMessage}` : `Resets in ${quotaInfo.resetMessage}`) : undefined}
+                >
+                  <Coins className="w-3.5 h-3.5 text-amber-400" />
+                  <span>
+                    {quotaInfo
+                      ? isAr
+                        ? `${quotaInfo.remaining} / ${quotaInfo.allocated} نقاط متبقية اليوم`
+                        : `${quotaInfo.remaining} / ${quotaInfo.allocated} pts left today`
+                      : isAr
+                      ? '10 / 10 نقاط اليوم'
+                      : '10 / 10 pts today'}
+                  </span>
                 </div>
               </div>
 

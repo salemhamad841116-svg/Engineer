@@ -105,6 +105,29 @@ const config = {
     const k = this.geminiApiKey;
     return Boolean(k) && !/your_|_here|placeholder|changeme/i.test(k);
   },
+  // Phase 12: Launch Pack, Email, Quota & Domain Configuration
+  get appUrl() {
+    return (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  },
+  get emailProvider() {
+    return (process.env.EMAIL_PROVIDER || 'console').toLowerCase().trim();
+  },
+  get resendApiKey() {
+    const raw = process.env.RESEND_API_KEY || '';
+    return String(raw).replace(/\r/g, '').trim().replace(/^['"]|['"]$/g, '').trim();
+  },
+  get emailFrom() {
+    return process.env.EMAIL_FROM || 'noreply@misruq.com';
+  },
+  get passwordResetMinutes() {
+    return int('PASSWORD_RESET_MINUTES', 15);
+  },
+  get emailVerificationHours() {
+    return int('EMAIL_VERIFICATION_HOURS', 24);
+  },
+  get dailyFreeQuotaPoints() {
+    return int('DAILY_FREE_QUOTA_POINTS', 10);
+  },
 };
 
 module.exports = config;

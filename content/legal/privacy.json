@@ -1,0 +1,65 @@
+{
+  "version": "2026.1",
+  "last_updated": "2026-11-08",
+  "title": {
+    "ar": "سياسة الخصوصية وسرية البيانات",
+    "en": "Privacy Policy & Data Protection"
+  },
+  "sections": [
+    {
+      "id": "data_collected",
+      "heading": {
+        "ar": "١. البيانات التي نجمعها",
+        "en": "1. Information We Collect"
+      },
+      "content": {
+        "ar": "نقوم بجمع البيانات الضرورية لتقديم الخدمة: عنوان البريد الإلكتروني، الاسم الشخصي، عنوان بروتوكول الإنترنت (IP)، بصمة المتصفح المجهولة لأغراض منع الاحتيال وسوء الاستخدام، وسجلات تدقيق الجلسات النشطة.",
+        "en": "We collect essential information to deliver services: email address, display name, IP address, anonymized browser fingerprint for fraud and abuse prevention, and session audit logs."
+      }
+    },
+    {
+      "id": "tenant_isolation",
+      "heading": {
+        "ar": "٢. خصوصية الكتب والوثائق المعرفية",
+        "en": "2. Knowledge Vault & Document Confidentiality"
+      },
+      "content": {
+        "ar": "جميع الكتب والملفات المرفوعة إلى خزنة المعرفة مشفرة ومحكومة بحاجز عزل المستأجرين (Tenant Isolation RLS). لا يمكن لأي مستخدم آخر أو جلسة تجريبية الاطلاع على وثائقك أو استخلاص استعلامات منها.",
+        "en": "All books and files in the Knowledge Vault are encrypted and bound by strict Tenant Isolation RLS. No other users or demo guest sessions can access your documents or execute queries against them."
+      }
+    },
+    {
+      "id": "ai_inference_privacy",
+      "heading": {
+        "ar": "٣. عدم استخدام بياناتك في تدريب النماذج العامة",
+        "en": "3. Zero AI Model Training on User Data"
+      },
+      "content": {
+        "ar": "نلتزم التزاماً صارماً بعدم استخدام محتوى وثائقك أو أبحاثك في تدريب أو تحسين أي نماذج ذكاء اصطناعي عامة أو مشاركتها مع أطراف ثالثة دون إذن صريح.",
+        "en": "We strictly guarantee that your uploaded documents, search queries, and research syntheses are never used to train external or public AI models, nor shared with unauthorized third parties."
+      }
+    },
+    {
+      "id": "abuse_and_security",
+      "heading": {
+        "ar": "٤. الحماية ضد سوء الاستخدام ومراجعة الأمان",
+        "en": "4. Abuse Prevention & Security Oversight"
+      },
+      "content": {
+        "ar": "يتم رصد محاولات التسجيل المتعددة من نفس الشبكة آلياً وإشعار الإدارة الأمنية للمراجعة اليدوية، دون أي قرارات حظر عشوائية مؤتمتة، وذلك لحماية الموارد ومكافحة استنزاف الحصص.",
+        "en": "Automated security heuristics detect rapid multi-account creation from the same network and issue administrative alerts for human verification, with zero automated banning to avoid false positives."
+      }
+    },
+    {
+      "id": "user_rights",
+      "heading": {
+        "ar": "٥. حقوق المستخدم وحذف الحساب",
+        "en": "5. User Rights & Data Deletion"
+      },
+      "content": {
+        "ar": "يحق للمستخدم طلب نسخة من بياناته أو حذف حسابه وجميع الوثائق المرتبطة به نهائياً من خوادم وقواعد بيانات المنصة في أي وقت عبر إعدادات الحساب.",
+        "en": "Users retain the right to request an export of their stored data or permanently delete their account and associated documents from platform databases via account settings."
+      }
+    }
+  ]
+}

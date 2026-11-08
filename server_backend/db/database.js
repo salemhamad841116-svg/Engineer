@@ -1079,6 +1079,76 @@ CREATE INDEX IF NOT EXISTS idx_user_settings_user ON user_settings(user_id);
       `);
     },
   },
+  {
+    id: 20,
+    name: 'phase12_launch_trust_quotas_and_onboarding',
+    up: (handle) => {
+      function ensureCol(table, colName, colDef) {
+        const cols = handle.prepare(`PRAGMA table_info('${table}')`).all();
+        if (!cols.some((c) => c.name === colName)) {
+          handle.exec(`ALTER TABLE ${table} ADD COLUMN ${colName} ${colDef}`);
+        }
+      }
+
+      // 1. User verification, legal consent, demo and abuse tracking
+      ensureCol('users', 'email_verified', 'INTEGER NOT NULL DEFAULT 0');
+      ensureCol('users', 'email_verified_at', 'TEXT DEFAULT NULL');
+      ensureCol('users', 'terms_accepted_at', 'TEXT DEFAULT NULL');
+      ensureCol('users', 'terms_version', 'TEXT DEFAULT NULL');
+      ensureCol('users', 'is_demo', 'INTEGER NOT NULL DEFAULT 0');
+      ensureCol('users', 'plan_id', "TEXT NOT NULL DEFAULT 'free'");
+      ensureCol('users', 'registration_ip', 'TEXT DEFAULT NULL');
+      ensureCol('users', 'device_fingerprint', 'TEXT DEFAULT NULL');
+
+      // 2. Email verification tokens (24h TTL)
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_verify_token_hash ON email_verification_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_verify_token_user ON email_verification_tokens(user_id);
+      `);
+
+      // 3. Password reset tokens (15-minute TTL, single-use)
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reset_token_hash ON password_reset_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_reset_token_user ON password_reset_tokens(user_id);
+      `);
+
+      // 4. Usage counters table (10 points/day free tier, resets at UTC midnight)
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS usage_counters (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan_id TEXT NOT NULL DEFAULT 'free',
+  period_date TEXT NOT NULL,
+  points_allocated INTEGER NOT NULL DEFAULT 10,
+  points_used INTEGER NOT NULL DEFAULT 0,
+  reset_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(user_id, period_date)
+);
+CREATE INDEX IF NOT EXISTS idx_usage_user_period ON usage_counters(user_id, period_date);
+      `);
+
+      // 5. Onboarding tour completion in user_settings
+      ensureCol('user_settings', 'onboarding_completed', 'INTEGER NOT NULL DEFAULT 0');
+      ensureCol('user_settings', 'onboarding_step', 'INTEGER NOT NULL DEFAULT 0');
+    },
+  },
 ];
 
 function openDb() {

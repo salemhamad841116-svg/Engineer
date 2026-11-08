@@ -5,6 +5,7 @@ const { nowMs, nowIso, toIso } = require('../utils/clock');
 const { AppError } = require('../utils/errors');
 const { hashPassword, verifyPassword, verifyDummy, validatePasswordStrength } = require('./password');
 const audit = require('../services/auditService');
+const emailService = require('../services/email/emailService');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -21,6 +22,12 @@ function publicUser(u) {
     lastLogoutAt: u.last_logout_at,
     disabledAt: u.disabled_at,
     appSource: u.app_source || 'chathsm',
+    emailVerified: u.email_verified === 1,
+    emailVerifiedAt: u.email_verified_at || null,
+    termsAcceptedAt: u.terms_accepted_at || null,
+    termsVersion: u.terms_version || null,
+    isDemo: u.is_demo === 1,
+    planId: u.plan_id || 'free',
   };
 }
 
@@ -371,27 +378,262 @@ function sweepSessions() {
   return { expired, lost };
 }
 
-function register({ name, email, password, ip, userAgent, client }) {
+function register({ name, email, password, ip, userAgent, client, termsAccepted, termsVersion, deviceFingerprint }) {
   const cleanEmail = normalizeEmail(email);
   const cleanName = String(name || '').trim() || cleanEmail.split('@')[0];
   if (!cleanEmail || !password) throw new AppError(400, 'MISSING_FIELDS', 'Email and password are required.');
   if (!EMAIL_RE.test(cleanEmail)) throw new AppError(400, 'EMAIL_INVALID', 'A valid email address is required.');
+
+  // Mandatory Terms of Service & Privacy Policy Acceptance
+  const accepted = termsAccepted === true || termsAccepted === 1 || termsAccepted === 'true' || termsAccepted === '1';
+  if (!accepted) {
+    throw new AppError(400, 'TERMS_NOT_ACCEPTED', 'يجب الموافقة على شروط الاستخدام وسياسة الخصوصية للمتابعة.');
+  }
+
   const existing = get('SELECT id FROM users WHERE email = ?', cleanEmail);
   if (existing) {
     throw new AppError(409, 'EMAIL_EXISTS', 'An account with this email already exists.');
   }
+
   const id = newId('usr');
   const now = nowIso();
+  const version = String(termsVersion || '2026.1').trim();
+  const regIp = ip || null;
+  const fp = deviceFingerprint ? String(deviceFingerprint).slice(0, 150) : null;
+
+  // Anti-abuse multi-account detection (3+ accounts in 24h from same IP/fingerprint)
+  try {
+    let recentAccounts = 0;
+    if (regIp && regIp !== 'unknown') {
+      const row = get(
+        `SELECT COUNT(*) as count FROM users
+         WHERE (registration_ip = ? OR (device_fingerprint IS NOT NULL AND device_fingerprint = ?))
+           AND created_at >= datetime('now', '-24 hours')`,
+        regIp, fp
+      );
+      recentAccounts = row ? row.count : 0;
+    }
+    // If there are already 2 or more accounts from this IP/fingerprint, this is account #3 or higher
+    if (recentAccounts >= 2) {
+      run(
+        `INSERT INTO system_alert_logs (id, timestamp, level, category, message, details_json)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        newId('alt'),
+        now,
+        'warning',
+        'security',
+        `Multi-account registration detected: 3 or more accounts registered from the same IP/fingerprint within 24 hours: IP=${regIp}`,
+        JSON.stringify({ ip: regIp, fingerprint: fp, newEmail: cleanEmail, recentAccountsCount: recentAccounts + 1 })
+      );
+    }
+  } catch (err) {
+    console.warn('[authService] Multi-account check log warning:', err.message);
+  }
+
   run(
-    `INSERT INTO users (id, email, name, role, password_hash, status, created_at, created_by, app_source)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
-    id, cleanEmail, cleanName, 'supervisor', hashPassword(password), 'active', now, 'self_register', 'chathsm'
+    `INSERT INTO users (id, email, name, role, password_hash, status, created_at, created_by, app_source,
+                        email_verified, email_verified_at, terms_accepted_at, terms_version, is_demo, plan_id,
+                        registration_ip, device_fingerprint)
+     VALUES (?,?,?,?,?,?,?,?,?, 0, NULL, ?, ?, 0, 'free', ?, ?)`,
+    id, cleanEmail, cleanName, 'supervisor', hashPassword(password), 'active', now, 'self_register', 'chathsm',
+    now, version, regIp, fp
   );
-  return login({ email: cleanEmail, password, ip, userAgent, client });
+
+  // Generate Email Verification Token
+  const rawToken = randomToken(32);
+  const verifyTokenHash = sha256Hex(rawToken);
+  const verifyExpiry = toIso(nowMs() + config.emailVerificationHours * 3600000);
+  run(
+    `INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    newId('vrt'), id, verifyTokenHash, verifyExpiry, now
+  );
+
+  // Send verification email asynchronously
+  emailService.sendVerificationEmail({
+    email: cleanEmail,
+    name: cleanName,
+    token: rawToken,
+  }).catch((err) => console.error('[authService] Failed to send verification email:', err.message));
+
+  const loginRes = login({ email: cleanEmail, password, ip, userAgent, client });
+  return {
+    ...loginRes,
+    verificationToken: rawToken,
+  };
+}
+
+function verifyEmail(token) {
+  if (!token) throw new AppError(400, 'TOKEN_REQUIRED', 'رمز التوثيق مطلوب.');
+  const tokenHash = sha256Hex(String(token).trim());
+  const row = get('SELECT * FROM email_verification_tokens WHERE token_hash = ?', tokenHash);
+  if (!row) throw new AppError(404, 'TOKEN_INVALID', 'رابط التوثيق غير صالح.');
+  if (row.used_at) throw new AppError(410, 'TOKEN_ALREADY_USED', 'تم استخدام رابط التوثيق هذا مسبقاً.');
+  if (row.expires_at < nowIso()) throw new AppError(410, 'TOKEN_EXPIRED', 'انتهت صلاحية رابط التوثيق. يرجى طلب رابط جديد.');
+
+  const now = nowIso();
+  tx(() => {
+    run('UPDATE email_verification_tokens SET used_at = ? WHERE id = ?', now, row.id);
+    run('UPDATE users SET email_verified = 1, email_verified_at = ? WHERE id = ?', now, row.user_id);
+  });
+
+  const user = get('SELECT * FROM users WHERE id = ?', row.user_id);
+  audit.record({
+    action: 'account.email_verified',
+    actor: { id: user.id, name: user.name, role: user.role },
+    detail: { userId: user.id, email: user.email },
+  });
+  return { success: true, message: 'تم تأكيد البريد الإلكتروني بنجاح.', user: publicUser(user) };
+}
+
+function resendVerification(emailOrId) {
+  if (!emailOrId) throw new AppError(400, 'IDENTIFIER_REQUIRED', 'يرجى تقديم البريد الإلكتروني أو معرّف الحساب.');
+  const clean = String(emailOrId).trim().toLowerCase();
+  const user = get('SELECT * FROM users WHERE id = ? OR email = ?', clean, clean);
+  if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'الحساب غير موجود.');
+  if (user.email_verified === 1) {
+    return { success: true, alreadyVerified: true, message: 'البريد الإلكتروني مؤكد بالفعل.' };
+  }
+
+  const now = nowIso();
+  run('UPDATE email_verification_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL', now, user.id);
+
+  const rawToken = randomToken(32);
+  const verifyTokenHash = sha256Hex(rawToken);
+  const verifyExpiry = toIso(nowMs() + config.emailVerificationHours * 3600000);
+  run(
+    `INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    newId('vrt'), user.id, verifyTokenHash, verifyExpiry, now
+  );
+
+  emailService.sendVerificationEmail({
+    email: user.email,
+    name: user.name,
+    token: rawToken,
+  }).catch((err) => console.error('[authService] Failed to resend verification email:', err.message));
+
+  return { success: true, message: 'تم إرسال رابط تأكيد جديد إلى بريدك الإلكتروني.', token: rawToken };
+}
+
+function requestPasswordReset(email) {
+  const cleanEmail = normalizeEmail(email);
+  if (!cleanEmail) throw new AppError(400, 'EMAIL_REQUIRED', 'البريد الإلكتروني مطلوب.');
+  const user = get('SELECT * FROM users WHERE email = ?', cleanEmail);
+
+  let rawToken = null;
+  if (user && user.status === 'active') {
+    const now = nowIso();
+    run('UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL', now, user.id);
+
+    rawToken = randomToken(32);
+    const tokenHash = sha256Hex(rawToken);
+    const expiresAt = toIso(nowMs() + config.passwordResetMinutes * 60000); // 15-minute TTL
+    run(
+      `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      newId('prt'), user.id, tokenHash, expiresAt, now
+    );
+
+    emailService.sendPasswordResetEmail({
+      email: user.email,
+      name: user.name,
+      token: rawToken,
+    }).catch((err) => console.error('[authService] Failed to send password reset email:', err.message));
+  }
+
+  return {
+    success: true,
+    message: 'إذا كان البريد الإلكتروني مسجلاً لدينا، فستتلقى رابطاً لإعادة تعيين كلمة المرور.',
+    resetToken: rawToken,
+  };
+}
+
+function resetPasswordWithToken(token, newPassword) {
+  if (!token) throw new AppError(400, 'TOKEN_REQUIRED', 'رمز استعادة كلمة المرور مطلوب.');
+  const tokenHash = sha256Hex(String(token).trim());
+  const row = get('SELECT * FROM password_reset_tokens WHERE token_hash = ?', tokenHash);
+  if (!row) throw new AppError(404, 'TOKEN_INVALID', 'رابط استعادة كلمة المرور غير صالح.');
+  if (row.used_at) throw new AppError(410, 'TOKEN_ALREADY_USED', 'تم استخدام رابط استعادة كلمة المرور مسبقاً.');
+  if (row.expires_at < nowIso()) throw new AppError(410, 'TOKEN_EXPIRED', 'انتهت صلاحية رابط استعادة كلمة المرور (المدة المحددة 15 دقيقة).');
+
+  const weak = validatePasswordStrength(newPassword);
+  if (weak) throw new AppError(400, 'PASSWORD_WEAK', weak);
+
+  const user = get('SELECT * FROM users WHERE id = ?', row.user_id);
+  if (!user || user.status === 'disabled') {
+    throw new AppError(403, 'ACCOUNT_DISABLED', 'هذا الحساب معطل. يرجى التواصل مع الإدارة.');
+  }
+
+  const now = nowIso();
+  tx(() => {
+    run('UPDATE users SET password_hash = ?, failed_logins = 0, locked_until = NULL WHERE id = ?', hashPassword(newPassword), user.id);
+    run('UPDATE password_reset_tokens SET used_at = ? WHERE id = ?', now, row.id);
+  });
+
+  // Revoke ALL active sessions for this user on all devices
+  const revokedCount = endUserSessions(user.id, 'revoked', null);
+
+  audit.record({
+    action: 'account.password_reset',
+    actor: { id: user.id, name: user.name, role: user.role },
+    detail: { userId: user.id, revokedSessions: revokedCount },
+  });
+
+  return {
+    success: true,
+    message: 'تم تغيير كلمة المرور بنجاح وإبطال كافة الجلسات النشطة.',
+    revokedSessions: revokedCount,
+  };
+}
+
+function createDemoSession({ ip, userAgent, client } = {}) {
+  let demoUser = get("SELECT * FROM users WHERE id = 'usr_demo_guest' OR email = 'guest@demo.local'");
+  const now = nowIso();
+  if (!demoUser) {
+    demoUser = {
+      id: 'usr_demo_guest',
+      email: 'guest@demo.local',
+      name: 'زائر تجريبي (Demo Guest)',
+      role: 'supervisor',
+      status: 'active',
+      is_demo: 1,
+      plan_id: 'demo',
+      email_verified: 1,
+    };
+    run(
+      `INSERT INTO users (id, email, name, role, password_hash, status, created_at, created_by, app_source,
+                          email_verified, email_verified_at, terms_accepted_at, terms_version, is_demo, plan_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'demo_portal', 1, ?, ?, '2026.1', 1, 'demo')`,
+      demoUser.id, demoUser.email, demoUser.name, demoUser.role, hashPassword(randomToken(16)), 'active', now, 'system_demo',
+      now, now
+    );
+  }
+
+  const token = randomToken(32);
+  const sessionId = newId('ses');
+  const expiresAt = toIso(nowMs() + 2 * 3600000); // 2 hours duration
+
+  tx(() => {
+    run(
+      `INSERT INTO sessions (id, user_id, token_hash, created_at, last_seen_at, last_activity_at, expires_at, ip, user_agent, client)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      sessionId, demoUser.id, sha256Hex(token), now, now, now, expiresAt, ip || null, (userAgent || '').slice(0, 300), client || 'web'
+    );
+    sessionEvent(demoUser.id, sessionId, 'demo_login', { ip, client: client || 'web' });
+  });
+
+  return {
+    token,
+    sessionId,
+    expiresAt,
+    user: publicUser(get('SELECT * FROM users WHERE id = ?', demoUser.id)),
+  };
 }
 
 module.exports = {
   publicUser, bootstrapAdmin, createUser, listUsers, updateUser, issueInvitationForUser,
   getInvitationByToken, acceptInvitation, login, register, resolveSession, touchSession, logout,
   changePassword, revokeUserSessions, sweepSessions, endUserSessions, normalizeEmail, EMAIL_RE,
+  verifyEmail, resendVerification, requestPasswordReset, resetPasswordWithToken, createDemoSession,
 };

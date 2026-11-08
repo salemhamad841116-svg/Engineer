@@ -533,9 +533,81 @@ class KnowledgeDAL {
 
     return true;
   }
+
+  /**
+   * Seeds isolated bilingual demo library books for demo guest sessions.
+   * Bound to 'tenant_demo' with RLS isolation.
+   */
+  seedDemoLibrary() {
+    try {
+      const existing = get("SELECT id FROM documents WHERE id = 'book_demo_ibn_khaldun'");
+      if (existing) return;
+
+      const demoTenant = { tenantId: 'tenant_demo', userId: 'usr_demo_guest', role: 'user' };
+
+      // 1. Arabic Demo Reference: مقدمة ابن خلدون
+      this.registerBook({
+        id: 'book_demo_ibn_khaldun',
+        title: 'مقدمة ابن خلدون (مقتطفات تجريبية - فصول الاجتماع الإنساني)',
+        author: 'عبد الرحمن بن خلدون',
+        edition: 'طبعة دار الفكر المحققة',
+        publicationYear: 1377,
+        language: 'Arabic',
+        pagesTotal: 350,
+        fullText: 'إن الاجتماع الإنساني ضروري، ويعبر الحكماء عن هذا بقولهم: الإنسان مدني بالطبع، أي لا بد له من الاجتماع الذي هو المدنية في اصطلاحهم وهو معنى العمران. وبيانه أن الله سبحانه خلق الإنسان وركبه على صورة لا يصح حياتها وبقاؤها إلا بالغذاء، وهداه إلى التماسه بفطرته وبما ركب فيه من القدرة على تحصيله. واعلم أن العدوان على الناس في أموالهم يذهب بآمالهم في تحصيلها واكتسابها، لما يرونه حينئذ من أن غايتها ومصيرها انتهابها من أيديهم. وإذا ذهبت آمالهم في اكتسابها وتحصيلها انقبضت أيديهم عن السعي في ذلك.',
+        chapters: [
+          {
+            title: 'المقدمة: في فضل علم التاريخ وتحقيق مذاهبه',
+            pageStart: 1,
+            pageEnd: 45,
+            content: 'إن الاجتماع الإنساني ضروري، ويعبر الحكماء عن هذا بقولهم: الإنسان مدني بالطبع، أي لا بد له من الاجتماع الذي هو المدنية في اصطلاحهم وهو معنى العمران. وبيانه أن الله سبحانه خلق الإنسان وركبه على صورة لا يصح حياتها وبقاؤها إلا بالغذاء، وهداه إلى التماسه بفطرته وبما ركب فيه من القدرة على تحصيله.',
+          },
+          {
+            title: 'الفصل الثالث: في أن الظلم مؤذن بخراب العمران',
+            pageStart: 46,
+            pageEnd: 120,
+            content: 'واعلم أن العدوان على الناس في أموالهم يذهب بآمالهم في تحصيلها واكتسابها، لما يرونه حينئذ من أن غايتها ومصيرها انتهابها من أيديهم. وإذا ذهبت آمالهم في اكتسابها وتحصيلها انقبضت أيديهم عن السعي في ذلك، وعلى قدر الاعتداء ونزع الأموال يكون انقباض الرعايا عن السعي في الاكتساب.',
+          }
+        ],
+        isSharedLibrary: false,
+      }, demoTenant);
+
+      // 2. English Demo Reference: The Wealth of Nations
+      this.registerBook({
+        id: 'book_demo_wealth_of_nations',
+        title: 'The Wealth of Nations (Demo Excerpts - Division of Labor)',
+        author: 'Adam Smith',
+        edition: 'Standard Scholarly Edition',
+        publicationYear: 1776,
+        language: 'English',
+        pagesTotal: 280,
+        fullText: 'The greatest improvement in the productive powers of labour, and the greater part of the skill, dexterity, and judgment with which it is anywhere directed, or applied, seem to have been the effects of the division of labour. It is not from the benevolence of the butcher, the brewer, or the baker that we expect our dinner, but from their regard to their own interest. We address ourselves, not to their humanity but to their self-love, and never talk to them of our own necessities but of their advantages.',
+        chapters: [
+          {
+            title: 'Chapter 1: Of the Division of Labour',
+            pageStart: 1,
+            pageEnd: 30,
+            content: 'The greatest improvement in the productive powers of labour, and the greater part of the skill, dexterity, and judgment with which it is anywhere directed, or applied, seem to have been the effects of the division of labour. In every improved society, the farmer is generally nothing but a farmer; the manufacturer, nothing but a manufacturer.',
+          },
+          {
+            title: 'Chapter 2: Of the Principle which gives occasion to the Division of Labour',
+            pageStart: 31,
+            pageEnd: 75,
+            content: 'It is not from the benevolence of the butcher, the brewer, or the baker that we expect our dinner, but from their regard to their own interest. We address ourselves, not to their humanity but to their self-love, and never talk to them of our own necessities but of their advantages.',
+          }
+        ],
+        isSharedLibrary: false,
+      }, demoTenant);
+    } catch (err) {
+      console.warn('[knowledgeDal] seedDemoLibrary notice:', err.message);
+    }
+  }
 }
 
 const knowledgeDal = new KnowledgeDAL();
+try {
+  knowledgeDal.seedDemoLibrary();
+} catch (_) {}
 
 module.exports = {
   knowledgeDal,

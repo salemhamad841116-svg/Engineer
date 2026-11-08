@@ -1,0 +1,76 @@
+{
+  "version": "2026.1",
+  "last_updated": "2026-11-08",
+  "title": {
+    "ar": "شروط الاستخدام وأحكام الخدمة",
+    "en": "Terms of Service and Conditions"
+  },
+  "sections": [
+    {
+      "id": "acceptance",
+      "heading": {
+        "ar": "١. قبول الشروط والتعاقد",
+        "en": "1. Acceptance of Terms"
+      },
+      "content": {
+        "ar": "باستخدامك للمنصة المعرفية للبحث والاستدلال المرجعي، فإنك تقر وتوافق على الالتزام الكامل بهذه الشروط وسياسة الخصوصية التابعة لها. إذا كنت لا توافق على أي بند، فيجب عليك التوقف فوراً عن استخدام المنصة.",
+        "en": "By accessing or using the platform, you agree to be bound by these Terms of Service and the accompanying Privacy Policy. If you do not agree, you must discontinue use immediately."
+      }
+    },
+    {
+      "id": "accounts_and_security",
+      "heading": {
+        "ar": "٢. أمان الحسابات والتسجيل",
+        "en": "2. Account Registration and Security"
+      },
+      "content": {
+        "ar": "يلتزم المستخدم بتقديم معلومات دقيقة وتأكيد بريده الإلكتروني لتفعيل كامل ميزات الحصة. تقع على عاتق المستخدم مسؤولية الحفاظ على سرية بيانات تسجيل الدخول. يُحظر إنشاء حسابات متعددة للتحايل على الحصص المجانية، وتخضع الحسابات المشبوهة للمراجعة الإدارية البشرية.",
+        "en": "Users must provide accurate information and verify their email to access full daily quotas. Users are responsible for safeguarding credentials. Creating multi-accounts to bypass free quotas is strictly prohibited and subject to human administrative review."
+      }
+    },
+    {
+      "id": "quotas_and_fair_use",
+      "heading": {
+        "ar": "٣. سياسة الحصص والاستخدام العادل",
+        "en": "3. Daily Quotas and Fair Use Policy"
+      },
+      "content": {
+        "ar": "تمنح المنصة كل حساب موثق حصة مجانية يومية قدرها 10 نقاط تتجدد تلقائياً عند منتصف الليل بالتوقيت العالمي المنسق (00:00:00 UTC). تستهلك أنماط البحث نقاطاً محددة (السريع: نقطة واحدة، العميق: 3 نقاط، الخبير: 10 نقاط). يحق للإدارة تعديل الحصص أو تعليق الحسابات المسيئة.",
+        "en": "The platform provides each verified account with a daily free quota of 10 points resetting at 00:00:00 UTC. Search tiers consume points accordingly (Quick: 1 pt, Deep: 3 pts, Expert: 10 pts). Administration reserves the right to adjust quotas or restrict abusive access."
+      }
+    },
+    {
+      "id": "intellectual_property",
+      "heading": {
+        "ar": "٤. الملكية الفكرية والسيادة على البيانات",
+        "en": "4. Intellectual Property & Tenant Sovereignty"
+      },
+      "content": {
+        "ar": "يحتفظ المستخدم بكامل حقوق الملكية الفكرية للكتب والمراجع والوثائق التي يقوم برفعها. تطبق المنصة عزلاً تقنياً صارماً على مستوى الصفوف (Tenant Isolation RLS) يمنع أي مستخدم أو ضيف تجريبي من الوصول إلى محتوى مستأجر آخر.",
+        "en": "Users retain full intellectual property ownership of uploaded documents and books. The platform enforces strict Row-Level Security (Tenant Isolation RLS) preventing unauthorized or cross-tenant document exposure."
+      }
+    },
+    {
+      "id": "ai_disclaimer",
+      "heading": {
+        "ar": "٥. إخلاء المسؤولية عن مخرجات الذكاء الاصطناعي",
+        "en": "5. AI Outputs & Research Verification Disclaimer"
+      },
+      "content": {
+        "ar": "توفر المنصة أدلة واقتباسات مرجعية حرفية ومباشرة بأرقام الصفحات لتعزيز الموثوقية. ومع ذلك، فإن التحليلات والملخصات المولدة بنماذج الذكاء الاصطناعي هي أدوات مساعدة للأبحاث ولا تغني عن التدقيق العلمي البشري.",
+        "en": "The platform provides verbatim quotes and page-numbered citations for grounded verification. However, AI-generated syntheses serve as assistive research tools and do not substitute human scholarly scrutiny."
+      }
+    },
+    {
+      "id": "modifications",
+      "heading": {
+        "ar": "٦. تحديث الشروط والإشعار",
+        "en": "6. Modifications and Amendments"
+      },
+      "content": {
+        "ar": "تحتفظ المنصة بالحق في تعديل هذه الشروط في أي وقت مع تحديث رقم الإصدار وتاريخ التعديل في هذه الصفحة. استمرار استخدامك للمنصة بعد التحديث يعد موافقة صريحة على الشروط المحدثة.",
+        "en": "We reserve the right to amend these terms at any time with version tracking and last updated dates. Continued platform use represents explicit acceptance of updated terms."
+      }
+    }
+  ]
+}

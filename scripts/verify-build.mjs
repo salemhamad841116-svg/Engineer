@@ -237,9 +237,9 @@ runStep('External Web Verification & PDF Structures Comprehensive Suite (10 Test
 });
 
 // ----------------------------------------------------
-// Step 11: Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 19)
+// Step 11: Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 20)
 // ----------------------------------------------------
-runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 19)', () => {
+runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 20)', () => {
   execSync('node server_backend/tests/freshDbMigrationSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
@@ -276,6 +276,13 @@ runStep('Phase 10 User Profile, Settings Synchronization & Account Lifecycle Gat
 // ----------------------------------------------------
 runStep('Phase 11 Open Source Model Integration, Resource Guard & GCP Gate', () => {
   execSync('node server_backend/tests/openSourceModelAndGcpGate.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 17: Phase 12 Launch Pack: Trust, Quotas, Demo Mode & First Experience Gate
+// ----------------------------------------------------
+runStep('Phase 12 Launch Pack: Trust, Quotas, Demo Mode & First Experience Gate', () => {
+  execSync('node server_backend/tests/phase12LaunchSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
 printSummaryAndExit(0);

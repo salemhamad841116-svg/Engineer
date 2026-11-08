@@ -43,6 +43,8 @@ import DeepResearchModal from './components/DeepResearchModal';
 import { AutonomousAgentModal } from './components/AutonomousAgentModal';
 import { AuthModal } from './components/AuthModal';
 import { UserProfileAndSettingsModal } from './components/UserProfileAndSettingsModal';
+import { LegalModal } from './components/LegalModal';
+import { OnboardingTour } from './components/OnboardingTour';
 
 export default function App() {
   // Primary State
@@ -89,6 +91,17 @@ export default function App() {
   // AI Execution Pipeline State
   const [isGenerating, setIsGenerating] = useState(false);
   const [pipelineStages, setPipelineStages] = useState<ExecutionPipelineStage[]>([]);
+
+  // Phase 12 Launch Pack: Onboarding Tour & Legal Modals State
+  const [showOnboardingTour, setShowOnboardingTour] = useState(false);
+  const [activeLegalModal, setActiveLegalModal] = useState<'terms' | 'privacy' | null>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname.toLowerCase();
+      if (p === '/terms' || window.location.hash === '#/terms') return 'terms';
+      if (p === '/privacy' || window.location.hash === '#/privacy') return 'privacy';
+    }
+    return null;
+  });
 
   // Toast Notification
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -950,6 +963,7 @@ export default function App() {
             userEmail: user.email,
           }));
           notify('success', language === 'ar' ? `مرحباً بك ${user.name}` : `Welcome ${user.name}`);
+          setShowOnboardingTour(true);
         }}
       />
 
@@ -968,6 +982,24 @@ export default function App() {
           }
         }}
       />
+
+      {/* Phase 12: Onboarding Tour (First Experience) */}
+      <OnboardingTour
+        isOpen={showOnboardingTour}
+        language={language}
+        onClose={() => setShowOnboardingTour(false)}
+        onComplete={() => setShowOnboardingTour(false)}
+      />
+
+      {/* Phase 12: Legal Modals (Terms & Privacy) */}
+      {activeLegalModal && (
+        <LegalModal
+          isOpen={Boolean(activeLegalModal)}
+          type={activeLegalModal}
+          language={language}
+          onClose={() => setActiveLegalModal(null)}
+        />
+      )}
 
       {/* Global Toast Notification Banner */}
       {toast && (

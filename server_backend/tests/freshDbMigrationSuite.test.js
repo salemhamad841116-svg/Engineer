@@ -22,7 +22,7 @@ if (!fs.existsSync(TEMP_DB_DIR)) {
 const tempDbFile = path.join(TEMP_DB_DIR, `fresh_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.sqlite`);
 
 console.log('================================================================');
-console.log('🏛️ RUNNING FRESH-DB MIGRATION SUITE (MIGRATIONS 1 TO 19)');
+console.log('🏛️ RUNNING FRESH-DB MIGRATION SUITE (MIGRATIONS 1 TO 20)');
 console.log('================================================================\n');
 
 let dbHandle = null;
@@ -86,7 +86,10 @@ try {
     'admin_audit_actions',
     'admin_content_flags',
     'admin_ip_whitelist',
-    'user_settings'
+    'user_settings',
+    'email_verification_tokens',
+    'password_reset_tokens',
+    'usage_counters'
   ];
 
   for (const t of requiredTables) {
@@ -134,12 +137,17 @@ try {
   assert.ok(adminUserCols.includes('locked_until'), 'admin_users missing locked_until');
   assert.ok(adminUserCols.includes('must_change_password'), 'admin_users missing must_change_password');
 
-  // 6. Verify users table has avatar_url and storage_quota_bytes
+  // 6. Verify users table has avatar_url and storage_quota_bytes + Phase 12 columns
   const userCols = dbHandle.prepare("PRAGMA table_info('users')").all().map((c) => c.name);
   assert.ok(userCols.includes('avatar_url'), 'users missing avatar_url');
   assert.ok(userCols.includes('storage_quota_bytes'), 'users missing storage_quota_bytes');
+  assert.ok(userCols.includes('email_verified'), 'users missing email_verified');
+  assert.ok(userCols.includes('plan_id'), 'users missing plan_id');
+  assert.ok(userCols.includes('terms_accepted_at'), 'users missing terms_accepted_at');
+  assert.ok(userCols.includes('terms_version'), 'users missing terms_version');
+  assert.ok(userCols.includes('is_demo'), 'users missing is_demo');
 
-  // 7. Verify user_settings table has all required preferences
+  // 7. Verify user_settings table has all required preferences + onboarding_completed
   const userSettingsCols = dbHandle.prepare("PRAGMA table_info('user_settings')").all().map((c) => c.name);
   assert.ok(userSettingsCols.includes('user_id'), 'user_settings missing user_id');
   assert.ok(userSettingsCols.includes('language'), 'user_settings missing language');
@@ -149,6 +157,7 @@ try {
   assert.ok(userSettingsCols.includes('answer_length'), 'user_settings missing answer_length');
   assert.ok(userSettingsCols.includes('show_quality_badges'), 'user_settings missing show_quality_badges');
   assert.ok(userSettingsCols.includes('retain_search_history'), 'user_settings missing retain_search_history');
+  assert.ok(userSettingsCols.includes('onboarding_completed'), 'user_settings missing onboarding_completed');
 
   console.log('  ✅ Column structures, data types, and schema evolutions verified.');
 
