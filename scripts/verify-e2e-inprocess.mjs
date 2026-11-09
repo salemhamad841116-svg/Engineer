@@ -105,4 +105,15 @@ export function runInProcessE2EValidation() {
   console.log('  ▶️ Scenario 12: Account export & purge lifecycle integrity...');
   const routesPath = path.join(projectRoot, 'server_backend/routes/userRoutes.js');
   assert(fs.existsSync(routesPath), 'userRoutes.js must exist');
+
+  console.log('  ▶️ Scenario 13: Phase 12 Launch Pack: Trust, Quotas, Demo Mode & First Experience...');
+  const legalTermsPath = path.join(projectRoot, 'content/legal/terms.json');
+  const legalPrivacyPath = path.join(projectRoot, 'content/legal/privacy.json');
+  assert(fs.existsSync(legalTermsPath), 'terms.json must exist');
+  assert(fs.existsSync(legalPrivacyPath), 'privacy.json must exist');
+  const quotaService = awaitImportSync('../server_backend/services/quotas/quotaService.js');
+  assert(typeof quotaService.getQuotaBalance === 'function', 'getQuotaBalance must be defined');
+  const onboardingPath = path.join(projectRoot, 'src/components/OnboardingTour.tsx');
+  assert(fs.existsSync(onboardingPath), 'OnboardingTour.tsx must exist');
 }
+

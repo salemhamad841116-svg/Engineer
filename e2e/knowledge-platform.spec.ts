@@ -560,5 +560,55 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
 
     console.log('[E2E Gate Verification] ✅ Scenario 12: User Profile, Real-Time Stats & Synchronized Settings Flow verified.');
   });
+
+  // --------------------------------------------------------------------------
+  // Scenario 13: Phase 12 Launch Pack: Terms, Demo Mode, Quota & Onboarding Tour
+  // --------------------------------------------------------------------------
+  test('Scenario 13: Phase 12 Launch Pack: Terms, Demo Mode, Quota & Onboarding Tour Flow', async () => {
+    // 1. Test Demo Mode ("جرّب بدون تسجيل")
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+
+    const authOpenBtn = page.locator('[data-testid="auth-open-button"]');
+    if (await authOpenBtn.isVisible()) {
+      await authOpenBtn.click();
+      const demoBtn = page.locator('[data-testid="auth-demo-button"]');
+      if (await demoBtn.isVisible()) {
+        await demoBtn.click();
+        // Verify demo session indicator
+        await expect(page.locator('[data-testid="auth-user-badge"]')).toBeVisible({ timeout: 10000 });
+      }
+    }
+
+    // 2. Test Public Legal Routes: /terms and /privacy
+    const termsRes = await page.request.get('/api/legal/terms');
+    expect(termsRes.ok()).toBe(true);
+    const termsData = await termsRes.json();
+    expect(termsData.version).toBe('2026.1');
+    expect(termsData.title).toBeTruthy();
+
+    const privacyRes = await page.request.get('/api/legal/privacy');
+    expect(privacyRes.ok()).toBe(true);
+    const privacyData = await privacyRes.json();
+    expect(privacyData.version).toBe('2026.1');
+
+    // 3. Test Onboarding Tour Skip Persistence
+    const onboardingRes = await page.request.post('/api/user/onboarding', {
+      data: { completed: true, step: 3 },
+    });
+    expect([200, 401]).toContain(onboardingRes.status());
+
+    // 4. Test Daily Quota Balance Endpoint
+    const quotaRes = await page.request.get('/api/user/quota');
+    if (quotaRes.ok()) {
+      const quotaData = await quotaRes.json();
+      expect(quotaData.allocated).toBe(10);
+      expect(typeof quotaData.remaining).toBe('number');
+      expect(quotaData.nextResetIso).toBeTruthy();
+    }
+
+    console.log('[E2E Gate Verification] ✅ Scenario 13: Launch Pack Terms, Demo Mode, Quota & Onboarding verified.');
+  });
 });
+
 

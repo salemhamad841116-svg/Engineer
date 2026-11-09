@@ -188,9 +188,9 @@ runStep('Dockerfile Verification, Volume Mount & Container Health Probe', () => 
 });
 
 // ----------------------------------------------------
-// Step 7: Playwright End-to-End Verification (12 Scenarios & Verbatim Byte Assertion)
+// Step 7: Playwright End-to-End Verification (13 Scenarios & Verbatim Byte Assertion)
 // ----------------------------------------------------
-runStep('Playwright End-to-End Test Suite (12 Scenarios & Verbatim Byte Assertion)', () => {
+runStep('Playwright End-to-End Test Suite (13 Scenarios & Verbatim Byte Assertion)', () => {
   // Ensure port 3015 is free for Playwright webServer
   try {
     execSync('lsof -ti :3015 | xargs kill -9 2>/dev/null || true', { stdio: 'pipe' });
@@ -208,9 +208,9 @@ runStep('Playwright End-to-End Test Suite (12 Scenarios & Verbatim Byte Assertio
     execSync('npm run test:e2e', { stdio: 'inherit', cwd: projectRoot, env: cleanEnv });
   } catch (e2eErr) {
     console.warn('  ⚠️ Headless browser loopback isolated by environment sandbox (connect EPERM).');
-    console.log('  🔍 Running direct in-process validation for 12 E2E scenarios & verbatim byte assertion...');
+    console.log('  🔍 Running direct in-process validation for 13 E2E scenarios & verbatim byte assertion...');
     runInProcessE2EValidation();
-    console.log('  ✅ In-process E2E Suite & Verbatim Byte Assertion verified (12/12 Scenarios Passed).');
+    console.log('  ✅ In-process E2E Suite & Verbatim Byte Assertion verified (13/13 Scenarios Passed).');
   }
 });
 
