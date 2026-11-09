@@ -128,6 +128,28 @@ const config = {
   get dailyFreeQuotaPoints() {
     return int('DAILY_FREE_QUOTA_POINTS', 10);
   },
+  // Phase 12-B: 16GB Host Local Model Fleet & Budget Controls
+  get llmModelQuick() {
+    return process.env.LLM_MODEL_QUICK || 'llama3.2:3b';
+  },
+  get llmModelDeep() {
+    return process.env.LLM_MODEL_DEEP || 'qwen2.5:7b';
+  },
+  get llmModelExpert() {
+    return process.env.LLM_MODEL_EXPERT || 'deepseek-r1:7b';
+  },
+  get llmModelSpecializedEn() {
+    return process.env.LLM_MODEL_EN || 'llama3.1:8b';
+  },
+  get memoryBudgetMaxMb() {
+    return int('MEMORY_BUDGET_MAX_MB', 12288); // 12GB
+  },
+  get diskRequiredFreeMb() {
+    return int('DISK_REQUIRED_FREE_MB', 35000); // 35GB
+  },
+  get defaultContextTokens() {
+    return int('DEFAULT_CONTEXT_TOKENS', 8192); // 8192 num_ctx
+  },
 };
 
 module.exports = config;

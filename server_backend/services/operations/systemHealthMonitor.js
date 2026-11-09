@@ -165,6 +165,89 @@ class SystemHealthMonitor {
   }
 
   /**
+   * Retrieves Ollama model fleet metrics and enforces the 12GB memory budget rule.
+   * (Resident model + KV cache) <= 12288 MB.
+   */
+  async getOllamaFleetMetrics() {
+    try {
+      const { modelProvider } = require('../ai/modelProviderInterface');
+      const config = require('../../config');
+      const residentStatus = await modelProvider.getOllamaResidentStatus();
+      const budgetMaxMb = config.memoryBudgetMaxMb || 12288;
+      const tierModels = modelProvider.getTierModels();
+
+      const residentModels = residentStatus.models || [];
+      const residentSizeMb = residentStatus.totalSizeMb || 0;
+      // Estimate KV cache for resident model (~1024 MB for 8192 context)
+      const kvCacheEstimateMb = residentModels.length > 0 ? 1024 : 0;
+      const totalResidentAndKvMb = residentSizeMb + kvCacheEstimateMb;
+
+      const isBudgetExceeded = totalResidentAndKvMb > budgetMaxMb;
+      const multipleModelsLoaded = residentModels.length > 1;
+
+      if (isBudgetExceeded || multipleModelsLoaded) {
+        this.recordAlert({
+          level: 'critical',
+          category: 'memory',
+          message: isBudgetExceeded
+            ? `تجاوزت ذاكرة النماذج المحلية سقف الميزانية (12GB): الاستهلاك الحالي ${totalResidentAndKvMb}MB يتجاوز ${budgetMaxMb}MB.`
+            : `تم رصد تحميل أكثر من نموذج في ذاكرة Ollama (${residentModels.length} نماذج)، مخالفاً لقاعدة OLLAMA_MAX_LOADED_MODELS=1.`,
+          details: {
+            residentModels: residentModels.map((m) => m.name),
+            totalResidentAndKvMb,
+            budgetMaxMb,
+            multipleModelsLoaded,
+          },
+        });
+      }
+
+      return {
+        ok: residentStatus.ok,
+        provider: residentStatus.provider,
+        residentModels,
+        residentCount: residentModels.length,
+        residentSizeMb,
+        kvCacheEstimateMb,
+        totalResidentAndKvMb,
+        budgetMaxMb,
+        isBudgetExceeded,
+        multipleModelsLoaded,
+        tierModels,
+        keepAlive: residentStatus.keepAlive || '10m',
+        contextTokens: residentStatus.contextTokens || 8192,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: sanitizeSensitiveContent(err.message),
+        residentModels: [],
+        totalResidentAndKvMb: 0,
+        budgetMaxMb: 12288,
+        isBudgetExceeded: false,
+      };
+    }
+  }
+
+  /**
+   * Pre-flight disk storage check before pulling any local AI models.
+   * Ensures available disk space >= requiredFreeMb (Default 35GB).
+   */
+  checkDiskPreflight(requiredFreeMb = 35000) {
+    const disk = this.getDiskMetrics();
+    const passed = disk.freeMb >= requiredFreeMb;
+    return {
+      passed,
+      freeMb: disk.freeMb,
+      freeGb: Number((disk.freeMb / 1024).toFixed(1)),
+      requiredFreeMb,
+      requiredFreeGb: Number((requiredFreeMb / 1024).toFixed(1)),
+      recommendation: passed
+        ? 'سعة القرص كافية لسحب وتخزين منظومة النماذج المعتمدة.'
+        : `سعة القرص المتاحة (${(disk.freeMb / 1024).toFixed(1)} GB) غير كافية لمنظومة النماذج (تتطلب ${(requiredFreeMb / 1024).toFixed(1)} GB على الأقل). يجب توسيع قرص GCP أولاً عبر gcloud compute disks resize وتكبير نظام الملفات.`,
+    };
+  }
+
+  /**
    * Retrieves storage metrics for the volume hosting the application.
    */
   getDiskMetrics() {

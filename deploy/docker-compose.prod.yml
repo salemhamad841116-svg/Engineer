@@ -1,7 +1,28 @@
 version: '3.8'
 
 services:
-  # 1. High-Performance vLLM Inference Engine with Nvidia L4 (24GB VRAM)
+  # 1. Production Local Ollama Inference Engine (16GB Host: RAM Budget <= 12GB)
+  ollama-engine:
+    image: ollama/ollama:latest
+    container_name: ollama-inference
+    restart: always
+    environment:
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=10m
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MODELS=/root/.ollama/models
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - platform-ollama-models:/root/.ollama/models
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # 2. High-Performance vLLM Inference Engine with Nvidia L4 (24GB VRAM GPU Profile)
   vllm-engine:
     image: vllm/vllm-openai:latest
     container_name: vllm-inference
@@ -29,23 +50,27 @@ services:
       --enforce-eager
       --port 8000
 
-  # 2. Knowledge Platform Core Application
+  # 3. Knowledge Platform Core Application
   knowledge-app:
     image: ${DOCKER_IMAGE:-knowledge-platform:latest}
     container_name: knowledge-platform-app
     restart: always
     depends_on:
-      - vllm-engine
+      ollama-engine:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
       - ADMIN_HOST=engineer-mgt.misruq.com
-      - LLM_PROVIDER=vllm
-      - LLM_BASE_URL=http://vllm-engine:8000/v1
-      - LLM_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
-      - ALLOW_CLOUD_FALLBACK=false
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://ollama-engine:11434/v1}
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:7b}
+      - LLM_MODEL_QUICK=${LLM_MODEL_QUICK:-llama3.2:3b}
+      - LLM_MODEL_DEEP=${LLM_MODEL_DEEP:-qwen2.5:7b}
+      - LLM_MODEL_EXPERT=${LLM_MODEL_EXPERT:-deepseek-r1:7b}
+      - ALLOW_CLOUD_FALLBACK=${ALLOW_CLOUD_FALLBACK:-false}
       - DATA_DIR=/app/data
       - SESSION_SECRET=${PROD_SESSION_SECRET:-changeme_prod_session_secret_at_least_32_bytes_long}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@misruq.com}
@@ -58,3 +83,5 @@ services:
 volumes:
   platform-sqlite-data:
   platform-vault:
+  platform-ollama-models:
+

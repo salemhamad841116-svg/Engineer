@@ -442,10 +442,11 @@ ${citationsList.join('\n\n')}${tablesSection}
   const totalTokens = Math.min(tierLimits.costCap / 0.000001, Math.round(durationMs * 1.5) + 320);
   const costEstimate = isLocalModel ? 0.0 : Math.min(tierLimits.costCap, Number(((totalTokens / 1000) * 0.0015).toFixed(5)));
 
+  const tierModel = modelProvider.getModelForTier(plan.researchLevel);
   const localResourceUsage = isLocalModel ? {
     isLocal: true,
     provider: modelProvider.getProvider(),
-    model: modelProvider.getModel(),
+    model: tierModel,
     durationMs,
     tokensCount: totalTokens,
     memoryMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
@@ -455,7 +456,7 @@ ${citationsList.join('\n\n')}${tablesSection}
   recordStageProgress(
     '5_synthesizing',
     'صياغة الإجابة الموثقة وتوليد الاقتباسات المعتمدة',
-    `اكتملت الجلسة بنجاح (${durationMs}ms) وتم توثيق ${recordedCitations.length} شواهد معتمدة${isLocalModel ? ` [استدلال محلي: ${modelProvider.getModel()}]` : ''}`
+    `اكتملت الجلسة بنجاح (${durationMs}ms) وتم توثيق ${recordedCitations.length} شواهد معتمدة${isLocalModel ? ` [استدلال محلي: ${tierModel}]` : ''}`
   );
 
   session = updateSession(session.id, {

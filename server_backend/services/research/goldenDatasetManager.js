@@ -438,21 +438,29 @@ function listGoldenBenchmarks({ batch = null } = {}) {
 /**
  * Runs the automated evaluation harness over the golden evaluation dataset with Recall@5 metric.
  */
-async function evaluateGoldenDataset({ tenantContext = null, maxItems = null, batch = null } = {}) {
+async function evaluateGoldenDataset({ tenantContext = null, maxItems = null, batch = null, model = null } = {}) {
   seedGoldenDataset();
   let benchmarks = listGoldenBenchmarks({ batch });
   if (maxItems && maxItems > 0) {
     benchmarks = benchmarks.slice(0, maxItems);
   }
 
-  const results = [];
-  let totalPrecisionSum = 0;
-  let totalVerbatimPassCount = 0;
-  let totalCitationsEvaluated = 0;
-  let qualityGatePassCount = 0;
-  let recallAt5PassCount = 0;
+  const { modelProvider } = require('../ai/modelProviderInterface');
+  const previousDeepModel = model ? modelProvider.getModelForTier('deep') : null;
+  if (model) {
+    modelProvider.setTierModel('deep', model);
+  }
 
-  let rank1Count = 0;
+  try {
+    const results = [];
+    let totalPrecisionSum = 0;
+    let totalVerbatimPassCount = 0;
+    let totalCitationsEvaluated = 0;
+    let qualityGatePassCount = 0;
+    let recallAt5PassCount = 0;
+    let totalDurationMs = 0;
+
+    let rank1Count = 0;
   let rank2Count = 0;
   let rank3To5Count = 0;
   let rankMissCount = 0;
@@ -603,6 +611,7 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null, ba
       qualityGatePassed: qgPassed,
       durationMs: duration,
     });
+    totalDurationMs += duration;
   }
 
   const overallAccuracy = benchmarks.length > 0 ? (totalPrecisionSum / benchmarks.length) * 100 : 0;
@@ -620,7 +629,10 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null, ba
   }
 
   return {
+    model: model || modelProvider.getModelForTier('deep'),
     evaluatedCount: benchmarks.length,
+    totalDurationMs,
+    averageLatencyMs: benchmarks.length > 0 ? Math.round(totalDurationMs / benchmarks.length) : 0,
     overallMetrics: {
       recallAt5Percent: Number(overallRecallAt5Rate.toFixed(1)),
       sourceAccuracyPercent: Number(overallAccuracy.toFixed(1)),
@@ -638,6 +650,11 @@ async function evaluateGoldenDataset({ tenantContext = null, maxItems = null, ba
     results,
     timestamp: nowIso(),
   };
+} finally {
+  if (model && previousDeepModel) {
+    modelProvider.setTierModel('deep', previousDeepModel);
+  }
+}
 }
 
 module.exports = {

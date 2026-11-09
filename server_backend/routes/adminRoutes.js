@@ -21,6 +21,7 @@ const {
 } = require('../auth/adminMiddleware');
 const { systemHealthMonitor } = require('../services/operations/systemHealthMonitor');
 const { BackupManager } = require('../services/operations/backupManager');
+const config = require('../config');
 
 const router = express.Router();
 
@@ -606,6 +607,95 @@ router.put('/settings', requireAdminAuth(), requireAdminRole('super_admin'), (re
     });
 
     res.json({ success: true, settings: runtimeSettings });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// Section 7.5: 16GB Host Model Fleet & Tier Routing (Super Admin Only)
+// ----------------------------------------------------
+
+router.get('/models/fleet', requireAdminAuth(), async (_req, res) => {
+  try {
+    const { modelProvider } = require('../services/ai/modelProviderInterface');
+    const fleetMetrics = await systemHealthMonitor.getOllamaFleetMetrics();
+    const diskPreflight = systemHealthMonitor.checkDiskPreflight();
+
+    res.json({
+      success: true,
+      provider: modelProvider.getProvider(),
+      baseUrl: modelProvider.getBaseUrl(),
+      tierModels: modelProvider.getTierModels(),
+      fleet: fleetMetrics,
+      diskPreflight,
+      memoryBudgetMaxMb: config.memoryBudgetMaxMb || 12288,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/models/tiers', requireAdminAuth(), requireAdminRole('super_admin'), (req, res) => {
+  try {
+    const { modelProvider } = require('../services/ai/modelProviderInterface');
+    const { quick, deep, expert, justification } = req.body || {};
+
+    if (quick) modelProvider.setTierModel('quick', quick);
+    if (deep) modelProvider.setTierModel('deep', deep);
+    if (expert) modelProvider.setTierModel('expert', expert);
+
+    adminAuthService.recordAdminAction({
+      adminUserId: req.adminUser.id,
+      action: 'models.update_tiers',
+      targetType: 'model_fleet',
+      targetId: 'tier_mapping',
+      justification: justification || 'Updated model tier assignments for 16GB fleet',
+      ip: clientIp(req),
+      details: { quick, deep, expert },
+    });
+
+    res.json({
+      success: true,
+      message: 'تم تحديث توزيع النماذج على المستويات بنجاح.',
+      tierModels: modelProvider.getTierModels(),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/models/provider', requireAdminAuth(), requireAdminRole('super_admin'), (req, res) => {
+  try {
+    const { modelProvider } = require('../services/ai/modelProviderInterface');
+    const { provider, justification } = req.body || {};
+
+    if (!provider || !['ollama', 'openai', 'vllm', 'mock'].includes(String(provider).toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid provider. Must be one of: ollama, openai, vllm, mock.',
+      });
+    }
+
+    const previousProvider = modelProvider.getProvider();
+    modelProvider.setProvider(provider);
+
+    adminAuthService.recordAdminAction({
+      adminUserId: req.adminUser.id,
+      action: 'models.switch_provider',
+      targetType: 'model_provider',
+      targetId: provider,
+      justification: justification || `Switched LLM provider from ${previousProvider} to ${provider}`,
+      ip: clientIp(req),
+      details: { previousProvider, newProvider: provider },
+    });
+
+    res.json({
+      success: true,
+      message: `تم تحويل موفر النماذج بنجاح من ${previousProvider} إلى ${provider}.`,
+      provider: modelProvider.getProvider(),
+      previousProvider,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

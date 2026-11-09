@@ -285,6 +285,14 @@ runStep('Phase 12 Launch Pack: Trust, Quotas, Demo Mode & First Experience Gate'
   execSync('node server_backend/tests/phase12LaunchSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 18: Phase 12-B Local Model Fleet, 16GB Memory Budget & Triple Golden Benchmark Gate
+// ----------------------------------------------------
+runStep('Phase 12-B Local Model Fleet, 16GB Memory Budget & Triple Golden Benchmark Gate', () => {
+  execSync('node server_backend/tests/phase12ModelFleetGate.test.js', { stdio: 'inherit', cwd: projectRoot });
+  execSync('node scripts/run-triple-model-eval.mjs', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

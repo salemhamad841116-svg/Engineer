@@ -684,6 +684,49 @@
             <button type="submit" class="btn" id="save-settings-btn">حفظ وتطبيق الإعدادات</button>
           </form>
         </div>
+
+        <!-- Card: 16GB Host Local Model Fleet Management -->
+        <div class="card" style="max-width: 700px; margin-top: 1.5rem;" id="models-fleet-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="font-size: 1.1rem; margin: 0;">🤖 منظومة النماذج المحلية والذاكرة (16GB RAM Host)</h2>
+            <span id="current-provider-badge" class="badge" style="background: rgba(99,102,241,0.2); color: #818cf8; border: 1px solid rgba(99,102,241,0.3);">Ollama (Local)</span>
+          </div>
+
+          <!-- Resident Model & Memory Gauge -->
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.5rem;">
+              <span>النموذج المقيم في الذاكرة حالياً: <strong id="resident-model-name" style="color: #38bdf8;">--</strong></span>
+              <span>الذاكرة المستهلكة: <strong id="resident-model-memory" style="color: #fbbf24;">-- MB</strong> / <span style="color: #94a3b8;">12,288 MB</span></span>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
+              <div id="model-memory-progress" style="background: #38bdf8; width: 0%; height: 100%; transition: width 0.3s;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-top: 0.4rem;">
+              <span>قاعدة ميزانية الذاكرة: (النموذج + KV Cache) ≤ 12GB</span>
+              <span id="disk-preflight-status">فحص القرص: جاري الفحص...</span>
+            </div>
+          </div>
+
+          <!-- Tier Model Mapping Form -->
+          <form id="tier-models-form">
+            <div class="form-group">
+              <label>نموذج الاستجابة السريعة (Quick Tier - 1 pt):</label>
+              <input type="text" id="model-tier-quick" placeholder="llama3.2:3b أو qwen2.5:1.5b">
+            </div>
+            <div class="form-group">
+              <label>نموذج البحث العميق الرئيسي (Deep Tier - 3 pts):</label>
+              <input type="text" id="model-tier-deep" placeholder="qwen2.5:7b">
+            </div>
+            <div class="form-group">
+              <label>نموذج الاستدلال الخبير (Expert Tier - 10 pts):</label>
+              <input type="text" id="model-tier-expert" placeholder="deepseek-r1:7b أو qwen3:8b">
+            </div>
+            <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+              <button type="submit" class="btn" id="save-tier-models-btn" style="flex: 1;">حفظ توزيع النماذج</button>
+              <button type="button" class="btn" id="quick-rollback-btn" style="flex: 1; background: #dc2626; color: white;" title="تبديل فوري إلى OpenAI API دون تعديل كود">⚠️ تراجع فوري لـ OpenAI API</button>
+            </div>
+          </form>
+        </div>
       </section>
 
       <!-- TAB 8: TEAM MANAGEMENT (SUPER ADMIN ONLY) -->
@@ -1222,7 +1265,98 @@
       } catch (err) {
         console.error('Failed to load settings:', err);
       }
+
+      // Load 16GB Model Fleet Status
+      try {
+        const fleetRes = await apiRequest('/models/fleet');
+        const provider = fleetRes.provider || 'ollama';
+        const providerBadge = document.getElementById('current-provider-badge');
+        if (providerBadge) {
+          providerBadge.textContent = provider.toUpperCase() + (fleetRes.fleet?.ok ? ' (متصل)' : '');
+          providerBadge.style.background = provider === 'openai' ? 'rgba(16,185,129,0.2)' : 'rgba(99,102,241,0.2)';
+          providerBadge.style.color = provider === 'openai' ? '#34d399' : '#818cf8';
+        }
+
+        const tierModels = fleetRes.tierModels || {};
+        if (document.getElementById('model-tier-quick')) document.getElementById('model-tier-quick').value = tierModels.quick || '';
+        if (document.getElementById('model-tier-deep')) document.getElementById('model-tier-deep').value = tierModels.deep || '';
+        if (document.getElementById('model-tier-expert')) document.getElementById('model-tier-expert').value = tierModels.expert || '';
+
+        const resident = fleetRes.fleet || {};
+        const residentModel = resident.residentModels?.[0]?.name || (provider === 'openai' ? 'OpenAI Cloud (API)' : 'لا يوجد نموذج مقيم (خامل)');
+        const residentMemMb = resident.totalResidentAndKvMb || 0;
+        const budgetMb = fleetRes.memoryBudgetMaxMb || 12288;
+        const memPercent = Math.min(100, Math.round((residentMemMb / budgetMb) * 100));
+
+        if (document.getElementById('resident-model-name')) document.getElementById('resident-model-name').textContent = residentModel;
+        if (document.getElementById('resident-model-memory')) document.getElementById('resident-model-memory').textContent = `${residentMemMb} MB`;
+        const prog = document.getElementById('model-memory-progress');
+        if (prog) {
+          prog.style.width = `${memPercent}%`;
+          prog.style.background = memPercent > 90 ? '#ef4444' : (memPercent > 75 ? '#f59e0b' : '#38bdf8');
+        }
+
+        const disk = fleetRes.diskPreflight || {};
+        const diskEl = document.getElementById('disk-preflight-status');
+        if (diskEl) {
+          diskEl.textContent = disk.passed
+            ? `القرص متاح: ${disk.freeGb} GB (كافٍ ومؤهل)`
+            : `القرص متاح: ${disk.freeGb} GB (⚠️ يلزم التوسيع إلى 100GB)`;
+          diskEl.style.color = disk.passed ? '#34d399' : '#f59e0b';
+        }
+
+        const rollbackBtn = document.getElementById('quick-rollback-btn');
+        if (rollbackBtn) {
+          rollbackBtn.textContent = provider === 'openai' ? '🔄 إعادة التفعيل لـ Ollama (محلي)' : '⚠️ تراجع فوري لـ OpenAI API';
+          rollbackBtn.style.background = provider === 'openai' ? '#2563eb' : '#dc2626';
+        }
+      } catch (fleetErr) {
+        console.error('Failed to load fleet status:', fleetErr);
+      }
     }
+
+    document.getElementById('tier-models-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await apiRequest('/models/tiers', {
+          method: 'PUT',
+          body: JSON.stringify({
+            quick: document.getElementById('model-tier-quick').value,
+            deep: document.getElementById('model-tier-deep').value,
+            expert: document.getElementById('model-tier-expert').value,
+            justification: 'تحديث توزيع منظومة النماذج على المستويات عبر لوحة الإدارة',
+          }),
+        });
+        alert('تم تحديث نماذج المستويات بنجاح.');
+        loadSettings();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById('quick-rollback-btn')?.addEventListener('click', async () => {
+      const isCurrentlyOpenAi = document.getElementById('current-provider-badge')?.textContent?.includes('OPENAI');
+      const targetProvider = isCurrentlyOpenAi ? 'ollama' : 'openai';
+      const confirmMsg = isCurrentlyOpenAi
+        ? 'هل تريد إعادة تفعيل منظومة النماذج المحلية (Ollama) على خادم 16GB؟'
+        : 'هل تريد التراجع الفوري إلى OpenAI API السحابي لتفادي أي ضغط موارد محلي؟';
+
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        await apiRequest('/models/provider', {
+          method: 'POST',
+          body: JSON.stringify({
+            provider: targetProvider,
+            justification: `تبديل الموفر الفوري إلى ${targetProvider}`,
+          }),
+        });
+        alert(`تم تحويل الموفر إلى ${targetProvider.toUpperCase()} بنجاح.`);
+        loadSettings();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
 
     document.getElementById('settings-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();

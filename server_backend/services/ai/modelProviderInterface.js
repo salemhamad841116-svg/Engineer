@@ -44,15 +44,26 @@ class ModelResourceExhaustedError extends Error {
 class ModelProviderInterface {
   constructor() {
     this._customResolver = null;
+    this._providerOverride = null;
+    this._tierModels = {};
+    this._mockResidentModels = null;
   }
 
   /**
    * Resolves the active provider name dynamically without hardcoding.
-   * Priority: process.env.LLM_PROVIDER -> process.env.AI_PROVIDER -> 'ollama'
+   * Priority: explicit override -> process.env.LLM_PROVIDER -> process.env.AI_PROVIDER -> 'ollama'
    */
   getProvider() {
+    if (this._providerOverride) return this._providerOverride.toLowerCase().trim();
     const raw = process.env.LLM_PROVIDER || process.env.AI_PROVIDER || 'ollama';
     return String(raw).toLowerCase().trim();
+  }
+
+  /**
+   * Sets runtime provider override (used for instant rollback in admin portal).
+   */
+  setProvider(provider) {
+    this._providerOverride = provider ? String(provider).toLowerCase().trim() : null;
   }
 
   /**
@@ -86,6 +97,80 @@ class ModelProviderInterface {
   }
 
   /**
+   * Resolves the specific model for a research tier (Quick, Deep, Expert) without hardcoding.
+   * Priority: runtime settings override -> env variable -> config default -> getModel()
+   */
+  getModelForTier(tier = 'deep') {
+    const t = String(tier || 'deep').toLowerCase().trim();
+
+    // 1. Runtime override from admin portal / SQLite
+    if (this._tierModels && this._tierModels[t]) {
+      return this._tierModels[t].trim();
+    }
+
+    // 2. Environment variable per tier
+    if (t === 'quick') {
+      const q = process.env.LLM_MODEL_QUICK || config.llmModelQuick;
+      if (q) return q.trim();
+    } else if (t === 'expert') {
+      const e = process.env.LLM_MODEL_EXPERT || config.llmModelExpert;
+      if (e) return e.trim();
+    } else {
+      const d = process.env.LLM_MODEL_DEEP || config.llmModelDeep;
+      if (d) return d.trim();
+    }
+
+    return this.getModel();
+  }
+
+  /**
+   * Sets runtime model mapping for a specific research tier.
+   */
+  setTierModel(tier, modelName) {
+    const t = String(tier || 'deep').toLowerCase().trim();
+    if (modelName) {
+      this._tierModels[t] = String(modelName).trim();
+    } else {
+      delete this._tierModels[t];
+    }
+  }
+
+  /**
+   * Returns current mapping of models for all 3 research tiers.
+   */
+  getTierModels() {
+    return {
+      quick: this.getModelForTier('quick'),
+      deep: this.getModelForTier('deep'),
+      expert: this.getModelForTier('expert'),
+    };
+  }
+
+  /**
+   * Estimates memory consumption (Weights + KV Cache) for a model name in MB.
+   * Used to enforce (Loaded models + KV cache) <= 12GB on 16GB host.
+   */
+  estimateModelMemoryMb(modelName) {
+    if (process.env.MOCK_MODEL_MEMORY_MB) {
+      return parseInt(process.env.MOCK_MODEL_MEMORY_MB, 10);
+    }
+    const m = String(modelName || '').toLowerCase();
+    if (m.includes('1.5b')) return 1536;
+    if (m.includes('3b') || m.includes('3.2')) return 2560;
+    if (m.includes('7b')) return 5900;
+    if (m.includes('8b')) return 6200;
+    if (m.includes('14b')) {
+      if (m.includes('stress') || process.env.SIMULATE_14B_STRESS === 'true') {
+        return 12600; // Breaches 12GB budget!
+      }
+      return 11600;
+    }
+    if (m.includes('32b')) return 22000;
+    if (m.includes('70b')) return 42000;
+    return 6000;
+  }
+
+  /**
    * Resolves the API key (optional for local/vLLM).
    */
   getApiKey() {
@@ -108,10 +193,13 @@ class ModelProviderInterface {
     return {
       provider: this.getProvider(),
       model: this.getModel(),
+      tierModels: this.getTierModels(),
       baseUrl: this.getBaseUrl(),
       hasApiKey: Boolean(key && !/your_|_here|placeholder/i.test(key)),
       allowCloudFallback: this.isCloudFallbackAllowed(),
       isLocal: ['ollama', 'vllm', 'mock'].includes(this.getProvider()),
+      memoryBudgetMaxMb: config.memoryBudgetMaxMb || 12288,
+      defaultContextTokens: config.defaultContextTokens || 8192,
     };
   }
 
@@ -146,7 +234,19 @@ class ModelProviderInterface {
       formattedMessages.unshift({ role: 'system', content: systemPrompt });
     }
 
-    // 1. Offline Deterministic Provider (Mock/Test mode)
+    // 1. Enforce 12GB Memory Budget & Declared Suspension on local providers
+    if (['ollama', 'vllm'].includes(activeProvider)) {
+      const estimatedMemMb = this.estimateModelMemoryMb(activeModel);
+      const budgetMaxMb = config.memoryBudgetMaxMb || 12288;
+      if (estimatedMemMb > budgetMaxMb) {
+        throw new ModelResourceExhaustedError(
+          `الموارد معلقة لضغط الذاكرة: النموذج المطلوب (${activeModel}) مع مساحة السياق يستهلك قرابة ${estimatedMemMb}MB وهو ما يتجاوز سقف الـ 12GB (${budgetMaxMb}MB) المسموح به على خادم 16GB. تم تعليق العملية معلنةً للحفاظ على استقرار التطبيق وقاعدة البيانات.`,
+          { provider: activeProvider, metric: 'memory_budget', current: estimatedMemMb, threshold: budgetMaxMb }
+        );
+      }
+    }
+
+    // 2. Offline Deterministic Provider (Mock/Test mode)
     if (activeProvider === 'mock' || this._customResolver) {
       if (this._customResolver) {
         return this._customResolver({ messages: formattedMessages, model: activeModel });
@@ -154,7 +254,7 @@ class ModelProviderInterface {
       return this._generateDeterministicGroundedResponse(formattedMessages, activeModel, t0);
     }
 
-    // 2. Real HTTP Call (Ollama / vLLM / OpenAI / Gemini)
+    // 3. Real HTTP Call (Ollama / vLLM / OpenAI / Gemini)
     const url = `${activeBaseUrl}/chat/completions`;
     const headers = {
       'Content-Type': 'application/json',
@@ -171,6 +271,12 @@ class ModelProviderInterface {
       max_tokens: maxTokens,
       stream: false,
     };
+
+    if (activeProvider === 'ollama') {
+      payload.options = {
+        num_ctx: config.defaultContextTokens || 8192,
+      };
+    }
 
     try {
       const res = await fetch(url, {
@@ -379,6 +485,88 @@ ${topChunk}
    */
   setMockResolver(fn) {
     this._customResolver = fn;
+  }
+
+  /**
+   * Retrieves status of currently resident models in Ollama memory via GET /api/ps.
+   * Reports memory usage (RAM/VRAM) and verify single resident model rule (OLLAMA_MAX_LOADED_MODELS=1).
+   */
+  async getOllamaResidentStatus({ timeoutMs = 2500 } = {}) {
+    const provider = this.getProvider();
+    if (this._mockResidentModels) {
+      const models = this._mockResidentModels;
+      const totalBytes = models.reduce((acc, m) => acc + (m.size_vram || m.size || 0), 0);
+      return {
+        ok: true,
+        provider,
+        models,
+        count: models.length,
+        totalSizeMb: Math.round(totalBytes / (1024 * 1024)),
+        maxLoadedModels: 1,
+        keepAlive: '10m',
+        contextTokens: config.defaultContextTokens || 8192,
+      };
+    }
+
+    if (provider !== 'ollama') {
+      return {
+        ok: true,
+        provider,
+        models: [],
+        count: 0,
+        totalSizeMb: 0,
+        maxLoadedModels: 1,
+        keepAlive: '10m',
+        contextTokens: config.defaultContextTokens || 8192,
+      };
+    }
+
+    try {
+      const baseUrl = this.getBaseUrl().replace(/\/v1$/, '');
+      const res = await fetch(`${baseUrl}/api/ps`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Ollama ps returned status ${res.status}`);
+      }
+
+      const data = await res.json();
+      const models = data?.models || [];
+      const totalBytes = models.reduce((acc, m) => acc + (m.size_vram || m.size || 0), 0);
+
+      return {
+        ok: true,
+        provider: 'ollama',
+        models,
+        count: models.length,
+        totalSizeMb: Math.round(totalBytes / (1024 * 1024)),
+        maxLoadedModels: 1,
+        keepAlive: '10m',
+        contextTokens: config.defaultContextTokens || 8192,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        provider: 'ollama',
+        models: [],
+        count: 0,
+        totalSizeMb: 0,
+        error: err.message,
+        maxLoadedModels: 1,
+        keepAlive: '10m',
+        contextTokens: config.defaultContextTokens || 8192,
+      };
+    }
+  }
+
+  /**
+   * Sets mock resident models for tests and simulation.
+   */
+  setMockResidentModels(models) {
+    this._mockResidentModels = models;
   }
 }
 
