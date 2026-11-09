@@ -69,17 +69,24 @@ sequenceDiagram
 ### 0) إصدار رمز تفويض لمستخدم (Issue Delegated Token)
 - **المسار**: `POST /api/external/tokens/delegated`
 - **نوع المحتوى**: `application/json`
-- **الترويسات**: `X-Service-Key`
+- **الترويسات**:
+  - `X-Service-Key` (**إلزامي**): مفتاح الخدمة المعتمد.
+  - `X-User-Session-Token` (**إلزامي**): رمز الجلسة النشط للمستخدم من نظام الدخول الموحد (SSO Login Proof).
 - **الجسم (Payload)**:
-  - `userId` (إلزامي): معرف المستخدم في المنظومة.
+  - `sessionToken` (بديل لترويسة الجلسة أعلاه).
+  - `userId` (اختياري للتأكيد، وإذا أُرسل يجب أن يطابق صاحب الجلسة تماماً).
   - `ttlMinutes` (اختياري، 30-60 دقيقة، الافتراضي 45 دقيقة).
+
+> [!IMPORTANT]
+> **قيد دليل الدخول الفعلي (Proof of Authentication)**:
+> لا يُصدر الرمز بمجرد امتلاك مفتاح الخدمة؛ بل يُشترط تقديم رمز جلسة نشط (`X-User-Session-Token`) صادر من الدخول الموحد. أي محاولة لإصدار رمز دون جلسة نشطة، أو بجلسة منتهية، أو انتحال `userId` مغاير لصاحب الجلسة، تُرفض فوراً (`401 LOGIN_PROOF_REQUIRED` أو `403 IDENTITY_MISMATCH`) وتُسجل كحادثة أمنية حرجة.
 
 ```bash
 curl -X POST https://api.cloudstudio.dev/api/external/tokens/delegated \
   -H "X-Service-Key: sk_live_your_secret_key" \
+  -H "X-User-Session-Token: ses_live_active_user_sso_token_here" \
   -H "Content-Type: application/json" \
   -d '{
-    "userId": "usr_engineer_salem",
     "ttlMinutes": 45
   }'
 ```

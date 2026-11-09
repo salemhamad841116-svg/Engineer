@@ -66,9 +66,17 @@ export interface ExternalDelegatedTokenContract {
 }
 
 export interface IssueDelegatedTokenRequest {
-  userId: string;
+  sessionToken?: string;
+  ssoAssertion?: string;
+  userId?: string;
   ttlMinutes?: number;
   scopes?: string[];
+}
+
+export interface IssueDelegatedTokenHeaders {
+  'x-service-key': string;
+  'x-user-session-token'?: string;
+  'x-sso-token'?: string;
 }
 
 export interface IssueDelegatedTokenResponse {

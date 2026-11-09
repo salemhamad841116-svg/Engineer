@@ -156,15 +156,85 @@ function dispatchTokenRequest(opts) {
       rateLimitRpm: 60,
     });
 
-    // 1. Issue token via Token Route
-    const tokenIssueRes = await dispatchTokenRequest({
+    function createActiveSession(userId) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const sessionId = newId('ses');
+      const now = nowIso();
+      const expiresAt = new Date(Date.now() + 24 * 3600000).toISOString();
+      run(
+        `INSERT INTO sessions (id, user_id, token_hash, created_at, last_seen_at, last_activity_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        sessionId, userId, sha256Hex(token), now, now, now, expiresAt
+      );
+      return token;
+    }
+
+    // 1. Unauthenticated Issuance Attempt: Calling /delegated with NO login proof MUST BE REJECTED & LOGGED
+    console.log('  Testing unauthenticated delegated token request rejection (missing login proof)...');
+    const unauthIssueRes = await dispatchTokenRequest({
       path: '/delegated',
       method: 'POST',
       headers: { 'X-Service-Key': masterKey.rawKey },
       body: { userId: userAlphaId, ttlMinutes: 45 },
     });
-    assert.strictEqual(tokenIssueRes.status, 201, 'Delegated token issuance must return 201');
+    assert.strictEqual(unauthIssueRes.status, 401, 'Issuance without active session must return 401');
+    assert.strictEqual(unauthIssueRes.body.error.code, 'LOGIN_PROOF_REQUIRED');
+
+    // Verify security incident logged in system_alert_logs
+    const unauthAlert = get(
+      "SELECT * FROM system_alert_logs WHERE category = 'security' AND message LIKE '%Missing user login proof%' ORDER BY timestamp DESC LIMIT 1"
+    );
+    assert.ok(unauthAlert, 'Security incident must be recorded in system_alert_logs for unauthenticated issuance attempt');
+
+    // Verify audit log recorded in service_api_audit_logs
+    const unauthAudit = get(
+      "SELECT * FROM service_api_audit_logs WHERE action = 'auth.delegated_token_rejected_no_login_proof' ORDER BY created_at DESC LIMIT 1"
+    );
+    assert.ok(unauthAudit, 'Audit log must record rejected unauthenticated issuance attempt in service_api_audit_logs');
+    console.log('  ✅ Unauthenticated issuance without login proof strictly rejected (401) and logged in system_alert_logs.');
+
+    // 2. Invalid / Expired Session Proof Attempt: MUST BE REJECTED & LOGGED
+    const invalidSessionRes = await dispatchTokenRequest({
+      path: '/delegated',
+      method: 'POST',
+      headers: {
+        'X-Service-Key': masterKey.rawKey,
+        'X-User-Session-Token': 'fake_nonexistent_or_expired_session_token_xyz',
+      },
+      body: { userId: userAlphaId },
+    });
+    assert.strictEqual(invalidSessionRes.status, 401, 'Invalid session proof must return 401');
+    assert.strictEqual(invalidSessionRes.body.error.code, 'SESSION_INVALID');
+    console.log('  ✅ Invalid/expired session proof strictly rejected (401) and logged.');
+
+    // 3. Identity Mismatch Attempt: Active session belongs to Alpha, but client claims Beta in body
+    const alphaSessionToken = createActiveSession(userAlphaId);
+    const mismatchIssueRes = await dispatchTokenRequest({
+      path: '/delegated',
+      method: 'POST',
+      headers: {
+        'X-Service-Key': masterKey.rawKey,
+        'X-User-Session-Token': alphaSessionToken,
+      },
+      body: { userId: userBetaId }, // Mismatch!
+    });
+    assert.strictEqual(mismatchIssueRes.status, 403, 'Identity mismatch during issuance must return 403');
+    assert.strictEqual(mismatchIssueRes.body.error.code, 'IDENTITY_MISMATCH');
+    console.log('  ✅ Identity mismatch during token issuance blocked with HTTP 403 IDENTITY_MISMATCH.');
+
+    // 4. Valid Issuance with active login proof from unified login/SSO
+    const tokenIssueRes = await dispatchTokenRequest({
+      path: '/delegated',
+      method: 'POST',
+      headers: {
+        'X-Service-Key': masterKey.rawKey,
+        'X-User-Session-Token': alphaSessionToken,
+      },
+      body: { ttlMinutes: 45 },
+    });
+    assert.strictEqual(tokenIssueRes.status, 201, 'Delegated token issuance with active session must return 201');
     assert.strictEqual(tokenIssueRes.body.success, true);
+    assert.strictEqual(tokenIssueRes.body.userId, userAlphaId, 'User identity must be derived strictly from active session');
     assert.ok(tokenIssueRes.body.delegatedToken.startsWith('dit_live_'), 'Token must start with dit_live_');
     assert.strictEqual(tokenIssueRes.body.ttlSeconds, 45 * 60, 'TTL must be 2700s (45 min)');
     assert.strictEqual(tokenIssueRes.body.ttlMinutes, 45);

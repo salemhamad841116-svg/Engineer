@@ -3,16 +3,19 @@
  * Phase 13: Delegated Ingestion Token Management Routes
  *
  * Allows external ingestion systems authenticated with a valid Service API Key
- * to issue short-lived (30-60m TTL) per-user delegated tokens and revoke them.
+ * to issue short-lived (30-60m TTL) per-user delegated tokens ONLY with verified proof
+ * of user login from the unified login/SSO system (active session token or assertion).
  */
 
 const express = require('express');
 const { get } = require('../db/database');
+const { resolveSession } = require('../auth/authService');
 const {
   requireServiceKeyBasicAuth,
   issueDelegatedToken,
   revokeDelegatedToken,
   recordServiceAudit,
+  recordSecurityIncident,
   clientIp,
 } = require('../auth/serviceKeyAuth');
 
@@ -24,34 +27,115 @@ router.use(requireServiceKeyBasicAuth('books:crud'));
 /**
  * POST /api/external/tokens/delegated
  * Issues a per-user short-lived delegated token (TTL 30–60 minutes, default 45 min).
+ * Strictly requires proof of active user login from unified login/SSO.
  */
 router.post('/delegated', (req, res) => {
   const ip = clientIp(req);
-  const { userId, ttlMinutes = 45, scopes = ['books:crud'] } = req.body || {};
+  const { ttlMinutes = 45, scopes = ['books:crud'] } = req.body || {};
+  const claimedUserId = req.body?.userId ? String(req.body.userId).trim() : null;
 
-  if (!userId || typeof userId !== 'string' || !userId.trim()) {
-    return res.status(400).json({
+  // 1. Extract login proof (Active Session Token or SSO Assertion)
+  const rawSessionProof =
+    req.headers['x-user-session-token'] ||
+    req.headers['x-sso-token'] ||
+    req.headers['x-session-token'] ||
+    req.body?.sessionToken ||
+    req.body?.session_token ||
+    req.body?.ssoAssertion ||
+    req.body?.loginProof ||
+    (req.headers['authorization']?.startsWith('Bearer ') &&
+     !req.headers['authorization'].startsWith('Bearer sk_') &&
+     !req.headers['authorization'].startsWith('Bearer dit_')
+      ? req.headers['authorization'].slice(7).trim()
+      : null);
+
+  if (!rawSessionProof) {
+    recordSecurityIncident({
+      category: 'security',
+      message: `Delegated token issuance rejected: Missing user login proof / active SSO session for claimed user [${claimedUserId || 'unspecified'}].`,
+      details: { claimedUserId, ip, endpoint: req.originalUrl || req.url },
+      tenantId: claimedUserId || null,
+    });
+    recordServiceAudit({
+      serviceKeyId: req.serviceKey.id,
+      action: 'auth.delegated_token_rejected_no_login_proof',
+      userId: claimedUserId || null,
+      endpoint: req.originalUrl || req.url,
+      statusCode: 401,
+      ip,
+      detail: { reason: 'Missing X-User-Session-Token or SSO assertion proof' },
+    });
+    return res.status(401).json({
       error: {
-        code: 'USER_ID_REQUIRED',
-        message: 'userId is required to issue a delegated token.',
-        status: 400,
+        code: 'LOGIN_PROOF_REQUIRED',
+        message: 'Delegated token issuance strictly requires proof of active user login from the unified login/SSO system (X-User-Session-Token header or sessionToken).',
+        status: 401,
       },
     });
   }
 
-  const cleanUserId = userId.trim();
-  const user = get('SELECT id, status, name, email, role FROM users WHERE id = ?', cleanUserId);
-  if (!user) {
-    return res.status(404).json({
+  // 2. Validate session proof with authService
+  let sessionData;
+  try {
+    sessionData = resolveSession(rawSessionProof);
+  } catch (err) {
+    recordSecurityIncident({
+      category: 'security',
+      message: `Delegated token issuance rejected: User has no active authenticated session or session expired (${err.code}).`,
+      details: { error: err.message, code: err.code, ip, claimedUserId },
+      tenantId: claimedUserId || null,
+    });
+    recordServiceAudit({
+      serviceKeyId: req.serviceKey.id,
+      action: 'auth.delegated_token_rejected_invalid_session',
+      userId: claimedUserId || null,
+      endpoint: req.originalUrl || req.url,
+      statusCode: 401,
+      ip,
+      detail: { code: err.code, error: err.message },
+    });
+    return res.status(401).json({
       error: {
-        code: 'USER_NOT_FOUND',
-        message: `User identity "${cleanUserId}" does not exist in the platform.`,
-        status: 404,
+        code: 'SESSION_INVALID',
+        message: `Proof of user login is invalid or expired: ${err.message}`,
+        status: 401,
       },
     });
   }
 
-  if (user.status === 'disabled') {
+  const authenticatedUser = sessionData.user;
+  const verifiedUserId = authenticatedUser.id;
+
+  // 3. Anti-Spoofing: If client claimed a userId in body, it MUST match the authenticated user!
+  if (claimedUserId && claimedUserId !== verifiedUserId) {
+    recordSecurityIncident({
+      category: 'security',
+      message: `Delegated token issuance attack blocked: Claimed userId [${claimedUserId}] does not match authenticated session user [${verifiedUserId}].`,
+      details: { claimedUserId, sessionUserId: verifiedUserId, ip },
+      tenantId: verifiedUserId,
+    });
+    recordServiceAudit({
+      serviceKeyId: req.serviceKey.id,
+      action: 'auth.delegated_token_identity_mismatch',
+      userId: verifiedUserId,
+      endpoint: req.originalUrl || req.url,
+      statusCode: 403,
+      ip,
+      detail: { claimedUserId, authenticatedUserId: verifiedUserId },
+    });
+    return res.status(403).json({
+      error: {
+        code: 'IDENTITY_MISMATCH',
+        message: 'Claimed userId does not match the active authenticated user from unified login.',
+        status: 403,
+      },
+    });
+  }
+
+  // 4. Derive identity strictly from verified session
+  const cleanUserId = verifiedUserId;
+
+  if (authenticatedUser.status === 'disabled') {
     return res.status(403).json({
       error: {
         code: 'USER_DISABLED',
@@ -86,6 +170,8 @@ router.post('/delegated', (req, res) => {
       id: result.id,
       tokenPrefix: result.tokenPrefix,
       userId: result.userId,
+      userName: authenticatedUser.name,
+      userEmail: authenticatedUser.email,
       expiresAt: result.expiresAt,
       ttlSeconds: result.ttlSeconds,
       ttlMinutes: Math.round(result.ttlSeconds / 60),

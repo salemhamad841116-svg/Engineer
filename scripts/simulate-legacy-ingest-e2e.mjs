@@ -150,12 +150,31 @@ export async function runLegacyIngestSimulation() {
   const keyInDb = get('SELECT * FROM service_api_keys WHERE id = ?', serviceKey.id);
   assert.strictEqual(keyInDb.key_hash, sha256Hex(serviceKey.rawKey), 'DB must store SHA-256 hash');
 
-  // 3. Issue short-lived Delegated Ingestion Token (TTL: 45 min)
-  console.log('[Step 3] Issuing short-lived Delegated Token (TTL: 45 min / 2700s)...');
+  // 3. User logs in via Unified Login / SSO, generating active session proof
+  console.log('[Step 3] Simulating Unified Login (SSO) and issuing short-lived Delegated Token...');
+  const userSessionToken = crypto.randomBytes(32).toString('hex');
+  const sessionId = 'ses_sim_' + Date.now();
+  const sessionNow = nowIso();
+  const sessionExpiresAt = new Date(Date.now() + 24 * 3600000).toISOString();
+  run(
+    `INSERT INTO sessions (id, user_id, token_hash, created_at, last_seen_at, last_activity_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    sessionId,
+    legacyUserId,
+    sha256Hex(userSessionToken),
+    sessionNow,
+    sessionNow,
+    sessionNow,
+    sessionExpiresAt
+  );
+
   const tokenIssueRes = await dispatchTokenRequest({
     path: '/delegated',
     method: 'POST',
-    headers: { 'X-Service-Key': serviceKey.rawKey },
+    headers: {
+      'X-Service-Key': serviceKey.rawKey,
+      'X-User-Session-Token': userSessionToken,
+    },
     body: { userId: legacyUserId, ttlMinutes: 45 },
   });
   assert.strictEqual(tokenIssueRes.status, 201, 'Token issuance must return 201');
