@@ -349,6 +349,9 @@ async function runTestSuite() {
   assert.strictEqual(demoSession.user.isDemo, true);
   assert.strictEqual(demoSession.user.planId, 'demo');
 
+  // Reset usage counters for clean test state
+  run('DELETE FROM usage_counters WHERE user_id = ?', demoSession.user.id);
+
   // Seed demo library
   knowledgeDal.seedDemoLibrary();
 

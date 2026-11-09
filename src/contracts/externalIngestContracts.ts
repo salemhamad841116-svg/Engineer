@@ -49,6 +49,47 @@ export interface RotateServiceKeyResponse {
   warning: string;
 }
 
+export interface ExternalDelegatedTokenContract {
+  id: string;
+  tokenPrefix: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  serviceKeyId?: string;
+  scopes: string[];
+  createdAt: string;
+  expiresAt: string;
+  revokedAt?: string | null;
+  isRevoked: boolean;
+  isExpired: boolean;
+  lastUsedAt?: string | null;
+}
+
+export interface IssueDelegatedTokenRequest {
+  userId: string;
+  ttlMinutes?: number;
+  scopes?: string[];
+}
+
+export interface IssueDelegatedTokenResponse {
+  success: boolean;
+  delegatedToken: string;
+  token: string;
+  id: string;
+  tokenPrefix: string;
+  userId: string;
+  expiresAt: string;
+  ttlSeconds: number;
+  ttlMinutes: number;
+  warning?: string;
+}
+
+export interface RevokeDelegatedTokenResponse {
+  success: boolean;
+  revoked: boolean;
+  id: string;
+}
+
 export interface ExternalBookChapterContract {
   title: string;
   page?: number;
@@ -57,8 +98,11 @@ export interface ExternalBookChapterContract {
 
 export interface ExternalBookIngestHeaders {
   'x-service-key': string;
-  'x-user-id': string;
+  'x-delegated-token'?: string;
+  'x-user-id'?: string;
   'idempotency-key'?: string;
+  'x-timestamp'?: string;
+  'x-signature'?: string;
 }
 
 export interface ExternalBookCreatePayload {

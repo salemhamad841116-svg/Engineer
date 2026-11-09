@@ -239,7 +239,7 @@ runStep('External Web Verification & PDF Structures Comprehensive Suite (10 Test
 // ----------------------------------------------------
 // Step 11: Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 21)
 // ----------------------------------------------------
-runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 21)', () => {
+runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 22)', () => {
   execSync('node server_backend/tests/freshDbMigrationSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 

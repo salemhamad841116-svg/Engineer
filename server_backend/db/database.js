@@ -1202,6 +1202,28 @@ CREATE INDEX IF NOT EXISTS idx_service_audit_user ON service_api_audit_logs(user
       `);
     },
   },
+  {
+    id: 22,
+    name: 'phase13_delegated_tokens_and_security_hardening',
+    up: (handle) => {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS delegated_ingest_tokens (
+  id TEXT PRIMARY KEY,
+  token_prefix TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  service_key_id TEXT REFERENCES service_api_keys(id),
+  scopes_json TEXT NOT NULL DEFAULT '["books:ingest"]',
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT DEFAULT NULL,
+  last_used_at TEXT DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_delegated_token_hash ON delegated_ingest_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_delegated_token_user ON delegated_ingest_tokens(user_id);
+      `);
+    },
+  },
 ];
 
 function openDb() {

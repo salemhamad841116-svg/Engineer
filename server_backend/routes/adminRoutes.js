@@ -863,6 +863,8 @@ const {
   generateServiceKey,
   revokeServiceKey,
   rotateServiceKey,
+  issueDelegatedToken,
+  revokeDelegatedToken,
 } = require('../auth/serviceKeyAuth');
 
 router.get('/service-keys', requireAdminAuth(), (req, res) => {
@@ -969,6 +971,109 @@ router.post('/service-keys/:id/rotate', requireAdminAuth(), requireAdminRole('su
       serviceKey: result,
       warning: 'Store this new service API key securely. It will NEVER be shown again.',
     });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// Phase 13: Delegated Ingestion Tokens Management
+// ----------------------------------------------------
+
+router.get('/delegated-tokens', requireAdminAuth(), (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db
+      .prepare(
+        `SELECT d.id, d.token_prefix, d.user_id, u.email as user_email, u.name as user_name,
+                d.service_key_id, k.name as service_key_name,
+                d.scopes_json, d.created_at, d.expires_at, d.revoked_at, d.last_used_at
+         FROM delegated_ingest_tokens d
+         LEFT JOIN users u ON u.id = d.user_id
+         LEFT JOIN service_api_keys k ON k.id = d.service_key_id
+         ORDER BY d.created_at DESC
+         LIMIT 100`
+      )
+      .all();
+
+    const tokens = rows.map((r) => ({
+      id: r.id,
+      tokenPrefix: r.token_prefix,
+      userId: r.user_id,
+      userName: r.user_name,
+      userEmail: r.user_email,
+      serviceKeyId: r.service_key_id,
+      serviceKeyName: r.service_key_name,
+      scopes: JSON.parse(r.scopes_json || '["books:crud"]'),
+      createdAt: r.created_at,
+      expiresAt: r.expires_at,
+      revokedAt: r.revoked_at,
+      isRevoked: Boolean(r.revoked_at),
+      isExpired: new Date(r.expires_at).getTime() <= Date.now(),
+      lastUsedAt: r.last_used_at,
+    }));
+
+    res.json({ success: true, count: tokens.length, tokens });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/service-keys/:id/delegated-token', requireAdminAuth(), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, ttlMinutes = 45, scopes = ['books:crud'] } = req.body || {};
+
+    const result = issueDelegatedToken({
+      userId,
+      serviceKeyId: id,
+      ttlMinutes,
+      scopes,
+    });
+
+    adminAuthService.recordAdminAction({
+      adminUserId: req.adminUser.id,
+      action: 'delegated_token.issue',
+      targetType: 'delegated_token',
+      targetId: result.id,
+      justification: `Issued delegated token for user "${userId}" tied to service key "${id}" (TTL: ${result.ttlSeconds}s)`,
+      ip: clientIp(req),
+      details: { tokenId: result.id, userId, serviceKeyId: id, expiresAt: result.expiresAt },
+    });
+
+    res.status(201).json({
+      success: true,
+      delegatedToken: result.token,
+      token: result.token,
+      id: result.id,
+      tokenPrefix: result.tokenPrefix,
+      userId: result.userId,
+      expiresAt: result.expiresAt,
+      ttlSeconds: result.ttlSeconds,
+      ttlMinutes: Math.round(result.ttlSeconds / 60),
+      warning: 'Store this delegated token securely. It will NEVER be shown again.',
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/delegated-tokens/:id/revoke', requireAdminAuth(), (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = revokeDelegatedToken(id);
+
+    adminAuthService.recordAdminAction({
+      adminUserId: req.adminUser.id,
+      action: 'delegated_token.revoke',
+      targetType: 'delegated_token',
+      targetId: id,
+      justification: `Revoked delegated token ${id}`,
+      ip: clientIp(req),
+      details: { tokenId: id },
+    });
+
+    res.json({ success: true, revoked: true, id });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, error: err.message });
   }

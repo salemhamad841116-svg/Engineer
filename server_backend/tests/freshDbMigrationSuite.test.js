@@ -22,7 +22,7 @@ if (!fs.existsSync(TEMP_DB_DIR)) {
 const tempDbFile = path.join(TEMP_DB_DIR, `fresh_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.sqlite`);
 
 console.log('================================================================');
-console.log('🏛️ RUNNING FRESH-DB MIGRATION SUITE (MIGRATIONS 1 TO 21)');
+console.log('🏛️ RUNNING FRESH-DB MIGRATION SUITE (MIGRATIONS 1 TO 22)');
 console.log('================================================================\n');
 
 let dbHandle = null;
@@ -92,7 +92,8 @@ try {
     'usage_counters',
     'service_api_keys',
     'idempotency_keys',
-    'service_api_audit_logs'
+    'service_api_audit_logs',
+    'delegated_ingest_tokens'
   ];
 
   for (const t of requiredTables) {

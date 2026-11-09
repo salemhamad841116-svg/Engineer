@@ -94,9 +94,11 @@ function getOrCreateUsageCounter(userId, planId = 'free') {
  * Retrieves the current quota balance and costs for a user.
  */
 function getQuotaBalance(userId, user) {
-  const planId = (user && user.plan_id) || 'free';
-  const isDemo = Boolean(user && user.is_demo);
-  const isVerified = Boolean((user && user.email_verified === 1) || isDemo);
+  const isDemo = Boolean(
+    user && (user.is_demo || user.isDemo || user.planId === 'demo' || user.plan_id === 'demo')
+  );
+  const planId = (user && (user.plan_id || user.planId)) || (isDemo ? 'demo' : 'free');
+  const isVerified = Boolean((user && (user.email_verified === 1 || user.emailVerified === true)) || isDemo);
 
   const counter = getOrCreateUsageCounter(userId, planId);
   const allocated = counter ? counter.points_allocated : (PLAN_QUOTAS[planId] || 10);
@@ -125,12 +127,22 @@ function checkAndConsumeQuota({ userId, user, level = 'deep' }) {
   const normalizedLevel = (level || 'deep').toLowerCase();
   const cost = LEVEL_POINTS[normalizedLevel] || LEVEL_POINTS.deep;
   let userRow = user;
-  if (!userRow || userRow.email_verified === undefined) {
+  if (!userRow || (userRow.email_verified === undefined && !userRow.isDemo && !userRow.is_demo)) {
     userRow = get('SELECT * FROM users WHERE id = ?', userId);
   }
-  const planId = (userRow && userRow.plan_id) || 'free';
-  const isDemo = Boolean(userRow && userRow.is_demo);
-  const isVerified = Boolean((userRow && userRow.email_verified === 1) || isDemo);
+  const isDemo = Boolean(
+    (user && (user.is_demo || user.isDemo || user.planId === 'demo' || user.plan_id === 'demo')) ||
+    (userRow && (userRow.is_demo || userRow.isDemo || userRow.planId === 'demo' || userRow.plan_id === 'demo'))
+  );
+  const planId =
+    (user && (user.plan_id || user.planId)) ||
+    (userRow && (userRow.plan_id || userRow.planId)) ||
+    (isDemo ? 'demo' : 'free');
+  const isVerified = Boolean(
+    (userRow && (userRow.email_verified === 1 || userRow.emailVerified === true)) ||
+    (user && (user.email_verified === 1 || user.emailVerified === true)) ||
+    isDemo
+  );
 
   // Constraint 1: Unverified accounts can browse but cannot consume daily quota points
   if (!isVerified) {
