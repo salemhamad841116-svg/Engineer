@@ -270,10 +270,14 @@ export function attachBackendAndDatabase(app: Express) {
     // مسارات المصادقة وتسجيل الدخول والحسابات
     const authRoutes = require('../server_backend/auth/authRoutes.js');
     const userRoutes = require('../server_backend/routes/userRoutes.js');
+    const billingRoutes = require('../server_backend/routes/billingRoutes.js');
+    const paymentWebhookRoutes = require('../server_backend/routes/paymentWebhookRoutes.js');
     const { extractToken } = require('../server_backend/auth/middleware.js');
     const authService = require('../server_backend/auth/authService.js');
     app.use('/api/auth', authRoutes);
     app.use('/api/user', userRoutes);
+    app.use('/api/billing', billingRoutes);
+    app.use('/api/webhooks', paymentWebhookRoutes);
 
     // استخراج جلسة المستخدم النشطة تلقائياً من الكوكي إن وجدت
     app.use((req: AuthenticatedRequest, _res: Response, next: NextFunction) => {

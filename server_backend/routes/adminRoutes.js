@@ -1079,4 +1079,58 @@ router.post('/delegated-tokens/:id/revoke', requireAdminAuth(), (req, res) => {
   }
 });
 
+// ----------------------------------------------------
+// Section 10: Phase 14 Billing, Plans & Subscriptions Management
+// ----------------------------------------------------
+
+router.get('/billing/plans', requireAdminAuth(), (_req, res) => {
+  try {
+    const { getSubscriptionPlans } = require('../services/payments/subscriptionService');
+    const plans = getSubscriptionPlans();
+    res.json({ success: true, plans });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/billing/plans/:id', requireAdminAuth(), requireAdminRole('super_admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { updatePlan } = require('../services/payments/subscriptionService');
+    const updated = updatePlan(id, req.body || {});
+
+    adminAuthService.recordAdminAction({
+      adminUserId: req.adminUser.id,
+      action: 'billing.plan_update',
+      targetType: 'subscription_plan',
+      targetId: id,
+      justification: req.body.justification || `Updated subscription plan ${id}`,
+      ip: clientIp(req),
+      details: req.body,
+    });
+
+    res.json({ success: true, plan: updated });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/billing/subscriptions', requireAdminAuth(), (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT s.*, u.email as user_email, u.name as user_name, p.name_ar as plan_name_ar, p.name_en as plan_name_en, p.price_cents
+      FROM subscriptions s
+      JOIN users u ON s.user_id = u.id
+      JOIN subscription_plans p ON s.plan_id = p.id
+      ORDER BY s.created_at DESC
+      LIMIT 100
+    `).all();
+
+    res.json({ success: true, subscriptions: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

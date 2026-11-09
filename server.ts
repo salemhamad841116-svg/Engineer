@@ -154,7 +154,14 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json({ limit: '25mb' }));
+  app.use(
+    express.json({
+      limit: '25mb',
+      verify: (req: http.IncomingMessage & { rawBody?: Buffer }, _res, buf) => {
+        req.rawBody = buf;
+      },
+    })
+  );
 
   // 3. Mount Admin Routes
   bootstrapAdminUsers();

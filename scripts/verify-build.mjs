@@ -237,9 +237,10 @@ runStep('External Web Verification & PDF Structures Comprehensive Suite (10 Test
 });
 
 // ----------------------------------------------------
-// Step 11: Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 21)
 // ----------------------------------------------------
-runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 22)', () => {
+// Step 11: Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 23)
+// ----------------------------------------------------
+runStep('Fresh SQLite Database Migrations & Clean Schema Gate (Migrations 1 to 23)', () => {
   execSync('node server_backend/tests/freshDbMigrationSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
@@ -299,6 +300,14 @@ runStep('Phase 12-B Local Model Fleet, 16GB Memory Budget & Triple Golden Benchm
 runStep('Phase 13 Service API Key & External Book Ingestion Gate', () => {
   execSync('node server_backend/tests/phase13ServiceKeyIngestGate.test.js', { stdio: 'inherit', cwd: projectRoot });
   execSync('node scripts/simulate-legacy-ingest-e2e.mjs', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 20: Phase 14 Stripe UAE Subscriptions, Webhooks & Entitlements Gate
+// ----------------------------------------------------
+runStep('Phase 14 Stripe UAE Subscriptions, Webhooks & Entitlements Gate', () => {
+  execSync('node server_backend/tests/phase14SubscriptionPaymentGate.test.js', { stdio: 'inherit', cwd: projectRoot });
+  execSync('node scripts/simulate-payment-lifecycle-e2e.mjs', { stdio: 'inherit', cwd: projectRoot });
 });
 
 printSummaryAndExit(0);

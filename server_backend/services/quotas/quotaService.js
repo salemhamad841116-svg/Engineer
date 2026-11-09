@@ -70,7 +70,14 @@ function getOrCreateUsageCounter(userId, planId = 'free') {
   let row = get('SELECT * FROM usage_counters WHERE user_id = ? AND period_date = ?', userId, today);
 
   if (!row) {
-    const allocated = PLAN_QUOTAS[planId] || config.dailyFreeQuotaPoints || 10;
+    let effectivePlanId = planId;
+    if (effectivePlanId === 'free' || !effectivePlanId) {
+      try {
+        const { getEffectiveUserPlanId } = require('../payments/subscriptionService');
+        effectivePlanId = getEffectiveUserPlanId(userId);
+      } catch (_) {}
+    }
+    const allocated = PLAN_QUOTAS[effectivePlanId] || config.dailyFreeQuotaPoints || 10;
     const resetAt = getNextUtcMidnightIso();
     const id = newId('usg');
     const now = nowIso();
@@ -78,7 +85,7 @@ function getOrCreateUsageCounter(userId, planId = 'free') {
       run(
         `INSERT INTO usage_counters (id, user_id, plan_id, period_date, points_allocated, points_used, reset_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-        id, userId, planId, today, allocated, resetAt, now
+        id, userId, effectivePlanId, today, allocated, resetAt, now
       );
       row = get('SELECT * FROM usage_counters WHERE id = ?', id);
     } catch (_) {
@@ -97,10 +104,25 @@ function getQuotaBalance(userId, user) {
   const isDemo = Boolean(
     user && (user.is_demo || user.isDemo || user.planId === 'demo' || user.plan_id === 'demo')
   );
-  const planId = (user && (user.plan_id || user.planId)) || (isDemo ? 'demo' : 'free');
+  let planId = isDemo ? 'demo' : null;
+  if (!planId) {
+    try {
+      const { getEffectiveUserPlanId } = require('../payments/subscriptionService');
+      planId = getEffectiveUserPlanId(userId);
+    } catch (_) {
+      planId = 'free';
+    }
+  }
   const isVerified = Boolean((user && (user.email_verified === 1 || user.emailVerified === true)) || isDemo);
 
   const counter = getOrCreateUsageCounter(userId, planId);
+  if (counter && counter.plan_id !== planId) {
+    const freshAllocated = PLAN_QUOTAS[planId] || config.dailyFreeQuotaPoints || 10;
+    run('UPDATE usage_counters SET plan_id = ?, points_allocated = ?, updated_at = ? WHERE id = ?', planId, freshAllocated, nowIso(), counter.id);
+    counter.plan_id = planId;
+    counter.points_allocated = freshAllocated;
+  }
+
   const allocated = counter ? counter.points_allocated : (PLAN_QUOTAS[planId] || 10);
   const used = counter ? counter.points_used : 0;
   const remaining = Math.max(0, allocated - used);
@@ -134,10 +156,15 @@ function checkAndConsumeQuota({ userId, user, level = 'deep' }) {
     (user && (user.is_demo || user.isDemo || user.planId === 'demo' || user.plan_id === 'demo')) ||
     (userRow && (userRow.is_demo || userRow.isDemo || userRow.planId === 'demo' || userRow.plan_id === 'demo'))
   );
-  const planId =
-    (user && (user.plan_id || user.planId)) ||
-    (userRow && (userRow.plan_id || userRow.planId)) ||
-    (isDemo ? 'demo' : 'free');
+  let planId = isDemo ? 'demo' : null;
+  if (!planId) {
+    try {
+      const { getEffectiveUserPlanId } = require('../payments/subscriptionService');
+      planId = getEffectiveUserPlanId(userId);
+    } catch (_) {
+      planId = 'free';
+    }
+  }
   const isVerified = Boolean(
     (userRow && (userRow.email_verified === 1 || userRow.emailVerified === true)) ||
     (user && (user.email_verified === 1 || user.emailVerified === true)) ||

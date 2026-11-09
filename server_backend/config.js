@@ -150,6 +150,22 @@ const config = {
   get defaultContextTokens() {
     return int('DEFAULT_CONTEXT_TOKENS', 8192); // 8192 num_ctx
   },
+  // Phase 14: Subscriptions, Stripe UAE & Payments
+  get stripeSecretKey() {
+    return process.env.STRIPE_SECRET_KEY || 'sk_test_mock_secret_key_uae';
+  },
+  get stripeWebhookSecret() {
+    return process.env.STRIPE_WEBHOOK_SECRET || 'whsec_mock_webhook_secret_uae';
+  },
+  get stripeTaxRatePercent() {
+    return 5.0; // UAE VAT 5%
+  },
+  get paymentGracePeriodDays() {
+    return int('PAYMENT_GRACE_PERIOD_DAYS', 3);
+  },
+  get trialPeriodDays() {
+    return int('TRIAL_PERIOD_DAYS', 7);
+  },
 };
 
 module.exports = config;

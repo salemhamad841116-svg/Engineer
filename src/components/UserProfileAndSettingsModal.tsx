@@ -19,6 +19,9 @@ import {
   X,
   Loader2,
   Camera,
+  CreditCard,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import {
   UserProfileContract,
@@ -27,10 +30,12 @@ import {
   BookItemContract,
   ResearchSessionContract,
   UserFeedbackExportItemContract,
+  SubscriptionPlanContract,
+  UserSubscriptionContract,
 } from '../contracts/index';
 
 interface TabDefinition {
-  id: 'profile' | 'activity' | 'security' | 'settings' | 'danger';
+  id: 'profile' | 'subscription' | 'activity' | 'security' | 'settings' | 'danger';
   icon: typeof User;
   labelAr: string;
   labelEn: string;
@@ -39,6 +44,7 @@ interface TabDefinition {
 
 const TAB_DEFINITIONS: TabDefinition[] = [
   { id: 'profile', icon: User, labelAr: 'الملف والإحصاءات', labelEn: 'Profile & Stats' },
+  { id: 'subscription', icon: CreditCard, labelAr: 'الاشتراك والفوترة', labelEn: 'Subscription & Billing' },
   { id: 'activity', icon: BookOpen, labelAr: 'نشاطي ومكتبي', labelEn: 'My Activity' },
   { id: 'security', icon: Shield, labelAr: 'الأمان والجلسات', labelEn: 'Security & Sessions' },
   { id: 'settings', icon: Sliders, labelAr: 'إعدادات التطبيق', labelEn: 'App Preferences' },
@@ -47,7 +53,7 @@ const TAB_DEFINITIONS: TabDefinition[] = [
 
 interface UserProfileAndSettingsModalProps {
   isOpen: boolean;
-  initialTab?: 'profile' | 'activity' | 'security' | 'settings' | 'danger';
+  initialTab?: 'profile' | 'subscription' | 'activity' | 'security' | 'settings' | 'danger';
   language: 'ar' | 'en';
   onClose: () => void;
   onLogout: () => void;
@@ -65,7 +71,7 @@ export const UserProfileAndSettingsModal: React.FC<UserProfileAndSettingsModalPr
   onProfileUpdated,
 }) => {
   const isAr = language === 'ar';
-  const [activeTab, setActiveTab] = useState<'profile' | 'activity' | 'security' | 'settings' | 'danger'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'profile' | 'subscription' | 'activity' | 'security' | 'settings' | 'danger'>(initialTab);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -111,6 +117,11 @@ export const UserProfileAndSettingsModal: React.FC<UserProfileAndSettingsModalPr
   const [deletePhrase, setDeletePhrase] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Subscription state (Phase 14)
+  const [subscription, setSubscription] = useState<UserSubscriptionContract | null>(null);
+  const [plans, setPlans] = useState<SubscriptionPlanContract[]>([]);
+  const [billingLoading, setBillingLoading] = useState<string | null>(null);
+
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
@@ -126,11 +137,13 @@ export const UserProfileAndSettingsModal: React.FC<UserProfileAndSettingsModalPr
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [profileRes, settingsRes, sessionsRes, activityRes] = await Promise.all([
+      const [profileRes, settingsRes, sessionsRes, activityRes, subRes, plansRes] = await Promise.all([
         fetch('/api/user/profile', { headers: { 'x-requested-with': 'XMLHttpRequest' } }),
         fetch('/api/user/settings', { headers: { 'x-requested-with': 'XMLHttpRequest' } }),
         fetch('/api/user/sessions', { headers: { 'x-requested-with': 'XMLHttpRequest' } }),
         fetch('/api/user/activity', { headers: { 'x-requested-with': 'XMLHttpRequest' } }),
+        fetch('/api/billing/subscription', { headers: { 'x-requested-with': 'XMLHttpRequest' } }),
+        fetch('/api/billing/plans', { headers: { 'x-requested-with': 'XMLHttpRequest' } }),
       ]);
 
       if (profileRes.ok) {
@@ -156,10 +169,66 @@ export const UserProfileAndSettingsModal: React.FC<UserProfileAndSettingsModalPr
         setSearches(actData.searches || []);
         setFeedbacks(actData.feedbacks || []);
       }
+
+      if (subRes.ok) {
+        const subData = await subRes.json();
+        setSubscription(subData.subscription || null);
+      }
+
+      if (plansRes.ok) {
+        const plansData = await plansRes.json();
+        setPlans(plansData.plans || []);
+      }
     } catch (_err) {
       onNotify('error', isAr ? 'تعذر تحميل بيانات الحساب' : 'Failed to load user profile data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpgradePlan = async (planId: string) => {
+    setBillingLoading(planId);
+    try {
+      const res = await fetch('/api/billing/checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-requested-with': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          planId,
+          successUrl: `${window.location.origin}/?payment=success`,
+          cancelUrl: `${window.location.origin}/?payment=cancel`,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.session?.url) {
+        window.location.href = data.session.url;
+      } else {
+        onNotify('error', data.error?.message || data.message || (isAr ? 'تعذر بدء عملية الدفع' : 'Failed to initiate checkout'));
+      }
+    } catch (_err) {
+      onNotify('error', isAr ? 'حدث خطأ في الاتصال ببوابة الدفع' : 'Network error communicating with payment gateway');
+    } finally {
+      setBillingLoading(null);
+    }
+  };
+
+  const handleOpenPortal = async () => {
+    setBillingLoading('portal');
+    try {
+      const res = await fetch('/api/billing/portal-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-requested-with': 'XMLHttpRequest' },
+        body: JSON.stringify({ returnUrl: window.location.href }),
+      });
+      const data = await res.json();
+      if (res.ok && data.session?.portalUrl) {
+        window.location.href = data.session.portalUrl;
+      } else {
+        onNotify('error', data.error?.message || data.message || (isAr ? 'تعذر فتح بوابة إدارة الاشتراكات' : 'Failed to open billing portal'));
+      }
+    } catch (_err) {
+      onNotify('error', isAr ? 'حدث خطأ أثناء فتح بوابة الفوترة' : 'Network error opening billing portal');
+    } finally {
+      setBillingLoading(null);
     }
   };
 
@@ -526,6 +595,201 @@ export const UserProfileAndSettingsModal: React.FC<UserProfileAndSettingsModalPr
                       <div className="text-xs text-zinc-400 mt-2">
                         {isAr ? 'انضم:' : 'Joined:'} {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString() : '2026'}
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: SUBSCRIPTION & BILLING (Phase 14) */}
+              {activeTab === 'subscription' && (
+                <div className="space-y-6">
+                  {/* Current Plan Overview Card */}
+                  <div className="bg-[#141824] border border-white/10 rounded-2xl p-6 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <CreditCard className="w-5 h-5 text-blue-400" />
+                          <h3 className="text-lg font-bold text-white">
+                            {isAr ? 'حالة الاشتراك الحالي' : 'Current Subscription'}
+                          </h3>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                              subscription?.status === 'active'
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : subscription?.status === 'trialing'
+                                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                : subscription?.status === 'past_due'
+                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                : 'bg-zinc-800 text-zinc-400 border border-white/10'
+                            }`}
+                          >
+                            {subscription?.status === 'trialing'
+                              ? (isAr ? 'تجربة مجانية نشطة' : 'Active Free Trial')
+                              : subscription?.status === 'past_due'
+                              ? (isAr ? 'فترة سماح (تحديث البطاقة)' : 'Grace Period')
+                              : subscription?.status === 'active' && subscription?.planId !== 'free'
+                              ? (isAr ? 'اشتراك نشط' : 'Active Subscription')
+                              : (isAr ? 'خطة أساسية' : 'Starter Plan')}
+                          </span>
+                        </div>
+                        <p className="text-sm text-zinc-400">
+                          {isAr
+                            ? `الخطة الحالية: ${subscription?.planNameAr || 'الأساسية المجانية'}`
+                            : `Current Plan: ${subscription?.planNameEn || 'Free Starter'}`}
+                        </p>
+                      </div>
+
+                      {subscription?.stripeCustomerId && (
+                        <button
+                          type="button"
+                          onClick={handleOpenPortal}
+                          disabled={billingLoading === 'portal'}
+                          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-medium border border-white/10 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {billingLoading === 'portal' ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+                          )}
+                          <span>{isAr ? 'إدارة الاشتراك والبطاقات (Stripe)' : 'Manage via Stripe Portal'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Grace Period Warning Banner */}
+                    {subscription?.isGracePeriod && (
+                      <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                        <div className="text-xs text-amber-200">
+                          <p className="font-bold text-amber-300 mb-1">
+                            {isAr ? 'تنبيه: تعذر تجديد الاشتراك عبر البطاقة المسجلة' : 'Notice: Scheduled payment renewal failed'}
+                          </p>
+                          <p>
+                            {isAr
+                              ? `فترة السماح سارية حتى ${subscription.gracePeriodEnd ? new Date(subscription.gracePeriodEnd).toLocaleDateString() : '3 أيام'}. لن يتوقف حسابك أو رصيدك حالياً، يرجى تحديث البطاقة في بوابة الفوترة لتفادي تخفيض الخطة تلقائياً للمجاني.`
+                              : 'Your account remains active during the 3-day grace period. Please update your payment card to avoid automatic downgrade to the free tier.'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Points Allocation Bar */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      <div className="bg-black/30 border border-white/5 rounded-xl p-3">
+                        <div className="text-xs text-zinc-400 mb-1">{isAr ? 'الرصيد اليومي الممنوح' : 'Daily Point Allocation'}</div>
+                        <div className="text-xl font-bold text-white font-mono flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-amber-400" />
+                          {subscription?.dailyPoints || 10} {isAr ? 'نقطة' : 'pts'}
+                        </div>
+                      </div>
+                      <div className="bg-black/30 border border-white/5 rounded-xl p-3">
+                        <div className="text-xs text-zinc-400 mb-1">{isAr ? 'تاريخ التجديد القادم' : 'Next Renewal'}</div>
+                        <div className="text-sm font-semibold text-zinc-200 font-mono mt-1">
+                          {subscription?.currentPeriodEnd
+                            ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
+                            : (isAr ? 'يتجدد يومياً' : 'Resets daily')}
+                        </div>
+                      </div>
+                      <div className="bg-black/30 border border-white/5 rounded-xl p-3">
+                        <div className="text-xs text-zinc-400 mb-1">{isAr ? 'الضريبة والامتثال' : 'Tax Compliance'}</div>
+                        <div className="text-xs text-emerald-400 font-medium mt-1">
+                          {isAr ? 'ضريبة القيمة المضافة 5% (Stripe UAE)' : 'UAE VAT 5% (Stripe UAE)'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Available Plans Grid */}
+                  <div>
+                    <h4 className="text-sm font-bold text-zinc-300 mb-3 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      {isAr ? 'ترقية وتوسيع رصيد الحساب' : 'Upgrade & Expand Account Capacity'}
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {plans.map((p) => {
+                        const isCurrent = (subscription?.planId || 'free') === p.id;
+                        const isPro = p.id === 'pro';
+                        return (
+                          <div
+                            key={p.id}
+                            className={`rounded-2xl p-5 border transition-all flex flex-col justify-between ${
+                              isCurrent
+                                ? 'bg-blue-950/20 border-blue-500/40 ring-1 ring-blue-500/30'
+                                : isPro
+                                ? 'bg-[#151c2e] border-blue-400/30 shadow-lg shadow-blue-500/5'
+                                : 'bg-[#141824] border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <h5 className="font-bold text-white text-base">
+                                  {isAr ? p.nameAr : p.nameEn}
+                                </h5>
+                                {isPro && (
+                                  <span className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                    {isAr ? 'الأكثر طلباً' : 'Popular'}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="mb-4">
+                                <div className="text-2xl font-black text-white font-mono">
+                                  {p.priceCents === 0 ? (isAr ? 'مجاناً' : 'Free') : `${p.priceFormatted} ${p.currency}`}
+                                  {p.priceCents > 0 && <span className="text-xs text-zinc-400 font-normal"> / {isAr ? 'شهرياً' : 'mo'}</span>}
+                                </div>
+                                <div className="text-[11px] text-zinc-400 mt-0.5">
+                                  {p.priceCents > 0
+                                    ? (isAr ? 'شامل 5% ضريبة القيمة المضافة' : 'Includes 5% UAE VAT')
+                                    : (isAr ? 'بدون بطاقة ائتمانية' : 'No credit card required')}
+                                </div>
+                              </div>
+
+                              <ul className="space-y-2 mb-6 text-xs text-zinc-300">
+                                {p.features.map((feat, fIdx) => (
+                                  <li key={fIdx} className="flex items-start gap-2">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                                    <span>{feat}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            <div>
+                              {isCurrent ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="w-full py-2.5 bg-blue-600/20 text-blue-300 rounded-xl text-xs font-bold border border-blue-500/30 cursor-default"
+                                >
+                                  {isAr ? '✓ خطتك الحالية' : '✓ Current Plan'}
+                                </button>
+                              ) : p.priceCents > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpgradePlan(p.id)}
+                                  disabled={billingLoading === p.id}
+                                  className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {billingLoading === p.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <span>
+                                        {isPro
+                                          ? (isAr ? 'ابدأ تجربة 7 أيام مجاناً' : 'Start 7-Day Free Trial')
+                                          : (isAr ? 'ترقية عبر Stripe' : 'Upgrade via Stripe')}
+                                      </span>
+                                      <ExternalLink className="w-3 h-3" />
+                                    </>
+                                  )}
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

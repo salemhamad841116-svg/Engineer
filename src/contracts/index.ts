@@ -468,7 +468,7 @@ export interface ModalPayloadMap {
   auth?: { mode?: 'login' | 'register' };
   'deep-research'?: { initialQuery?: string };
   'autonomous-agent'?: { initialTask?: string };
-  'user-profile'?: { tab?: 'profile' | 'activity' | 'security' | 'settings' | 'danger' };
+  'user-profile'?: { tab?: 'profile' | 'activity' | 'security' | 'settings' | 'danger' | 'subscription' };
   [key: string]: Record<string, unknown> | undefined;
 }
 
@@ -542,6 +542,63 @@ export interface UserDataExportContract {
   researchSessions: ResearchSessionContract[];
   feedbacks: UserFeedbackExportItemContract[];
   exportedAt: string;
+}
+
+// ------------------------------------------------------------------------------
+// 8. Phase 14: Subscription & Billing Contracts (Stripe UAE & Regional Payments)
+// ------------------------------------------------------------------------------
+
+export interface SubscriptionPlanContract {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  dailyPoints: number;
+  priceCents: number;
+  priceFormatted: string;
+  currency: string;
+  stripePriceId?: string | null;
+  features: string[];
+}
+
+export interface UserSubscriptionContract {
+  id?: string | null;
+  userId: string;
+  planId: string;
+  status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'incomplete';
+  planNameAr: string;
+  planNameEn: string;
+  dailyPoints: number;
+  priceFormatted: string;
+  currency: string;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd: boolean;
+  canceledAt?: string | null;
+  isTrial: boolean;
+  trialEnd?: string | null;
+  isGracePeriod: boolean;
+  gracePeriodEnd?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+}
+
+export interface CheckoutSessionResponseContract {
+  sessionId: string;
+  url: string;
+  customerId: string;
+  planId: string;
+  currency: string;
+  unitAmount: number;
+  vatAmount: number;
+  totalAmount: number;
+  trialDays: number;
+  mode: string;
+}
+
+export interface CustomerPortalSessionResponseContract {
+  portalSessionId: string;
+  portalUrl: string;
+  customerId: string;
 }
 
 export * from './externalIngestContracts';

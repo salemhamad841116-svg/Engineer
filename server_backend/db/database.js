@@ -1224,6 +1224,83 @@ CREATE INDEX IF NOT EXISTS idx_delegated_token_user ON delegated_ingest_tokens(u
       `);
     },
   },
+  {
+    id: 23,
+    name: 'phase14_subscriptions_and_payment_webhooks',
+    up: (handle) => {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id TEXT PRIMARY KEY,
+  name_ar TEXT NOT NULL,
+  name_en TEXT NOT NULL,
+  daily_points INTEGER NOT NULL,
+  price_cents INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'aed',
+  stripe_price_id TEXT DEFAULT NULL,
+  stripe_product_id TEXT DEFAULT NULL,
+  features_json TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO subscription_plans (id, name_ar, name_en, daily_points, price_cents, currency, stripe_price_id, stripe_product_id, features_json, is_active, created_at, updated_at)
+VALUES
+  ('free', 'الخطة الأساسية المجانية', 'Free Starter', 10, 0, 'aed', NULL, NULL, '["10 نقاط بحث يومية","محرك Deep متوازن","فهرسة الكتب حتى 100MB"]', 1, datetime('now'), datetime('now')),
+  ('pro', 'خطة المحترفين', 'Pro Professional', 100, 7900, 'aed', 'price_pro_aed_monthly', 'prod_pro_tier', '["100 نقطة بحث يومية","أولوية معالجة في نموذج Expert","تجربة مجانية 7 أيام","فهرسة كتب موسعة حتى 2GB","دعم فني مباشر"]', 1, datetime('now'), datetime('now')),
+  ('enterprise', 'خطة المؤسسات والشركات', 'Enterprise Tier', 1000, 29900, 'aed', 'price_ent_aed_monthly', 'prod_enterprise_tier', '["1000 نقطة بحث يومية","أولوية قصوى ونماذج غير محدودة","مفاتيح ربط API متعددة","ضمان مستوى الخدمة SLA 99.9%"]', 1, datetime('now'), datetime('now'));
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  stripe_customer_id TEXT NOT NULL,
+  stripe_subscription_id TEXT UNIQUE,
+  plan_id TEXT NOT NULL REFERENCES subscription_plans(id),
+  status TEXT NOT NULL,
+  current_period_start TEXT,
+  current_period_end TEXT,
+  cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+  canceled_at TEXT DEFAULT NULL,
+  trial_start TEXT DEFAULT NULL,
+  trial_end TEXT DEFAULT NULL,
+  grace_period_end TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions(stripe_customer_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_sub ON subscriptions(stripe_subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
+
+CREATE TABLE IF NOT EXISTS payment_webhook_events (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'stripe',
+  event_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  processed_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'processed'
+);
+CREATE INDEX IF NOT EXISTS idx_payment_webhooks_type ON payment_webhook_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_payment_webhooks_provider ON payment_webhook_events(provider);
+
+CREATE TABLE IF NOT EXISTS payment_audit_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id),
+  subscription_id TEXT,
+  provider TEXT NOT NULL DEFAULT 'stripe',
+  action TEXT NOT NULL,
+  amount_cents INTEGER DEFAULT 0,
+  currency TEXT DEFAULT 'aed',
+  status TEXT NOT NULL,
+  ip TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  detail_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_payment_audit_user ON payment_audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_audit_action ON payment_audit_logs(action);
+      `);
+    },
+  },
 ];
 
 function openDb() {
