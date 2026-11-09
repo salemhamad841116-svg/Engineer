@@ -431,6 +431,7 @@
       <button type="button" class="tab-btn" data-tab="tab-audit">📜 سجل التدقيق الحصين</button>
       <button type="button" class="tab-btn" data-tab="tab-settings" id="tab-btn-settings">⚙️ إعدادات المنظومة</button>
       <button type="button" class="tab-btn" data-tab="tab-team" id="tab-btn-team">🛡️ فريق الإدارة</button>
+      <button type="button" class="tab-btn" data-tab="tab-service-keys" id="tab-btn-service-keys">🔑 مفاتيح الخدمات</button>
     </nav>
 
     <main>
@@ -755,6 +756,56 @@
           </table>
         </div>
       </section>
+
+      <!-- TAB 9: SERVICE API KEYS -->
+      <section id="tab-service-keys" class="tab-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+          <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.25rem;">مفاتيح خدمات الربط الخارجي (Service API Keys)</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">إدارة المفاتيح المعتمدة للربط مع تطبيق الإدخال القديم مع صلاحية كتب وحيدة (books:crud) ومعدل 60 طلب/دقيقة.</p>
+          </div>
+          <button id="btn-open-create-key" class="btn btn-primary" onclick="openCreateServiceKeyModal()">+ إنشاء مفتاح خدمة جديد</button>
+        </div>
+
+        <div class="grid-4" style="margin-bottom: 1.5rem;">
+          <div class="card">
+            <div class="card-label">إجمالي المفاتيح</div>
+            <div class="card-value" id="cnt-total-keys">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">المفاتيح النشطة</div>
+            <div class="card-value" id="cnt-active-keys" style="color: #10b981;">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">المفاتيح الملغاة</div>
+            <div class="card-value" id="cnt-revoked-keys" style="color: #ef4444;">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">حد المعدل الافتراضي</div>
+            <div class="card-value">60 / دقيقة</div>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>اسم المفتاح</th>
+                <th>بادئة المفتاح</th>
+                <th>الصلاحيات</th>
+                <th>الحد (طلب/دقيقة)</th>
+                <th>الحالة</th>
+                <th>تاريخ الإنشاء</th>
+                <th>آخر استخدام</th>
+                <th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="service-keys-tbody">
+              <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">جارٍ التحميل...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -822,6 +873,52 @@
           <button type="submit" class="btn btn-success">إنشاء الحساب وتوليد 2FA</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CREATE & REVEAL SERVICE KEY -->
+  <div id="service-key-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-title">
+        <span id="service-key-modal-title">إنشاء مفتاح خدمة جديد (Service API Key)</span>
+        <button class="btn btn-secondary close-modal" onclick="closeServiceKeyModal()" style="padding: 0.2rem 0.5rem;">✕</button>
+      </div>
+      <div id="service-key-create-view">
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+          يُستخدم مفتاح الخدمة حصراً للربط مع تطبيق الإدخال القديم مع صلاحية وحيدة (books:crud) وعزل كامل للمستأجرين.
+        </p>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display:block; margin-bottom:0.4rem; font-size:0.85rem;">اسم المفتاح / النظام المصدر:</label>
+          <input type="text" id="service-key-name-input" class="input-text" placeholder="مثال: تطبيق الإدخال القديم - إنتاج" style="width:100%;" />
+        </div>
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+          <label style="display:block; margin-bottom:0.4rem; font-size:0.85rem;">الحد الأقصى للطلبات (طلب/دقيقة):</label>
+          <input type="number" id="service-key-rpm-input" class="input-text" value="60" min="1" max="1000" style="width:100%;" />
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+          <button class="btn btn-secondary" onclick="closeServiceKeyModal()">إلغاء</button>
+          <button class="btn btn-primary" onclick="submitCreateServiceKey()">توليد المفتاح</button>
+        </div>
+      </div>
+
+      <div id="service-key-reveal-view" style="display: none;">
+        <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.85rem; margin-bottom: 1rem;">
+          <div style="color: #ef4444; font-weight: 700; font-size: 0.95rem; margin-bottom: 0.35rem;">⚠️ تحذير أمني صارم: احفظ المفتاح الآن!</div>
+          <div style="font-size: 0.85rem; color: #f87171; line-height: 1.4;">
+            سيظهر هذا المفتاح السري <strong>لمرة واحدة فقط</strong>، ولن يمكن استرجاعه أبداً لأنه يُخزن مُجزأً (SHA-256). انسخه فوراً وضعه في بيئة تطبيق الإدخال.
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+          <label style="display:block; margin-bottom:0.4rem; font-size:0.85rem;">مفتاح الخدمة السري (X-Service-Key):</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="revealed-service-key-text" class="input-text" readonly style="width:100%; font-family: monospace; font-size: 0.9rem; direction: ltr;" />
+            <button class="btn btn-primary" onclick="copyServiceKeyToClipboard()">نسخ</button>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end;">
+          <button class="btn btn-secondary" onclick="closeServiceKeyModal()">تم الحفظ في مكان آمن</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -964,6 +1061,7 @@
       if (tabId === 'tab-audit') loadAuditLogs();
       if (tabId === 'tab-settings') loadSettings();
       if (tabId === 'tab-team') loadTeam();
+      if (tabId === 'tab-service-keys') loadServiceKeys();
     }
 
     // Dashboard
@@ -1448,6 +1546,145 @@
         document.querySelectorAll('.modal-backdrop').forEach((m) => m.classList.remove('open'));
       });
     });
+
+    // Service API Keys Management
+    async function loadServiceKeys() {
+      const tbody = document.getElementById('service-keys-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">جارٍ التحميل...</td></tr>';
+
+      try {
+        const res = await apiRequest('/service-keys');
+        const keys = res.keys || [];
+
+        const total = keys.length;
+        const active = keys.filter((k) => !k.isRevoked).length;
+        const revoked = keys.filter((k) => k.isRevoked).length;
+
+        document.getElementById('cnt-total-keys').innerText = total;
+        document.getElementById('cnt-active-keys').innerText = active;
+        document.getElementById('cnt-revoked-keys').innerText = revoked;
+
+        if (keys.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">لا توجد مفاتيح خدمات منشأة حالياً.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = keys
+          .map((k) => {
+            const statusBadge = k.isRevoked
+              ? '<span class="badge badge-danger">ملغى (Revoked)</span>'
+              : '<span class="badge badge-success">نشط (Active)</span>';
+
+            const actions = k.isRevoked
+              ? '<span style="color: var(--text-muted); font-size: 0.8rem;">تم الإبطال</span>'
+              : `
+                <div style="display: flex; gap: 0.35rem;">
+                  <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="rotateServiceKeyUi('${k.id}', '${k.name}')">تدوير</button>
+                  <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="revokeServiceKeyUi('${k.id}', '${k.name}')">إبطال</button>
+                </div>
+              `;
+
+            return `
+              <tr>
+                <td style="font-weight: 600;">${k.name}</td>
+                <td><code style="font-size: 0.8rem; background: var(--bg-card); padding: 0.15rem 0.35rem; border-radius: 4px;">${k.keyPrefix}...</code></td>
+                <td><span style="font-size: 0.8rem; color: var(--text-muted);">${(k.scopes || []).join(', ')}</span></td>
+                <td>${k.rateLimitRpm} / د</td>
+                <td>${statusBadge}</td>
+                <td style="font-size: 0.8rem;">${new Date(k.createdAt).toLocaleDateString('ar-AE')}</td>
+                <td style="font-size: 0.8rem; color: var(--text-muted);">${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('ar-AE') : 'لم يُستخدم بعد'}</td>
+                <td>${actions}</td>
+              </tr>
+            `;
+          })
+          .join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #ef4444;">فشل جلب المفاتيح: ${err.message}</td></tr>`;
+      }
+    }
+
+    function openCreateServiceKeyModal() {
+      document.getElementById('service-key-modal-title').innerText = 'إنشاء مفتاح خدمة جديد (Service API Key)';
+      document.getElementById('service-key-create-view').style.display = 'block';
+      document.getElementById('service-key-reveal-view').style.display = 'none';
+      document.getElementById('service-key-name-input').value = '';
+      document.getElementById('service-key-rpm-input').value = '60';
+      document.getElementById('service-key-modal').classList.add('open');
+    }
+
+    function closeServiceKeyModal() {
+      document.getElementById('service-key-modal').classList.remove('open');
+    }
+
+    async function submitCreateServiceKey() {
+      const name = document.getElementById('service-key-name-input').value.trim();
+      const rateLimitRpm = parseInt(document.getElementById('service-key-rpm-input').value, 10) || 60;
+      if (!name) {
+        alert('يرجى إدخال اسم النظام الخارجي أو المفتاح.');
+        return;
+      }
+
+      try {
+        const res = await apiRequest('/service-keys', {
+          method: 'POST',
+          body: JSON.stringify({ name, rateLimitRpm, scopes: ['books:crud'] }),
+        });
+
+        if (res.success && res.serviceKey) {
+          document.getElementById('service-key-create-view').style.display = 'none';
+          document.getElementById('service-key-reveal-view').style.display = 'block';
+          document.getElementById('revealed-service-key-text').value = res.serviceKey.rawKey;
+          loadServiceKeys();
+        }
+      } catch (err) {
+        alert(`فشل إنشاء المفتاح: ${err.message}`);
+      }
+    }
+
+    function copyServiceKeyToClipboard() {
+      const input = document.getElementById('revealed-service-key-text');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        alert('تم نسخ مفتاح الخدمة إلى الحافظة بنجاح!');
+      }).catch(() => {
+        alert('يرجى نسخ المفتاح يدوياً: ' + input.value);
+      });
+    }
+
+    async function revokeServiceKeyUi(id, name) {
+      if (!confirm(`هل أنت متأكد من رغبتك في إبطال المفتاح "${name}" فوراً؟\\nسيتم حظر أي طلب صادر به خلال أقل من ثانية واحدة.`)) {
+        return;
+      }
+      try {
+        const res = await apiRequest(`/service-keys/${id}/revoke`, { method: 'POST' });
+        if (res.success) {
+          alert(`تم إبطال المفتاح "${name}" بنجاح.`);
+          loadServiceKeys();
+        }
+      } catch (err) {
+        alert(`فشل إبطال المفتاح: ${err.message}`);
+      }
+    }
+
+    async function rotateServiceKeyUi(id, name) {
+      if (!confirm(`هل أنت متأكد من تدوير المفتاح "${name}"؟\\nسيتم إبطال المفتاح القديم وتوليد مفتاح جديد بنفس الإعدادات وعرضه لمرة واحدة.`)) {
+        return;
+      }
+      try {
+        const res = await apiRequest(`/service-keys/${id}/rotate`, { method: 'POST' });
+        if (res.success && res.serviceKey) {
+          document.getElementById('service-key-modal-title').innerText = `تدوير المفتاح: ${name}`;
+          document.getElementById('service-key-create-view').style.display = 'none';
+          document.getElementById('service-key-reveal-view').style.display = 'block';
+          document.getElementById('revealed-service-key-text').value = res.serviceKey.rawKey;
+          document.getElementById('service-key-modal').classList.add('open');
+          loadServiceKeys();
+        }
+      } catch (err) {
+        alert(`فشل تدوير المفتاح: ${err.message}`);
+      }
+    }
 
     // Initial session bootstrap check
     checkCurrentSession();

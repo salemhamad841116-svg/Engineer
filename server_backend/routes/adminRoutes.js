@@ -855,4 +855,123 @@ router.get('/system-health', requireAdminAuth(), (_req, res) => {
   }
 });
 
+// ----------------------------------------------------
+// Phase 13: Service API Keys Management Endpoints
+// ----------------------------------------------------
+
+const {
+  generateServiceKey,
+  revokeServiceKey,
+  rotateServiceKey,
+} = require('../auth/serviceKeyAuth');
+
+router.get('/service-keys', requireAdminAuth(), (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db
+      .prepare(
+        `SELECT id, name, key_prefix, scopes_json, rate_limit_rpm, is_revoked,
+                revoked_at, created_by, created_at, last_used_at
+         FROM service_api_keys
+         ORDER BY created_at DESC`
+      )
+      .all();
+
+    const keys = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      keyPrefix: r.key_prefix,
+      scopes: JSON.parse(r.scopes_json || '["books:crud"]'),
+      rateLimitRpm: r.rate_limit_rpm,
+      isRevoked: Boolean(r.is_revoked),
+      revokedAt: r.revoked_at,
+      createdBy: r.created_by,
+      createdAt: r.created_at,
+      lastUsedAt: r.last_used_at,
+    }));
+
+    res.json({ success: true, count: keys.length, keys });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/service-keys', requireAdminAuth(), requireAdminRole('super_admin'), (req, res) => {
+  try {
+    const { name, scopes = ['books:crud'], rateLimitRpm = 60 } = req.body || {};
+    const result = generateServiceKey({
+      name,
+      createdBy: req.adminUser.id,
+      scopes,
+      rateLimitRpm: parseInt(rateLimitRpm, 10) || 60,
+    });
+
+    adminAuthService.recordAdminAction({
+      adminUserId: req.adminUser.id,
+      action: 'service_key.create',
+      targetType: 'service_key',
+      targetId: result.id,
+      justification: `Generated service API key "${result.name}" with scope ${JSON.stringify(result.scopes)}`,
+      ip: clientIp(req),
+      details: { keyId: result.id, prefix: result.keyPrefix },
+    });
+
+    // Return the raw key ONCE to be saved by the administrator
+    res.status(201).json({
+      success: true,
+      serviceKey: result,
+      warning: 'Store this service API key securely. It will NEVER be shown again.',
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/service-keys/:id/revoke', requireAdminAuth(), requireAdminRole('super_admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = revokeServiceKey(id);
+
+    adminAuthService.recordAdminAction({
+      adminUserId: req.adminUser.id,
+      action: 'service_key.revoke',
+      targetType: 'service_key',
+      targetId: id,
+      justification: `Revoked service key ${id}`,
+      ip: clientIp(req),
+      details: { keyId: id, revokedAt: result.revokedAt },
+    });
+
+    res.json({ success: true, revoked: true, id, revokedAt: result.revokedAt });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/service-keys/:id/rotate', requireAdminAuth(), requireAdminRole('super_admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = rotateServiceKey(id, req.adminUser.id);
+
+    adminAuthService.recordAdminAction({
+      adminUserId: req.adminUser.id,
+      action: 'service_key.rotate',
+      targetType: 'service_key',
+      targetId: result.id,
+      justification: `Rotated service key from old ID ${id} to new ID ${result.id}`,
+      ip: clientIp(req),
+      details: { oldKeyId: id, newKeyId: result.id, newPrefix: result.keyPrefix },
+    });
+
+    res.json({
+      success: true,
+      rotatedFrom: id,
+      serviceKey: result,
+      warning: 'Store this new service API key securely. It will NEVER be shown again.',
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

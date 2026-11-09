@@ -1149,6 +1149,59 @@ CREATE INDEX IF NOT EXISTS idx_usage_user_period ON usage_counters(user_id, peri
       ensureCol('user_settings', 'onboarding_step', 'INTEGER NOT NULL DEFAULT 0');
     },
   },
+  {
+    id: 21,
+    name: 'phase13_service_api_keys_and_external_ingest',
+    up: (handle) => {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS service_api_keys (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  key_prefix TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  scopes_json TEXT NOT NULL DEFAULT '["books:crud"]',
+  rate_limit_rpm INTEGER NOT NULL DEFAULT 60,
+  is_revoked INTEGER NOT NULL DEFAULT 0,
+  revoked_at TEXT DEFAULT NULL,
+  created_by TEXT REFERENCES admin_users(id),
+  created_at TEXT NOT NULL,
+  last_used_at TEXT DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_service_key_hash ON service_api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_service_key_revoked ON service_api_keys(is_revoked);
+
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  service_key_id TEXT NOT NULL REFERENCES service_api_keys(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  endpoint TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  response_status INTEGER NOT NULL,
+  response_body_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_idempotency_lookup ON idempotency_keys(idempotency_key, service_key_id);
+
+CREATE TABLE IF NOT EXISTS service_api_audit_logs (
+  id TEXT PRIMARY KEY,
+  service_key_id TEXT,
+  action TEXT NOT NULL,
+  user_id TEXT,
+  book_id TEXT,
+  endpoint TEXT NOT NULL,
+  status_code INTEGER NOT NULL,
+  ip TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  detail_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_service_audit_key ON service_api_audit_logs(service_key_id);
+CREATE INDEX IF NOT EXISTS idx_service_audit_action ON service_api_audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_service_audit_user ON service_api_audit_logs(user_id);
+      `);
+    },
+  },
 ];
 
 function openDb() {
