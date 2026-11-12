@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # ==============================================================================
+  # تطبيق المنصة الرئيسي (Frontend + Backend + SQLite Embedded Database)
+  # ==============================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: engineer-platform
+    restart: always
+    ports:
+      - "127.0.0.1:3001:3001"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./.data:/app/.data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3001/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ==============================================================================
+  # محرك الاستدلال المحلي Ollama (اختياري - يفعّل بـ --profile local-ai للخوادم 16GB+)
+  # ==============================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: engineer-ollama
+    restart: always
+    profiles:
+      - local-ai
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama/models
+    environment:
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=10m
+      - OLLAMA_NUM_PARALLEL=1
+
+volumes:
+  ollama-models:
