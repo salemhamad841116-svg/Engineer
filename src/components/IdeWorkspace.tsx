@@ -2,7 +2,6 @@ import React, { useState, useRef, useMemo } from 'react';
 import JSZip from 'jszip';
 import {
   Play,
-  Square,
   RotateCcw,
   Eye,
   RefreshCw,
@@ -38,14 +37,13 @@ import {
   CheckSquare,
   Send,
   StopCircle,
-  Plus,
   Bot,
   Terminal,
-  CheckCircle2,
   Loader2,
   FileText,
   Folder,
   MessageSquarePlus,
+  Shield,
 } from 'lucide-react';
 import {
   AIAgentProfile,
@@ -81,9 +79,9 @@ interface IdeWorkspaceProps {
 export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   language,
   project,
-  agents,
+  agents: _agents,
   isGenerating,
-  pipelineStages,
+  pipelineStages: _pipelineStages,
   onUpdateProject,
   onExecutePrompt,
   onStopGeneration,
@@ -92,15 +90,12 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
 }) => {
   const isAr = language === 'ar';
 
-  // Left Pane state: Chat vs Agents
-  const [leftTab, setLeftTab] = useState<'chat' | 'agents'>('chat');
+  // Chat State
   const [chatInput, setChatInput] = useState('');
   const [chatSearchQuery, setChatSearchQuery] = useState('');
-  const [selectedModel, _setSelectedModel] = useState('gemini-3.8-flash');
-  const [thinkingMode, setThinkingMode] = useState<'standard' | 'deep' | 'plan'>('standard');
-  const [selectedAgentId, setSelectedAgentId] = useState<string>(agents[0]?.id || 'agent-chief');
+  const [showChatSearch, setShowChatSearch] = useState(false);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
-  const [activeAgentDetail, setActiveAgentDetail] = useState<AIAgentProfile | null>(null);
+  const [selectedModel] = useState('gemini-3.8-flash');
 
   // Center Pane state: Code Editor vs Cloud File Manager
   const [centerTab, setCenterTab] = useState<'editor' | 'files'>('editor');
@@ -522,8 +517,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     setEditingMsgId(null);
     await onExecutePrompt(text, {
       model: selectedModel,
-      thinkingMode,
-      agentId: selectedAgentId,
+      thinkingMode: 'standard',
     });
     setPreviewRefreshKey((k) => k + 1);
   };
@@ -532,19 +526,18 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     const now = new Date().toISOString();
     const newThread = {
       id: `chat-${Date.now()}`,
-      title: isAr ? `محادثة هندسية #${project.chatThreads.length + 1}` : `Engineering Thread #${project.chatThreads.length + 1}`,
+      title: isAr ? `محادثة #${project.chatThreads.length + 1}` : `Chat #${project.chatThreads.length + 1}`,
       updatedAt: now,
       messages: [
         {
           id: `msg-${Date.now()}`,
           role: 'assistant' as const,
           content: isAr
-            ? 'تم بدء جلسة محادثة جديدة. اختر الوكيل المتخصص أو اكتب أمرك البرمجي.'
-            : 'Started a fresh engineering chat thread. Select a specialist agent or describe your task.',
+            ? 'مرحباً بك! أنا Engineer، كيف يمكنني مساعدتك في تطوير أو تعديل تطبيقك اليوم؟'
+            : 'Welcome! I am Engineer. How can I help you build or update your application today?',
           timestamp: now,
           model: selectedModel,
-          thinkingMode,
-          agentId: selectedAgentId,
+          thinkingMode: 'standard' as const,
         },
       ],
     };
@@ -576,175 +569,57 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#0a0c12] text-zinc-100">
-      {/* Top IDE Execution & Operations Bar */}
-      <header className="h-12 px-3 bg-[#10131c] border-b border-white/10 flex items-center justify-between gap-2 shrink-0 overflow-x-auto">
-        {/* Left: Project Selector + New/Open/Import */}
-        <div className="flex items-center gap-1.5 shrink-0">
+      {/* Top Clean Header */}
+      <header className="h-12 px-4 bg-[#0e111a] border-b border-white/8 flex items-center justify-between gap-3 shrink-0">
+        {/* Project Selector & Name */}
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
             onClick={() => onOpenModal('open-project')}
             title={isAr ? 'فتح أو تبديل المشروع' : 'Open or switch project'}
-            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+            className="btn btn-secondary btn-sm"
           >
             <Folder className="w-3.5 h-3.5 text-blue-400" />
-            <span className="max-w-[140px] truncate">{project.name}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenModal('new-project')}
-            title={isAr ? 'إنشاء مشروع جديد' : 'Create New Project'}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-xs text-zinc-300 hover:text-white cursor-pointer whitespace-nowrap"
-          >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{isAr ? 'جديد' : 'New'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenModal('import-project')}
-            title={isAr ? 'استيراد مشروع ZIP أو GitHub' : 'Import ZIP or GitHub Project'}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-xs text-zinc-300 hover:text-white cursor-pointer whitespace-nowrap"
-          >
-            <Upload className="w-3.5 h-3.5 text-sky-400" />
-            <span>{isAr ? 'استيراد' : 'Import'}</span>
+            <span className="max-w-[160px] truncate font-medium">{project.name}</span>
           </button>
         </div>
 
-        {/* Center: Run / Stop / Restart + Device Preview Controls */}
-        <div className="flex items-center gap-1 bg-[#0b0d14] border border-white/10 rounded-lg p-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => handleRuntimeControl('run')}
-            disabled={runtimeState === 'restarting'}
-            title={isAr ? 'تشغيل المشروع' : 'Run Project'}
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              runtimeState === 'running'
-                ? 'bg-emerald-600/25 text-emerald-300 border border-emerald-500/40'
-                : 'hover:bg-white/10 text-zinc-300'
-            }`}
-          >
-            <Play className="w-3 h-3 fill-current" />
-            <span>{isAr ? 'تشغيل' : 'Run'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleRuntimeControl('stop')}
-            disabled={runtimeState === 'stopped'}
-            title={isAr ? 'إيقاف التشغيل' : 'Stop Runtime'}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-zinc-300 hover:text-rose-300 hover:bg-rose-500/15 disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <Square className="w-3 h-3 fill-current" />
-            <span>{isAr ? 'إيقاف' : 'Stop'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleRuntimeControl('restart')}
-            title={isAr ? 'إعادة تشغيل' : 'Restart Server'}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-zinc-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <RotateCcw className="w-3 h-3" />
-            <span>{isAr ? 'إعادة' : 'Restart'}</span>
-          </button>
-
-          <span className="h-4 w-px bg-white/10 mx-1" />
-
-          <button
-            type="button"
-            onClick={() => setPreviewDevice('desktop')}
-            aria-label="Desktop Preview"
-            title={isAr ? 'معاينة سطح المكتب' : 'Desktop Viewport'}
-            className={`p-1 rounded-md cursor-pointer ${previewDevice === 'desktop' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
-          >
-            <Monitor className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setPreviewDevice('tablet')}
-            aria-label="Tablet Preview"
-            title={isAr ? 'اختبار التابلت (768px)' : 'Tablet Viewport (768px)'}
-            className={`p-1 rounded-md cursor-pointer ${previewDevice === 'tablet' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
-          >
-            <Tablet className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setPreviewDevice('mobile')}
-            aria-label="Mobile Preview"
-            title={isAr ? 'اختبار الهاتف (390px)' : 'Mobile Viewport (390px)'}
-            className={`p-1 rounded-md cursor-pointer ${previewDevice === 'mobile' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-          </button>
+        {/* Center: Clean Workspace Indicator */}
+        <div className="hidden md:flex items-center gap-2 text-xs text-zinc-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          <span>{isAr ? 'منصة Engineer · مساحة العمل الذكية' : 'Engineer Platform · Smart Workspace'}</span>
         </div>
 
-        {/* Right: Diagnostics Fixer, Tests, Database, Git, Deploy CTA */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Actions: Developer Mode Toggle, Admin Portal, Deploy CTA */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => onOpenModal('diagnostics')}
-            title={isAr ? 'مركز تشخيص وإصلاح الأخطاء' : 'Error Diagnostics & Root-Cause Fixer'}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap ${
-              unfixedErrorsCount > 0
-                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
-                : 'bg-white/[0.05] border-white/10 text-zinc-300 hover:text-white'
-            }`}
+            id="toggle-edit-mode-btn"
+            data-testid="toggle-edit-mode-btn"
+            onClick={() => setIsEditMode(!isEditMode)}
+            title={isAr ? 'الوضع المتقدم / محرر الأكواد والملفات' : 'Developer Mode (Code Editor & Files)'}
+            className={`btn btn-sm ${isEditMode ? 'btn-primary' : 'btn-secondary'}`}
           >
-            <Bug className="w-3.5 h-3.5" />
-            <span>{isAr ? 'إصلاح الأخطاء' : 'Fix Errors'}</span>
-            <span className="font-mono text-[11px] tabular-nums">({unfixedErrorsCount})</span>
+            <Code2 className="w-3.5 h-3.5" />
+            <span>{isEditMode ? (isAr ? 'عرض المعاينة' : 'Show Preview') : (isAr ? 'الوضع المتقدم' : 'Developer Mode')}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => onOpenModal('tests')}
-            title={isAr ? 'مركز الاختبارات والجودة' : 'Automated Testing Center'}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-medium text-zinc-200 cursor-pointer whitespace-nowrap"
+          <a
+            href="/admin"
+            target="_blank"
+            rel="noopener noreferrer"
+            title={isAr ? 'لوحة تحكم الإدارة الفائقة' : 'Enterprise Admin Portal'}
+            className="btn btn-ghost btn-sm text-zinc-400 hover:text-white"
           >
-            <FlaskConical className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{isAr ? 'الاختبارات' : 'Tests'}</span>
-            <span className="font-mono text-[11px] text-emerald-400 tabular-nums">
-              {project.tests.filter((t) => t.status === 'passed').length}/{project.tests.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenModal('database')}
-            title={isAr ? 'إدارة قاعدة البيانات والنسخ الاحتياطي' : 'Database Studio & Migrations'}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-medium text-zinc-200 cursor-pointer whitespace-nowrap"
-          >
-            <Database className="w-3.5 h-3.5 text-sky-400" />
-            <span>{isAr ? 'قاعدة البيانات' : 'Database'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenModal('git')}
-            title={isAr ? 'إدارة الإصدارات و Git' : 'Git & Version Control'}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-medium text-zinc-200 cursor-pointer whitespace-nowrap"
-          >
-            <GitBranch className="w-3.5 h-3.5 text-violet-400" />
-            <span>{project.gitCurrentBranch}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenModal('autonomous-agent')}
-            title={isAr ? 'تشغيل الوكيل البرمجي المستقل' : 'Launch Autonomous Coding Agent'}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 text-xs font-semibold shadow-sm transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <Bot className="w-3.5 h-3.5 text-purple-400" />
-            <span>{isAr ? 'الوكيل الذكي' : 'Autonomous Agent'}</span>
-          </button>
+            <Shield className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">{isAr ? 'لوحة الإدارة' : 'Admin'}</span>
+          </a>
 
           <button
             type="button"
             onClick={() => onOpenModal('deploy')}
-            title={isAr ? 'النشر السحابي' : 'Cloud Deployment'}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer whitespace-nowrap"
+            title={isAr ? 'نشر التطبيق' : 'Deploy Application'}
+            className="btn btn-primary btn-sm"
           >
             <Rocket className="w-3.5 h-3.5" />
             <span>{isAr ? 'نشر' : 'Deploy'}</span>
@@ -752,339 +627,209 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
         </div>
       </header>
 
-      {/* Main Clean 2-Panel Split Body (Left Chat 32% + Right Preview 68%) */}
-      <div className="flex-1 flex flex-row min-h-0 overflow-hidden" dir="ltr">
-        {/* LEFT PANE (32% / 380px-420px): Compact AI Chat & Input */}
+      {/* Main Clean 2-Panel Split Body: Chat on Right (in RTL) + Preview on Left (in RTL) */}
+      <div className="flex-1 flex flex-row min-h-0 overflow-hidden" dir={isAr ? 'rtl' : 'ltr'}>
+        {/* CHAT PANE (32% width): Clean Q&A (User + Engineer) */}
         {!isFullscreenPreview && (
           <aside
             dir={isAr ? 'rtl' : 'ltr'}
-            className="w-[32%] min-w-[360px] max-w-[440px] shrink-0 border-e border-white/10 bg-[#0d1017] flex flex-col min-h-0"
+            className="w-[32%] min-w-[340px] max-w-[440px] shrink-0 border-e border-white/8 bg-[#0c0e15] flex flex-col min-h-0"
           >
-            {/* Switch Tabs: AI Chat vs 10 Agents */}
-            <div className="flex items-center justify-between p-2 border-b border-white/10 bg-[#10131c]">
-              <div className="flex items-center gap-1 bg-[#090b10] p-1 rounded-lg border border-white/8 w-full">
+            {/* Clean Chat Header */}
+            <div className="px-3.5 py-2.5 border-b border-white/8 bg-[#10131c] flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-xs font-semibold text-white leading-none">
+                    {isAr ? 'محادثة Engineer' : 'Engineer Chat'}
+                  </h2>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                    {isAr ? 'سؤال وجواب · بناء فوري' : 'Q&A · Instant Generation'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setLeftTab('chat')}
-                  className={`flex-1 py-1.5 px-2 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                    leftTab === 'chat' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
-                  }`}
+                  onClick={() => setShowChatSearch(!showChatSearch)}
+                  title={isAr ? 'بحث في الرسائل' : 'Search Messages'}
+                  className={`btn btn-ghost btn-sm p-1.5 ${showChatSearch ? 'text-blue-400' : 'text-zinc-400'}`}
                 >
-                  {isAr ? 'المحادثة الهندسية' : 'AI Chat'}
+                  <Search className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setLeftTab('agents')}
-                  className={`flex-1 py-1.5 px-2 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                    leftTab === 'agents' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
-                  }`}
+                  onClick={handleNewChatThread}
+                  title={isAr ? 'بدء محادثة جديدة' : 'New Chat Thread'}
+                  className="btn btn-ghost btn-sm p-1.5"
                 >
-                  {isAr ? 'فريق المهندسين (10)' : 'AI Agents (10)'}
+                  <MessageSquarePlus className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => activeChatThread && handleDeleteChatThread(activeChatThread.id)}
+                  title={isAr ? 'مسح المحادثة' : 'Clear Chat'}
+                  className="btn btn-ghost btn-sm p-1.5 text-zinc-400 hover:text-rose-400"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
-            {leftTab === 'chat' ? (
-              <div className="flex-1 flex flex-col min-h-0">
-                {/* Chat Thread Toolbar: New Chat, Search Chats, Delete Chat */}
-                <div className="px-3 py-2 border-b border-white/8 flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                    <input
-                      value={chatSearchQuery}
-                      onChange={(e) => setChatSearchQuery(e.target.value)}
-                      placeholder={isAr ? 'بحث في المحادثات...' : 'Search chat history...'}
-                      className="bg-transparent text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none w-full"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleNewChatThread}
-                      title={isAr ? 'بدء محادثة جديدة' : 'New Chat Thread'}
-                      className="p-1.5 rounded-md hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer"
-                    >
-                      <MessageSquarePlus className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => activeChatThread && handleDeleteChatThread(activeChatThread.id)}
-                      title={isAr ? 'حذف المحادثة الحالية' : 'Delete Current Thread'}
-                      className="p-1.5 rounded-md hover:bg-rose-500/15 text-zinc-400 hover:text-rose-400 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Live 9-Stage Execution Pipeline Visualizer */}
-                {pipelineStages.length > 0 && (
-                  <div className="mx-3 mt-2 p-2.5 rounded-xl bg-blue-950/30 border border-blue-500/30 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-blue-300">
-                      <span>{isAr ? 'محرك التنفيذ الهندسي (9 مراحل)' : 'Live Execution Engine (9 Stages)'}</span>
-                      {isGenerating && (
-                        <button
-                          type="button"
-                          onClick={onStopGeneration}
-                          className="inline-flex items-center gap-1 text-rose-300 hover:text-rose-200 bg-rose-500/20 px-2 py-0.5 rounded"
-                        >
-                          <StopCircle className="w-3 h-3" />
-                          <span>{isAr ? 'إيقاف' : 'Stop'}</span>
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-3 gap-1 text-[10px]">
-                      {pipelineStages.map((st) => (
-                        <div
-                          key={st.id}
-                          className={`px-1.5 py-1 rounded border truncate flex items-center gap-1 ${
-                            st.status === 'done'
-                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                              : st.status === 'running'
-                              ? 'bg-blue-500/20 border-blue-400 text-white'
-                              : 'bg-white/5 border-white/10 text-zinc-500'
-                          }`}
-                        >
-                          {st.status === 'running' ? (
-                            <Loader2 className="w-2.5 h-2.5 animate-spin shrink-0" />
-                          ) : (
-                            <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
-                          )}
-                          <span className="truncate">{isAr ? st.labelAr : st.labelEn}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Messages List */}
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                  {(activeChatThread?.messages || [])
-                    .filter((m) => !chatSearchQuery.trim() || m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()))
-                    .map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`rounded-xl p-3 text-xs leading-relaxed border ${
-                          msg.role === 'user'
-                            ? 'bg-blue-600/15 border-blue-500/30 text-zinc-100 ms-4'
-                            : 'bg-[#141824] border-white/8 text-zinc-200 me-2'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5">
-                          <span className="font-semibold text-sky-300">
-                            {msg.role === 'user'
-                              ? isAr
-                                ? 'أنت (User)'
-                                : 'You'
-                              : agents.find((a) => a.id === msg.agentId)?.nameAr || 'AI Engineer'}
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            {msg.role === 'user' && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingMsgId(msg.id);
-                                  setChatInput(msg.content);
-                                }}
-                                title={isAr ? 'تعديل الرسالة' : 'Edit message'}
-                                className="hover:text-white cursor-pointer"
-                              >
-                                <Edit3 className="w-3 h-3" />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard?.writeText(msg.content);
-                                onNotify('success', isAr ? 'تم نسخ النص' : 'Copied message to clipboard');
-                              }}
-                              title={isAr ? 'نسخ الرد' : 'Copy reply'}
-                              className="hover:text-white cursor-pointer"
-                            >
-                              <Copy className="w-3 h-3" />
-                            </button>
-                            {msg.role === 'assistant' && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onExecutePrompt(isAr ? 'أعد المحاولة وحسّن الكود الناتج' : 'Retry and refine the generated code', {
-                                    model: selectedModel,
-                                    thinkingMode,
-                                    agentId: selectedAgentId,
-                                  })
-                                }
-                                title={isAr ? 'إعادة المحاولة' : 'Retry generation'}
-                                className="hover:text-white cursor-pointer"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div className="whitespace-pre-wrap">{msg.content}</div>
-                      </div>
-                    ))}
-                </div>
-
-                {/* Chat Composer with Agent Selector, Model, Thinking Mode, Stop/Send */}
-                <form onSubmit={handleSendChatMessage} className="p-2.5 border-t border-white/10 bg-[#10131c] space-y-2">
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <select
-                      aria-label={isAr ? 'اختيار الوكيل المتخصص' : 'Select Specialist AI Agent'}
-                      value={selectedAgentId}
-                      onChange={(e) => setSelectedAgentId(e.target.value)}
-                      className="col-span-2 bg-[#090b10] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-zinc-200 focus:outline-none truncate"
-                    >
-                      {agents.map((ag) => (
-                        <option key={ag.id} value={ag.id}>
-                          {isAr ? ag.nameAr : ag.nameEn}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label={isAr ? 'وضع التفكير' : 'Thinking Mode'}
-                      value={thinkingMode}
-                      onChange={(e) => setThinkingMode(e.target.value as 'standard' | 'deep' | 'plan')}
-                      className="col-span-1 bg-[#090b10] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-zinc-200 focus:outline-none truncate"
-                    >
-                      <option value="standard">{isAr ? 'قياسي' : 'Standard'}</option>
-                      <option value="deep">{isAr ? 'تفكير عميق' : 'Deep'}</option>
-                      <option value="plan">{isAr ? 'تخطيط' : 'Plan'}</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-end gap-1.5">
-                    <textarea
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendChatMessage();
-                        }
-                      }}
-                      rows={2}
-                      placeholder={
-                        editingMsgId
-                          ? isAr
-                            ? 'عدّل رسالتك ثم اضغط إرسال...'
-                            : 'Edit your message and press Send...'
-                          : isAr
-                          ? 'اطلب تعديل الكود، إضافة ميزة، أو إصلاح خطأ...'
-                          : 'Ask AI Engineer to build, refactor, or fix...'
-                      }
-                      className="flex-1 bg-[#090b10] border border-white/10 rounded-lg p-2 text-xs text-zinc-100 placeholder-zinc-500 resize-none focus:outline-none focus:border-blue-500"
-                    />
-                    {isGenerating ? (
-                      <button
-                        type="button"
-                        onClick={onStopGeneration}
-                        title={isAr ? 'إيقاف التوليد' : 'Stop Generation'}
-                        className="p-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white cursor-pointer"
-                      >
-                        <StopCircle className="w-4 h-4" />
-                      </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        title={isAr ? 'إرسال الأمر البرمجي' : 'Send Prompt'}
-                        className="p-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white cursor-pointer"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </form>
-              </div>
-            ) : (
-              /* 10 Specialized AI Agents Team List & Detail Inspector */
-              <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
-                {activeAgentDetail ? (
-                  <div className="rounded-xl bg-[#141824] border border-blue-500/40 p-3.5 space-y-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-white text-sm">
-                        {isAr ? activeAgentDetail.nameAr : activeAgentDetail.nameEn}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setActiveAgentDetail(null)}
-                        className="text-zinc-400 hover:text-white text-xs px-2 py-0.5 rounded bg-white/5"
-                      >
-                        {isAr ? 'عودة للقائمة' : 'Back'}
-                      </button>
-                    </div>
-                    <p className="text-zinc-300 leading-relaxed">
-                      {isAr ? activeAgentDetail.missionAr : activeAgentDetail.missionEn}
-                    </p>
-                    <div className="space-y-1 text-[11px] text-zinc-400 border-t border-white/10 pt-2">
-                      <div>
-                        <strong className="text-zinc-200">{isAr ? 'النموذج:' : 'Model:'}</strong> {activeAgentDetail.model}
-                      </div>
-                      <div>
-                        <strong className="text-zinc-200">{isAr ? 'الأدوات:' : 'Tools:'}</strong> {activeAgentDetail.tools.join(' · ')}
-                      </div>
-                      <div>
-                        <strong className="text-zinc-200">{isAr ? 'الصلاحيات:' : 'Permissions:'}</strong> {activeAgentDetail.permissions.join(' · ')}
-                      </div>
-                      <div>
-                        <strong className="text-zinc-200">{isAr ? 'الملفات المعدلة:' : 'Modified Files:'}</strong>{' '}
-                        <span className="font-mono text-sky-300">{activeAgentDetail.modifiedFiles.join(', ')}</span>
-                      </div>
-                      <div>
-                        <strong className="text-zinc-200">{isAr ? 'آخر نتيجة:' : 'Last Result:'}</strong> {activeAgentDetail.lastOutputSummary}
-                      </div>
-                    </div>
-                    <div className="border-t border-white/10 pt-2">
-                      <div className="font-semibold text-zinc-200 mb-1">{isAr ? 'سجل العمليات:' : 'Operations Log:'}</div>
-                      {activeAgentDetail.operationsLog.slice(0, 3).map((op, i) => (
-                        <div key={i} className="text-[11px] text-zinc-400 py-1 border-b border-white/5">
-                          <div className="text-zinc-200">{op.action}</div>
-                          <div className="text-emerald-400">{op.result}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedAgentId(activeAgentDetail.id);
-                        setLeftTab('chat');
-                        onExecutePrompt(
-                          isAr
-                            ? `تنفيذ مهمة متخصصة بواسطة ${activeAgentDetail.nameAr} لتحسين المشروع`
-                            : `Execute specialized engineering task via ${activeAgentDetail.nameEn}`,
-                          { model: selectedModel, thinkingMode: 'standard', agentId: activeAgentDetail.id }
-                        );
-                      }}
-                      className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs cursor-pointer"
-                    >
-                      {isAr ? 'تكليف هذا الوكيل بمهمة فورية' : 'Dispatch Agent Task Now'}
-                    </button>
-                  </div>
-                ) : (
-                  agents.map((ag) => (
-                    <button
-                      key={ag.id}
-                      type="button"
-                      onClick={() => setActiveAgentDetail(ag)}
-                      className="w-full text-start rounded-xl bg-[#141824] hover:bg-[#1a2030] border border-white/8 hover:border-blue-500/40 p-3 transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-white">
-                          {isAr ? ag.nameAr : ag.nameEn}
-                        </span>
-                        <span className="text-[10px] font-mono text-emerald-400 uppercase">{ag.status}</span>
-                      </div>
-                      <p className="text-[11px] text-zinc-400 line-clamp-2 mb-1.5">
-                        {isAr ? ag.currentTaskAr : ag.currentTaskEn}
-                      </p>
-                      <div className="text-[10px] font-mono text-sky-400 truncate">
-                        {ag.tools.join(' · ')}
-                      </div>
-                    </button>
-                  ))
-                )}
+            {/* Chat Search Bar */}
+            {showChatSearch && (
+              <div className="px-3.5 py-1.5 border-b border-white/8 bg-[#0b0e17] flex items-center gap-2">
+                <Search className="w-3 h-3 text-zinc-500 shrink-0" />
+                <input
+                  value={chatSearchQuery}
+                  onChange={(e) => setChatSearchQuery(e.target.value)}
+                  placeholder={isAr ? 'بحث في الرسائل...' : 'Search messages...'}
+                  className="bg-transparent text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none w-full"
+                />
               </div>
             )}
+
+            {/* Messages Stream - Clean Q&A ONLY (User + Engineer) */}
+            <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
+              {(activeChatThread?.messages || [])
+                .filter((m) => !chatSearchQuery.trim() || m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()))
+                .map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`rounded-2xl p-3.5 text-xs leading-relaxed border transition-all ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600/12 border-blue-500/25 text-zinc-100 ms-3 rounded-tr-sm shadow-sm'
+                        : 'bg-[#121622] border-white/8 text-zinc-200 me-2 rounded-tl-sm shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5 pb-1 border-b border-white/5">
+                      <div className="flex items-center gap-1.5">
+                        {msg.role === 'user' ? (
+                          <span className="font-semibold text-blue-300">
+                            {isAr ? 'أنت' : 'You'}
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1.5 font-semibold text-white">
+                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                            <span>Engineer</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {msg.role === 'user' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingMsgId(msg.id);
+                              setChatInput(msg.content);
+                            }}
+                            title={isAr ? 'تعديل الرسالة' : 'Edit message'}
+                            className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(msg.content);
+                            onNotify('success', isAr ? 'تم نسخ الرد' : 'Copied response');
+                          }}
+                          title={isAr ? 'نسخ النص' : 'Copy text'}
+                          className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </button>
+                        {msg.role === 'assistant' && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onExecutePrompt(isAr ? 'أعد المحاولة وحسّن الكود الناتج' : 'Retry and refine the generated code', {
+                                model: selectedModel,
+                                thinkingMode: 'standard',
+                              })
+                            }
+                            title={isAr ? 'إعادة التوليد' : 'Retry generation'}
+                            className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                  </div>
+                ))}
+
+              {/* Minimal, Elegant Generating Status Pill (Replaces the 9-stage bulky box) */}
+              {isGenerating && (
+                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-950/25 border border-blue-500/25 text-xs text-blue-300 shadow-sm animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
+                  <span className="flex-1 font-medium">
+                    {isAr ? 'جاري بناء التعديلات وتحديث المعاينة...' : 'Generating code & updating preview...'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onStopGeneration}
+                    className="btn btn-danger btn-sm text-[11px]"
+                  >
+                    <StopCircle className="w-3 h-3" />
+                    <span>{isAr ? 'إيقاف' : 'Stop'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Clean, Modern Chat Composer */}
+            <form onSubmit={handleSendChatMessage} className="p-3 border-t border-white/8 bg-[#10131c]/90 backdrop-blur space-y-2">
+              <div className="relative">
+                <textarea
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendChatMessage();
+                    }
+                  }}
+                  rows={3}
+                  placeholder={
+                    editingMsgId
+                      ? (isAr ? 'عدّل رسالتك ثم اضغط إرسال...' : 'Edit your message and press Send...')
+                      : (isAr ? 'اكتب سؤالك أو التعديل المطلوب على التطبيق...' : 'Ask Engineer to build, update, or fix...')
+                  }
+                  className="w-full input-modern p-3 text-xs leading-relaxed resize-none focus:outline-none"
+                />
+                <div className="flex items-center justify-between pt-1.5">
+                  <span className="text-[10px] text-zinc-500 font-mono">
+                    {isAr ? 'Enter للإرسال · Shift+Enter لسطر جديد' : 'Enter to send · Shift+Enter for newline'}
+                  </span>
+                  {isGenerating ? (
+                    <button
+                      type="button"
+                      onClick={onStopGeneration}
+                      className="btn btn-danger btn-sm"
+                      title={isAr ? 'إيقاف التوليد' : 'Stop Generation'}
+                    >
+                      <StopCircle className="w-3.5 h-3.5" />
+                      <span>{isAr ? 'إيقاف' : 'Stop'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={!chatInput.trim()}
+                      className="btn btn-primary btn-sm"
+                      title={isAr ? 'إرسال الطلب' : 'Send Request'}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{isAr ? 'إرسال' : 'Send'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </form>
           </aside>
         )}
 
@@ -1117,18 +862,62 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 </button>
               </div>
 
-              {/* Action Controls: Return to Preview Button + New File/Folder/Export */}
-              <div className="flex items-center gap-2">
+              {/* Action Controls: Return to Preview Button + Developer Tools + New File/Folder/Export */}
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   id="toggle-edit-mode-btn-back"
                   data-testid="toggle-edit-mode-btn-back"
                   onClick={() => setIsEditMode(false)}
                   title={isAr ? 'العودة لمعاينة التطبيق' : 'Back to Preview'}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+                  className="btn btn-primary btn-sm"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   <span>{isAr ? 'العودة للمعاينة' : 'Back to Preview'}</span>
+                </button>
+
+                <span className="h-4 w-px bg-white/10 mx-1" />
+
+                {/* Developer Tools in Edit Mode */}
+                <button
+                  type="button"
+                  onClick={() => onOpenModal('diagnostics')}
+                  title={isAr ? 'مركز تشخيص وإصلاح الأخطاء' : 'Error Diagnostics'}
+                  className={`btn btn-sm ${unfixedErrorsCount > 0 ? 'btn-danger' : 'btn-secondary'}`}
+                >
+                  <Bug className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">{isAr ? 'إصلاح الأخطاء' : 'Diagnostics'}</span>
+                  <span>({unfixedErrorsCount})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenModal('tests')}
+                  title={isAr ? 'مركز الاختبارات والجودة' : 'Automated Tests'}
+                  className="btn btn-secondary btn-sm"
+                >
+                  <FlaskConical className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">{isAr ? 'الاختبارات' : 'Tests'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenModal('database')}
+                  title={isAr ? 'إدارة قاعدة البيانات والنسخ الاحتياطي' : 'Database Studio'}
+                  className="btn btn-secondary btn-sm"
+                >
+                  <Database className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="hidden sm:inline">{isAr ? 'قاعدة البيانات' : 'Database'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenModal('git')}
+                  title={isAr ? 'إدارة الإصدارات و Git' : 'Git Version Control'}
+                  className="btn btn-secondary btn-sm"
+                >
+                  <GitBranch className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="hidden sm:inline">{project.gitCurrentBranch}</span>
                 </button>
               </div>
 
@@ -1722,44 +1511,58 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           </section>
         )}
 
-        {/* RIGHT PANE: Live Interactive Preview (Active by default, clean 68% viewport) */}
+        {/* RIGHT/LEFT PANE: Live Interactive Preview (Active by default, clean 68% viewport) */}
         <section
           dir={isAr ? 'rtl' : 'ltr'}
           className={`${
             isFullscreenPreview ? 'w-full' : isEditMode ? 'hidden' : 'flex-1'
-          } min-w-0 bg-[#090b10] flex flex-col min-h-0`}
+          } min-w-0 bg-[#07090e] flex flex-col min-h-0`}
         >
-          {/* Preview Browser Address Bar & On-Demand Edit Button */}
-          <div className="px-3 py-2 bg-[#10131c] border-b border-white/10 flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-1.5 flex-1 min-w-0 bg-[#080a0f] border border-white/10 rounded-lg px-2.5 py-1 font-mono text-[11px] text-zinc-300">
-              <Eye className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="truncate">
-                {project.deployments[0]?.url || `https://preview-${project.id}.cloudstudio.run.app`}
-              </span>
-            </div>
+          {/* Streamlined Modern Preview Toolbar */}
+          <div className="px-3.5 py-2 bg-[#0f121b] border-b border-white/8 flex items-center justify-between gap-3 text-xs shrink-0">
+            {/* Controls: Status Badge + Run/Restart + Refresh + Open in New Tab */}
+            <div className="flex items-center gap-2">
+              {/* Preview Status Pill */}
+              {isGenerating ? (
+                <span className="status-pill status-pill-building">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>{isAr ? 'جاري البناء...' : 'Building...'}</span>
+                </span>
+              ) : runtimeState === 'running' ? (
+                <span className="status-pill status-pill-running">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>{isAr ? 'يعمل' : 'Live'}</span>
+                </span>
+              ) : (
+                <span className="status-pill status-pill-stopped">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                  <span>{isAr ? 'متوقف' : 'Stopped'}</span>
+                </span>
+              )}
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* On-Demand Edit Button (زر تحرير الكود) */}
+              {/* Run / Restart Button */}
               <button
                 type="button"
-                id="toggle-edit-mode-btn"
-                data-testid="toggle-edit-mode-btn"
-                onClick={() => setIsEditMode(true)}
-                title={isAr ? 'تحرير الكود والملفات' : 'Edit Code & Files'}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold shadow-sm transition-colors cursor-pointer whitespace-nowrap"
+                onClick={() => handleRuntimeControl(runtimeState === 'running' ? 'restart' : 'run')}
+                disabled={runtimeState === 'restarting'}
+                title={runtimeState === 'running' ? (isAr ? 'إعادة تشغيل التطبيق' : 'Restart Application') : (isAr ? 'تشغيل التطبيق' : 'Run Application')}
+                className="btn btn-secondary btn-sm"
               >
-                <Code2 className="w-3.5 h-3.5" />
-                <span>{isAr ? 'تحرير' : 'Edit Code'}</span>
+                {runtimeState === 'running' ? <RotateCcw className="w-3 h-3" /> : <Play className="w-3 h-3 fill-current" />}
+                <span>{runtimeState === 'running' ? (isAr ? 'إعادة تشغيل' : 'Restart') : (isAr ? 'تشغيل' : 'Run')}</span>
               </button>
 
+              {/* Refresh Button */}
               <button
                 type="button"
                 onClick={() => setPreviewRefreshKey((k) => k + 1)}
-                title={isAr ? 'تحديث المعاينة (Refresh)' : 'Refresh Live Preview'}
-                className="p-1.5 rounded-md hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer"
+                title={isAr ? 'تحديث المعاينة' : 'Refresh Preview'}
+                className="btn btn-ghost btn-sm p-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
+
+              {/* Open in New Tab Button */}
               <button
                 type="button"
                 onClick={() => {
@@ -1772,18 +1575,67 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   a.click();
                   onNotify('success', isAr ? 'تم فتح رابط المعاينة المستقلة' : 'Opened live preview in standalone tab');
                 }}
-                title={isAr ? 'فتح في نافذة جديدة' : 'Open Preview in New Tab'}
-                className="p-1.5 rounded-md hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer"
+                title={isAr ? 'فتح في نافذة جديدة' : 'Open in New Tab'}
+                className="btn btn-ghost btn-sm p-1.5"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
               </button>
+            </div>
+
+            {/* Viewports Switcher + Fullscreen + On-Demand Edit Button */}
+            <div className="flex items-center gap-2">
+              {/* Responsive Viewport Switcher */}
+              <div className="flex items-center gap-0.5 bg-[#0b0e17] border border-white/10 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPreviewDevice('desktop')}
+                  aria-label="Desktop Preview"
+                  title={isAr ? 'معاينة سطح المكتب' : 'Desktop Viewport'}
+                  className={`p-1 rounded-md transition-colors ${previewDevice === 'desktop' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDevice('tablet')}
+                  aria-label="Tablet Preview"
+                  title={isAr ? 'معاينة التابلت' : 'Tablet Viewport (768px)'}
+                  className={`p-1 rounded-md transition-colors ${previewDevice === 'tablet' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  <Tablet className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDevice('mobile')}
+                  aria-label="Mobile Preview"
+                  title={isAr ? 'معاينة الهاتف' : 'Mobile Viewport (390px)'}
+                  className={`p-1 rounded-md transition-colors ${previewDevice === 'mobile' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Fullscreen Toggle */}
               <button
                 type="button"
                 onClick={() => setIsFullscreenPreview(!isFullscreenPreview)}
-                title={isAr ? 'ملء الشاشة' : 'Toggle Fullscreen Preview'}
-                className="p-1.5 rounded-md hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer"
+                title={isAr ? 'ملء الشاشة' : 'Toggle Fullscreen'}
+                className="btn btn-ghost btn-sm p-1.5"
               >
                 {isFullscreenPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              </button>
+
+              {/* On-Demand Edit Button (Preserves id="toggle-edit-mode-btn") */}
+              <button
+                type="button"
+                id="toggle-edit-mode-btn"
+                data-testid="toggle-edit-mode-btn"
+                onClick={() => setIsEditMode(true)}
+                title={isAr ? 'تحرير الكود والملفات' : 'Edit Code & Files'}
+                className="btn btn-secondary btn-sm"
+              >
+                <Code2 className="w-3.5 h-3.5 text-blue-400" />
+                <span className="hidden sm:inline">{isAr ? 'تحرير' : 'Edit Code'}</span>
               </button>
             </div>
           </div>
