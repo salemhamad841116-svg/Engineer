@@ -123,10 +123,10 @@ function dispatchRequest({ path, method = 'GET', headers = {}, body = null }) {
     db.prepare("UPDATE admin_users SET failed_logins = 0, locked_until = NULL WHERE email IN ('admin@cloudstudio.dev', 'support@cloudstudio.dev')").run();
 
     // ----------------------------------------------------
-    // TEST 1: Hard 404 on Main Domain (Zero Information Disclosure)
+    // TEST 1: Hard 404 on Main Domain (Zero Information Disclosure) & Dual-Domain Isolation
     // ----------------------------------------------------
-    console.log('[Test 1] Verifying Hard 404 on Main Domain for all admin endpoints...');
-    const mainHost = 'example.com';
+    console.log('[Test 1] Verifying Hard 404 on Main Domain for all admin endpoints (engineer.misruq.com)...');
+    const mainHosts = ['example.com', 'engineer.misruq.com', 'misruq.com'];
     const forbiddenPaths = [
       '/admin',
       '/admin/login',
@@ -137,18 +137,27 @@ function dispatchRequest({ path, method = 'GET', headers = {}, body = null }) {
       '/api/admin/dashboard',
     ];
 
-    for (const p of forbiddenPaths) {
-      const res = await dispatchRequest({
-        path: p,
-        headers: { Host: mainHost },
-      });
-      assert.strictEqual(res.status, 404, `Expected 404 for ${p} on main domain, got ${res.status}`);
-      assert.ok(
-        typeof res.body === 'string' && res.body.includes('404 Not Found'),
-        `Expected generic 404 HTML body for ${p}, got: ${JSON.stringify(res.body)}`
-      );
+    for (const mainHost of mainHosts) {
+      for (const p of forbiddenPaths) {
+        const res = await dispatchRequest({
+          path: p,
+          headers: { Host: mainHost },
+        });
+        assert.strictEqual(res.status, 404, `Expected 404 for ${p} on ${mainHost}, got ${res.status}`);
+        assert.ok(
+          typeof res.body === 'string' && res.body.includes('404 Not Found'),
+          `Expected generic 404 HTML body for ${p}, got: ${JSON.stringify(res.body)}`
+        );
+      }
     }
-    console.log('  ✅ Attack 1 Blocked: All 7 paths on main domain returned strict HTTP 404 with zero info leakage.');
+
+    // Verify engineer-mgt.misruq.com routes to admin handler (returns 401 rather than 404)
+    const mgtRes = await dispatchRequest({
+      path: '/api/admin/dashboard',
+      headers: { Host: 'engineer-mgt.misruq.com' },
+    });
+    assert.strictEqual(mgtRes.status, 401, 'engineer-mgt.misruq.com must route to admin and return 401 for unauthenticated request');
+    console.log('  ✅ Attack 1 Blocked: All admin paths on engineer.misruq.com return strict HTTP 404; engineer-mgt.misruq.com recognized as dedicated admin portal.');
 
     // ----------------------------------------------------
     // TEST 2: Normal / Unauthenticated User Rejected on Admin Subdomain

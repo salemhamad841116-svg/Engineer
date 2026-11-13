@@ -135,7 +135,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
-  const [showServerConsole, setShowServerConsole] = useState(true);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [showServerConsole, setShowServerConsole] = useState(false);
 
   const activeFile = useMemo(
     () => project.files.find((f) => f.id === project.activeFileId) || project.files[0],
@@ -751,11 +752,14 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
         </div>
       </header>
 
-      {/* Main 3-Pane IDE Body */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 overflow-hidden">
-        {/* LEFT PANE (3 cols): AI Engineer Chat & 10 Specialist Agents */}
+      {/* Main Clean 2-Panel Split Body (Left Chat 32% + Right Preview 68%) */}
+      <div className="flex-1 flex flex-row min-h-0 overflow-hidden" dir="ltr">
+        {/* LEFT PANE (32% / 380px-420px): Compact AI Chat & Input */}
         {!isFullscreenPreview && (
-          <aside className="lg:col-span-3 border-e border-white/10 bg-[#0d1017] flex flex-col min-h-0">
+          <aside
+            dir={isAr ? 'rtl' : 'ltr'}
+            className="w-[32%] min-w-[360px] max-w-[440px] shrink-0 border-e border-white/10 bg-[#0d1017] flex flex-col min-h-0"
+          >
             {/* Switch Tabs: AI Chat vs 10 Agents */}
             <div className="flex items-center justify-between p-2 border-b border-white/10 bg-[#10131c]">
               <div className="flex items-center gap-1 bg-[#090b10] p-1 rounded-lg border border-white/8 w-full">
@@ -1084,9 +1088,12 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           </aside>
         )}
 
-        {/* CENTER PANE (5 cols): Professional Code Editor & Cloud File Manager */}
-        {!isFullscreenPreview && (
-          <section className="lg:col-span-5 border-e border-white/10 bg-[#0b0d14] flex flex-col min-h-0">
+        {/* CENTER PANE: Professional Code Editor & Cloud File Manager (Shown on-demand via Edit Mode) */}
+        {!isFullscreenPreview && isEditMode && (
+          <section
+            dir={isAr ? 'rtl' : 'ltr'}
+            className="flex-1 min-w-0 border-e border-white/10 bg-[#0b0d14] flex flex-col min-h-0"
+          >
             {/* Switch Tabs: Code Editor vs Cloud File Manager */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-[#10131c]">
               <div className="flex items-center gap-1.5">
@@ -1107,6 +1114,21 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   }`}
                 >
                   {isAr ? `مدير الملفات والتخزين (${project.files.length})` : `File Manager (${project.files.length})`}
+                </button>
+              </div>
+
+              {/* Action Controls: Return to Preview Button + New File/Folder/Export */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="toggle-edit-mode-btn-back"
+                  data-testid="toggle-edit-mode-btn-back"
+                  onClick={() => setIsEditMode(false)}
+                  title={isAr ? 'العودة لمعاينة التطبيق' : 'Back to Preview'}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>{isAr ? 'العودة للمعاينة' : 'Back to Preview'}</span>
                 </button>
               </div>
 
@@ -1659,16 +1681,55 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Bottom Server Logs & Runtime Console (Available only in Edit Mode) */}
+            <div className="border-t border-white/10 bg-[#0d1018]">
+              <div className="px-3 py-1.5 flex items-center justify-between text-xs border-b border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setShowServerConsole(!showServerConsole)}
+                  className="inline-flex items-center gap-1.5 font-mono text-[11px] text-zinc-300 hover:text-white cursor-pointer"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-sky-400" />
+                  <span>{isAr ? 'سجلات الخادم والتشغيل (Server Logs)' : 'Server & Runtime Console'}</span>
+                </button>
+                <span className="text-[11px] font-mono text-emerald-400">
+                  {runtimeState.toUpperCase()} · {project.techStack}
+                </span>
+              </div>
+              {showServerConsole && (
+                <div className="h-28 overflow-y-auto p-2.5 font-mono text-[11px] space-y-1 bg-[#080a0f]">
+                  {project.serverLogs.map((log, i) => (
+                    <div
+                      key={i}
+                      className={`${
+                        log.level === 'error'
+                          ? 'text-rose-400'
+                          : log.level === 'warn'
+                          ? 'text-amber-300'
+                          : log.level === 'success'
+                          ? 'text-emerald-400'
+                          : 'text-zinc-400'
+                      }`}
+                    >
+                      <span className="text-zinc-600 me-2">[{new Date(log.time).toLocaleTimeString()}]</span>
+                      <span>{log.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
         )}
 
-        {/* RIGHT PANE (4 cols or full screen): Live Interactive Preview & Server Console */}
+        {/* RIGHT PANE: Live Interactive Preview (Active by default, clean 68% viewport) */}
         <section
+          dir={isAr ? 'rtl' : 'ltr'}
           className={`${
-            isFullscreenPreview ? 'lg:col-span-12' : 'lg:col-span-4'
-          } bg-[#090b10] flex flex-col min-h-0`}
+            isFullscreenPreview ? 'w-full' : isEditMode ? 'hidden' : 'flex-1'
+          } min-w-0 bg-[#090b10] flex flex-col min-h-0`}
         >
-          {/* Preview Browser Address Bar */}
+          {/* Preview Browser Address Bar & On-Demand Edit Button */}
           <div className="px-3 py-2 bg-[#10131c] border-b border-white/10 flex items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-1.5 flex-1 min-w-0 bg-[#080a0f] border border-white/10 rounded-lg px-2.5 py-1 font-mono text-[11px] text-zinc-300">
               <Eye className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -1677,7 +1738,20 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* On-Demand Edit Button (زر تحرير الكود) */}
+              <button
+                type="button"
+                id="toggle-edit-mode-btn"
+                data-testid="toggle-edit-mode-btn"
+                onClick={() => setIsEditMode(true)}
+                title={isAr ? 'تحرير الكود والملفات' : 'Edit Code & Files'}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold shadow-sm transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span>{isAr ? 'تحرير' : 'Edit Code'}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setPreviewRefreshKey((k) => k + 1)}
@@ -1747,44 +1821,6 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   sandbox="allow-scripts"
                   className="w-full h-full border-0"
                 />
-              </div>
-            )}
-          </div>
-
-          {/* Bottom Server Logs & Runtime Console */}
-          <div className="border-t border-white/10 bg-[#0d1018]">
-            <div className="px-3 py-1.5 flex items-center justify-between text-xs border-b border-white/5">
-              <button
-                type="button"
-                onClick={() => setShowServerConsole(!showServerConsole)}
-                className="inline-flex items-center gap-1.5 font-mono text-[11px] text-zinc-300 hover:text-white cursor-pointer"
-              >
-                <Terminal className="w-3.5 h-3.5 text-sky-400" />
-                <span>{isAr ? 'سجلات الخادم والتشغيل (Server Logs)' : 'Server & Runtime Console'}</span>
-              </button>
-              <span className="text-[11px] font-mono text-emerald-400">
-                {runtimeState.toUpperCase()} · {project.techStack}
-              </span>
-            </div>
-            {showServerConsole && (
-              <div className="h-28 overflow-y-auto p-2.5 font-mono text-[11px] space-y-1 bg-[#080a0f]">
-                {project.serverLogs.map((log, i) => (
-                  <div
-                    key={i}
-                    className={`${
-                      log.level === 'error'
-                        ? 'text-rose-400'
-                        : log.level === 'warn'
-                        ? 'text-amber-300'
-                        : log.level === 'success'
-                        ? 'text-emerald-400'
-                        : 'text-zinc-400'
-                    }`}
-                  >
-                    <span className="text-zinc-600 me-2">[{new Date(log.time).toLocaleTimeString()}]</span>
-                    <span>{log.message}</span>
-                  </div>
-                ))}
               </div>
             )}
           </div>

@@ -85,13 +85,11 @@ export function runInProcessE2EValidation() {
 
   console.log('  ▶️ Scenario 9: Dedicated admin portal host isolation (engineer-mgt.misruq.com)...');
   const { isAdminDomain } = awaitImportSync('../server_backend/middleware/subdomainRouter.js');
-  const origHost = process.env.ADMIN_HOST;
-  process.env.ADMIN_HOST = 'engineer-mgt.misruq.com';
-  assert(isAdminDomain('engineer-mgt.misruq.com'), 'engineer-mgt.misruq.com must be identified as admin host when configured');
+  // Must recognize engineer-mgt.misruq.com unconditionally
+  assert(isAdminDomain('engineer-mgt.misruq.com'), 'engineer-mgt.misruq.com must be identified as admin host unconditionally');
   assert(isAdminDomain('admin.misruq.com'), 'admin.* must be identified as admin host by default');
+  assert(!isAdminDomain('engineer.misruq.com'), 'engineer.misruq.com must NEVER be identified as admin host');
   assert(!isAdminDomain('misruq.com'), 'misruq.com must not be identified as admin host');
-  if (origHost) process.env.ADMIN_HOST = origHost;
-  else delete process.env.ADMIN_HOST;
 
   console.log('  ▶️ Scenario 10: System health monitoring & VRAM threshold alerting...');
   const { systemHealthMonitor } = awaitImportSync('../server_backend/services/operations/systemHealthMonitor.js');
@@ -115,5 +113,21 @@ export function runInProcessE2EValidation() {
   assert(typeof quotaService.getQuotaBalance === 'function', 'getQuotaBalance must be defined');
   const onboardingPath = path.join(projectRoot, 'src/components/OnboardingTour.tsx');
   assert(fs.existsSync(onboardingPath), 'OnboardingTour.tsx must exist');
+
+  console.log('  ▶️ Scenario 14: Clean 2-Panel Layout (Left Chat + Right Preview) & Edit Mode Toggle...');
+  const ideWorkspacePath = path.join(projectRoot, 'src/components/IdeWorkspace.tsx');
+  assert(fs.existsSync(ideWorkspacePath), 'IdeWorkspace.tsx must exist');
+  const ideContent = fs.readFileSync(ideWorkspacePath, 'utf8');
+  assert(ideContent.includes('w-[32%]'), 'IdeWorkspace must define a compact 32% chat panel');
+  assert(ideContent.includes('id="toggle-edit-mode-btn"'), 'IdeWorkspace must provide edit mode toggle button');
+  assert(ideContent.includes('id="toggle-edit-mode-btn-back"'), 'IdeWorkspace must provide back-to-preview toggle button');
+  assert(ideContent.includes('isEditMode'), 'IdeWorkspace must manage isEditMode state');
+
+  const adminPortalViewPath = path.join(projectRoot, 'src/components/AdminPortalView.tsx');
+  assert(fs.existsSync(adminPortalViewPath), 'AdminPortalView.tsx must exist');
+  const appTsxPath = path.join(projectRoot, 'src/App.tsx');
+  const appContent = fs.readFileSync(appTsxPath, 'utf8');
+  assert(appContent.includes('AdminPortalView'), 'App.tsx must embed AdminPortalView for admin domain');
+  assert(appContent.includes('setSidebarOpen(false)'), 'App.tsx must collapse sidebar upon prompt execution');
 }
 

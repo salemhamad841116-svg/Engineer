@@ -45,6 +45,7 @@ import { AuthModal } from './components/AuthModal';
 import { UserProfileAndSettingsModal } from './components/UserProfileAndSettingsModal';
 import { LegalModal } from './components/LegalModal';
 import { OnboardingTour } from './components/OnboardingTour';
+import { AdminPortalView } from './components/AdminPortalView';
 
 export default function App() {
   // Primary State
@@ -315,6 +316,7 @@ export default function App() {
     if (isGenerating) return;
     setIsGenerating(true);
     setActiveView('ide');
+    setSidebarOpen(false);
 
     const stages: ExecutionPipelineStage[] = [
       { id: 's1', labelAr: '1. تحليل الطلب', labelEn: '1. Analyze Request', status: 'running', agentId: 'agent-chief', detail: 'Parsing prompt' },
@@ -506,6 +508,18 @@ export default function App() {
     }
     notify('success', isAr ? `تم تشغيل الإجراء: ${entry.nameAr}` : `Executed workflow: ${entry.nameEn}`);
   };
+
+  // Host-based Domain Isolation: On engineer-mgt.misruq.com or admin.* render dedicated Super Admin Portal
+  const isAdminHost = typeof window !== 'undefined' && (
+    window.location.hostname === 'engineer-mgt.misruq.com' ||
+    window.location.hostname.startsWith('engineer-mgt.') ||
+    window.location.hostname.startsWith('admin.') ||
+    window.location.search.includes('view=admin')
+  );
+
+  if (isAdminHost) {
+    return <AdminPortalView language={language} />;
+  }
 
   return (
     <div className="min-h-screen flex bg-[#08090d] text-zinc-100 overflow-hidden">

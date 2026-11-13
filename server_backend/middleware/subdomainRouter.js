@@ -16,11 +16,16 @@ function parseHost(req) {
 
 function isAdminDomain(host) {
   if (!host) return false;
+  const h = String(host).split(':')[0].trim().toLowerCase();
   const configuredAdminHost = (process.env.ADMIN_HOST || '').toLowerCase().trim();
-  if (configuredAdminHost && host === configuredAdminHost) {
+  if (configuredAdminHost && h === configuredAdminHost) {
     return true;
   }
-  return host.startsWith('admin.') || host === 'admin.localhost' || host === 'admin.local';
+  // Dedicated engineer management domain & admin subdomains
+  if (h === 'engineer-mgt.misruq.com' || h.startsWith('engineer-mgt.')) {
+    return true;
+  }
+  return h.startsWith('admin.') || h === 'admin.localhost' || h === 'admin.local';
 }
 
 function subdomainRouterMiddleware(req, res, next) {

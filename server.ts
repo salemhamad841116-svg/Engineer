@@ -148,6 +148,7 @@ async function startServer() {
   const adminPortalHtmlPath = path.resolve(__dirname, 'server_backend/portal/adminPortal.html');
   app.use((req, res, next) => {
     if ((req as AdminPortalRequest).isAdminPortal && !req.path.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(adminPortalHtmlPath);
       return;
     }
@@ -165,6 +166,10 @@ async function startServer() {
 
   // 3. Mount Admin Routes
   bootstrapAdminUsers();
+  app.get('/api/admin/portal-html', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.sendFile(adminPortalHtmlPath);
+  });
   app.use('/api/admin', adminRoutes);
 
   attachBackendAndDatabase(app);
