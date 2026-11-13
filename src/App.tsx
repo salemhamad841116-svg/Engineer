@@ -30,10 +30,9 @@ import {
   createDefaultAIAgents,
   createNewProjectFromSpec,
 } from './utils/platformEngine';
-import {
-  getInitialButtonRegistry,
-  runAutomatedRegistryVerification,
-} from './utils/buttonRegistry';
+import { getInitialButtonRegistry, runAutomatedRegistryVerification } from './utils/buttonRegistry';
+import { PromptMode } from './utils/intentRouter';
+import { formatUserFacingResponse } from './utils/responseFormatter';
 import { HomeLaunchpad } from './components/HomeLaunchpad';
 import { IdeWorkspace } from './components/IdeWorkspace';
 import { ModalsHub, type SettingsState } from './components/ModalsHub';
@@ -303,6 +302,7 @@ export default function App() {
   };
 
   // 9-Stage AI Engineering Execution Engine
+  // AI Engineering Execution & Chat Engine (Intent-Routed Dual Mode)
   const handleExecutePrompt = async (
     prompt: string,
     options: {
@@ -311,25 +311,13 @@ export default function App() {
       agentId?: string;
       category?: ProjectCategory;
       attachments?: { name: string; type: string; size: number }[];
+      mode?: PromptMode;
     }
-  ) => {
+  ): Promise<{ intent?: string } | void> => {
     if (isGenerating) return;
     setIsGenerating(true);
     setActiveView('ide');
     setSidebarOpen(false);
-
-    const stages: ExecutionPipelineStage[] = [
-      { id: 's1', labelAr: '1. تحليل الطلب', labelEn: '1. Analyze Request', status: 'running', agentId: 'agent-chief', detail: 'Parsing prompt' },
-      { id: 's2', labelAr: '2. إعداد خطة العمل', labelEn: '2. Work Plan', status: 'pending', agentId: 'agent-planner', detail: 'Drafting architecture' },
-      { id: 's3', labelAr: '3. توزيع المهام', labelEn: '3. Assign Tasks', status: 'pending', agentId: 'agent-chief', detail: 'Routing to specialists' },
-      { id: 's4', labelAr: '4. إنشاء الملفات', labelEn: '4. Create Files', status: 'pending', agentId: 'agent-frontend', detail: 'Scaffolding modules' },
-      { id: 's5', labelAr: '5. تعديل الأكواد', labelEn: '5. Modify Code', status: 'pending', agentId: 'agent-backend', detail: 'Applying AST changes' },
-      { id: 's6', labelAr: '6. تشغيل البناء', labelEn: '6. Run Build', status: 'pending', agentId: 'agent-devops', detail: 'Compiling bundle' },
-      { id: 's7', labelAr: '7. الاختبارات', labelEn: '7. Run Tests', status: 'pending', agentId: 'agent-qa', detail: 'Executing 9 suites' },
-      { id: 's8', labelAr: '8. إصلاح الأخطاء', labelEn: '8. Fix Errors', status: 'pending', agentId: 'agent-debugger', detail: 'Zero errors' },
-      { id: 's9', labelAr: '9. نتيجة التنفيذ', labelEn: '9. Final Result', status: 'pending', agentId: 'agent-reviewer', detail: 'Ready in preview' },
-    ];
-    setPipelineStages(stages);
 
     const now = new Date().toISOString();
     const userMessage = {
@@ -343,27 +331,17 @@ export default function App() {
       attachments: options.attachments,
     };
 
-    // Append user message immediately
-    const threadId = activeProject.activeChatId || activeProject.chatThreads[0]?.id;
+    // Optimistically update chat thread with user message
+    const threadId = activeProject.activeChatId || activeProject.chatThreads[0]?.id || 'default-chat';
     const updatedThreadsWithUser = activeProject.chatThreads.map((th) =>
       th.id === threadId ? { ...th, messages: [...th.messages, userMessage], updatedAt: now } : th
     );
     const projectWithUserMsg = { ...activeProject, chatThreads: updatedThreadsWithUser };
     setProjects((prev) => prev.map((p) => (p.id === activeProject.id ? projectWithUserMsg : p)));
 
-    // Progress through stages visually while calling server-side Gemini API
-    for (let i = 0; i < 5; i++) {
-      await new Promise((r) => setTimeout(r, 90));
-      setPipelineStages((prev) =>
-        prev.map((st, idx) => ({
-          ...st,
-          status: idx <= i ? 'done' : idx === i + 1 ? 'running' : 'pending',
-        }))
-      );
-    }
-
     let replyContent = '';
     let updatedServerProject: Project | null = null;
+    let detectedIntent: 'chat' | 'build' = 'chat';
 
     try {
       const res = await fetch('/api/ai/execute', {
@@ -375,12 +353,14 @@ export default function App() {
           model: options.model,
           thinkingMode: options.thinkingMode,
           agentId: options.agentId || 'agent-chief',
+          mode: options.mode || 'auto',
         }),
       });
       if (res.ok) {
         const data = await res.json();
         replyContent = data.reply;
         updatedServerProject = data.project;
+        detectedIntent = data.intent === 'build' ? 'build' : 'chat';
         if (data.agent) {
           setAgents((prev) => prev.map((a) => (a.id === data.agent.id ? data.agent : a)));
         }
@@ -389,16 +369,17 @@ export default function App() {
       // fallback below
     }
 
-    setPipelineStages((prev) => prev.map((st) => ({ ...st, status: 'done' })));
+    const cleanReply = formatUserFacingResponse(
+      replyContent ||
+      (detectedIntent === 'chat'
+        ? (isAr ? 'أهلاً بك! كيف يمكنني مساعدتك اليوم؟' : 'Hello! How can I help you today?')
+        : (isAr ? 'تم بنجاح تنفيذ وتطبيق التعديل المطلوب وتحديث المعاينة المباشرة.' : 'Successfully implemented your changes and updated live preview.'))
+    );
 
     const assistantMsg = {
       id: `msg-a-${Date.now()}`,
       role: 'assistant' as const,
-      content:
-        replyContent ||
-        (isAr
-          ? `تم تنفيذ طلبك البرمجي بنجاح وتحديث ملفات المشروع والمعاينة الحية.`
-          : `Executed your engineering request and updated project files & live preview.`),
+      content: cleanReply,
       timestamp: new Date().toISOString(),
       model: options.model,
       thinkingMode: options.thinkingMode,
@@ -410,7 +391,11 @@ export default function App() {
       th.id === threadId
         ? {
             ...th,
-            messages: [...th.messages.filter((m) => m.id !== userMessage.id), userMessage, assistantMsg],
+            messages: [
+              ...th.messages.filter((m) => m.id !== userMessage.id && m.content !== cleanReply),
+              userMessage,
+              assistantMsg,
+            ],
             updatedAt: new Date().toISOString(),
           }
         : th
@@ -422,11 +407,18 @@ export default function App() {
       updatedAt: new Date().toISOString(),
     };
 
-    await handleUpdateProject(
-      finalProject,
-      isAr ? 'اكتمل التنفيذ الهندسي وتحديث الكود والمعاينة' : 'Completed AI engineering execution & updated preview'
-    );
+    if (detectedIntent === 'build') {
+      await handleUpdateProject(
+        finalProject,
+        isAr ? 'اكتمل بناء التعديلات وتحديث المعاينة' : 'Completed code updates & refreshed preview'
+      );
+    } else {
+      // In Chat Mode: Update state silently without altering files, preview, or showing build toasts
+      setProjects((prev) => prev.map((p) => (p.id === finalProject.id ? finalProject : p)));
+    }
+
     setIsGenerating(false);
+    return { intent: detectedIntent };
   };
 
   const handleStopGeneration = () => {

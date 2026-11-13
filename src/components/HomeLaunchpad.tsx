@@ -34,6 +34,7 @@ import {
   User,
 } from 'lucide-react';
 import { Language, Project, ProjectCategory } from '../types/platform';
+import { PromptMode } from '../utils/intentRouter';
 
 interface SpeechRecognitionResultItem {
   transcript: string;
@@ -83,8 +84,9 @@ interface HomeLaunchpadProps {
       thinkingMode: 'standard' | 'deep' | 'plan';
       category?: ProjectCategory;
       attachments?: { name: string; type: string; size: number }[];
+      mode?: PromptMode;
     }
-  ) => Promise<void>;
+  ) => Promise<{ intent?: string } | void>;
   onOpenModal: (modal: string, payload?: unknown) => void;
   onSwitchView: (view: 'home' | 'ide' | 'published' | 'registry') => void;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
@@ -191,6 +193,7 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
       thinkingMode: effectiveThinkingMode,
       category: selectedCategory,
       attachments: attachedItems,
+      mode: 'auto',
     });
     setPrompt('');
     setAttachedItems([]);

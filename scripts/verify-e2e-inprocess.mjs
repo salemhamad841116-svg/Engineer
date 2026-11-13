@@ -129,5 +129,16 @@ export function runInProcessE2EValidation() {
   const appContent = fs.readFileSync(appTsxPath, 'utf8');
   assert(appContent.includes('AdminPortalView'), 'App.tsx must embed AdminPortalView for admin domain');
   assert(appContent.includes('setSidebarOpen(false)'), 'App.tsx must collapse sidebar upon prompt execution');
+
+  console.log('  ▶️ Scenario 15: Dual-Mode Intent Router & Zero Chief Architect Leaks...');
+  const intentRouterPath = path.join(projectRoot, 'src/utils/intentRouter.ts');
+  const responseFormatterPath = path.join(projectRoot, 'src/utils/responseFormatter.ts');
+  assert(fs.existsSync(intentRouterPath), 'intentRouter.ts must exist');
+  assert(fs.existsSync(responseFormatterPath), 'responseFormatter.ts must exist');
+  assert(ideContent.includes('formatUserFacingResponse'), 'IdeWorkspace must sanitize messages through formatUserFacingResponse');
+  assert(ideContent.includes('promptMode'), 'IdeWorkspace must provide mode switcher (Auto/Chat/Build)');
+  assert(appContent.includes('detectedIntent'), 'App.tsx must handle detectedIntent from API');
+  const { runChatIntentAndWorkspaceSuite } = awaitImportSync('../server_backend/tests/chatIntentAndWorkspaceSuite.test.js');
+  runChatIntentAndWorkspaceSuite();
 }
 

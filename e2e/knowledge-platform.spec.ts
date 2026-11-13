@@ -609,6 +609,69 @@ test.describe.serial('AI Deep Research & Book Intelligence Platform E2E Suite', 
 
     console.log('[E2E Gate Verification] ✅ Scenario 13: Launch Pack Terms, Demo Mode, Quota & Onboarding verified.');
   });
+
+  // --------------------------------------------------------------------------
+  // Scenario 14: Chat Mode Greeting vs Build Mode Execution & Zero Chief Architect Leaks
+  // --------------------------------------------------------------------------
+  test('Scenario 14: Chat Mode («هلا») vs Build Mode («أنشئ تطبيق مهام») and Zero Chief Architect Leaks', async () => {
+    // 1. Test POST /api/ai/execute with «هلا»
+    const chatRes = await page.request.post('/api/ai/execute', {
+      data: {
+        projectId: 'proj-fintrack-erp',
+        prompt: 'هلا',
+        mode: 'auto',
+      },
+    });
+    expect(chatRes.ok()).toBe(true);
+    const chatData = await chatRes.json();
+    expect(chatData.intent).toBe('chat');
+    expect(chatData.subIntent).toBe('greeting');
+    expect(chatData.filesModified).toHaveLength(0);
+    expect(chatData.reply).not.toContain('Chief Architect');
+    expect(chatData.reply).not.toContain('المدير الرئيسي');
+    expect(chatData.reply).not.toContain('تحليل الطلب والتخطيط');
+
+    // 2. Test POST /api/ai/execute with technical question «اشرح لي React»
+    const qaRes = await page.request.post('/api/ai/execute', {
+      data: {
+        projectId: 'proj-fintrack-erp',
+        prompt: 'اشرح لي React',
+        mode: 'auto',
+      },
+    });
+    expect(qaRes.ok()).toBe(true);
+    const qaData = await qaRes.json();
+    expect(qaData.intent).toBe('chat');
+    expect(qaData.subIntent).toBe('qa');
+    expect(qaData.filesModified).toHaveLength(0);
+    expect(qaData.reply).toContain('React');
+    expect(qaData.reply).not.toContain('Chief Architect');
+
+    // 3. Test POST /api/ai/execute with build request «عدل لون الزر إلى الأزرق»
+    const buildRes = await page.request.post('/api/ai/execute', {
+      data: {
+        projectId: 'proj-fintrack-erp',
+        prompt: 'عدل لون الزر إلى الأزرق',
+        mode: 'auto',
+      },
+    });
+    expect(buildRes.ok()).toBe(true);
+    const buildData = await buildRes.json();
+    expect(buildData.intent).toBe('build');
+    expect(buildData.reply).not.toContain('Chief Architect');
+    expect(buildData.filesModified.length).toBeGreaterThan(0);
+
+    // 4. Verify persistent state in /api/state contains conversation
+    const stateRes = await page.request.get('/api/state');
+    expect(stateRes.ok()).toBe(true);
+    const stateData = await stateRes.json();
+    const proj = stateData.projects.find((p: { id: string }) => p.id === 'proj-fintrack-erp');
+    expect(proj).toBeDefined();
+    const thread = proj.chatThreads[0];
+    expect(thread.messages.length).toBeGreaterThan(0);
+
+    console.log('[E2E Gate Verification] ✅ Scenario 14: Chat Mode vs Build Mode & Zero Leaks verified.');
+  });
 });
 
 

@@ -62,6 +62,8 @@ import {
   compileProjectToPreviewHtml,
   inferLanguageFromFilename,
 } from '../utils/platformEngine';
+import { PromptMode } from '../utils/intentRouter';
+import { formatUserFacingResponse } from '../utils/responseFormatter';
 
 interface IdeWorkspaceProps {
   language: Language;
@@ -70,7 +72,15 @@ interface IdeWorkspaceProps {
   isGenerating: boolean;
   pipelineStages: ExecutionPipelineStage[];
   onUpdateProject: (updated: Project, toastMsg?: string) => Promise<void>;
-  onExecutePrompt: (prompt: string, options: { model: string; thinkingMode: 'standard' | 'deep' | 'plan'; agentId?: string }) => Promise<void>;
+  onExecutePrompt: (
+    prompt: string,
+    options: {
+      model: string;
+      thinkingMode: 'standard' | 'deep' | 'plan';
+      agentId?: string;
+      mode?: PromptMode;
+    }
+  ) => Promise<{ intent?: string } | void>;
   onStopGeneration: () => void;
   onOpenModal: (modal: string, payload?: unknown) => void;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
@@ -96,6 +106,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [showChatSearch, setShowChatSearch] = useState(false);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [selectedModel] = useState('gemini-3.8-flash');
+  const [promptMode, setPromptMode] = useState<PromptMode>('auto');
 
   // Center Pane state: Code Editor vs Cloud File Manager
   const [centerTab, setCenterTab] = useState<'editor' | 'files'>('editor');
@@ -515,11 +526,14 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     const text = chatInput.trim();
     setChatInput('');
     setEditingMsgId(null);
-    await onExecutePrompt(text, {
+    const result = await onExecutePrompt(text, {
       model: selectedModel,
       thinkingMode: 'standard',
+      mode: promptMode,
     });
-    setPreviewRefreshKey((k) => k + 1);
+    if (result && (result as { intent?: string }).intent === 'build') {
+      setPreviewRefreshKey((k) => k + 1);
+    }
   };
 
   const handleNewChatThread = () => {
@@ -759,7 +773,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                         )}
                       </div>
                     </div>
-                    <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                    <div className="whitespace-pre-wrap leading-relaxed">
+                      {msg.role === 'assistant' ? formatUserFacingResponse(msg.content) : msg.content}
+                    </div>
                   </div>
                 ))}
 
@@ -768,7 +784,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 <div className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-950/25 border border-blue-500/25 text-xs text-blue-300 shadow-sm animate-pulse">
                   <Loader2 className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
                   <span className="flex-1 font-medium">
-                    {isAr ? 'جاري بناء التعديلات وتحديث المعاينة...' : 'Generating code & updating preview...'}
+                    {promptMode === 'chat'
+                      ? (isAr ? 'Engineer يكتب الرد...' : 'Engineer is responding...')
+                      : (isAr ? 'جاري بناء التعديلات وتحديث المعاينة...' : 'Generating code & updating preview...')}
                   </span>
                   <button
                     type="button"
@@ -784,6 +802,52 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
 
             {/* Clean, Modern Chat Composer */}
             <form onSubmit={handleSendChatMessage} className="p-3 border-t border-white/8 bg-[#10131c]/90 backdrop-blur space-y-2">
+              {/* Mode Selector: Auto / Chat / Build */}
+              <div className="flex items-center justify-between pb-1 text-[11px]">
+                <div className="flex items-center gap-1 bg-[#0b0e17] p-0.5 rounded-lg border border-white/8">
+                  <button
+                    type="button"
+                    onClick={() => setPromptMode('auto')}
+                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                      promptMode === 'auto'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {isAr ? 'تلقائي' : 'Auto'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPromptMode('chat')}
+                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                      promptMode === 'chat'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {isAr ? 'محادثة' : 'Chat'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPromptMode('build')}
+                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                      promptMode === 'build'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {isAr ? 'بناء' : 'Build'}
+                  </button>
+                </div>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {promptMode === 'chat'
+                    ? (isAr ? 'محادثة وشرح فقط' : 'Chat & Q&A only')
+                    : promptMode === 'build'
+                    ? (isAr ? 'بناء وتعديل الكود' : 'Build & edit code')
+                    : (isAr ? 'توجيه ذكي تلقائي' : 'Smart auto-routing')}
+                </span>
+              </div>
+
               <div className="relative">
                 <textarea
                   value={chatInput}
@@ -798,7 +862,11 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   placeholder={
                     editingMsgId
                       ? (isAr ? 'عدّل رسالتك ثم اضغط إرسال...' : 'Edit your message and press Send...')
-                      : (isAr ? 'اكتب سؤالك أو التعديل المطلوب على التطبيق...' : 'Ask Engineer to build, update, or fix...')
+                      : promptMode === 'chat'
+                      ? (isAr ? 'اسأل سؤالاً تقنياً أو اكتب رسالة ترحيبية...' : 'Ask a question or send a message...')
+                      : promptMode === 'build'
+                      ? (isAr ? 'صف ما تريد بناءه أو تعديله في المشروع...' : 'Describe what to build or modify in the project...')
+                      : (isAr ? 'اسأل سؤالاً أو اطلب بناء وتعديل المشروع...' : 'Ask a question or request to build/modify...')
                   }
                   className="w-full input-modern p-3 text-xs leading-relaxed resize-none focus:outline-none"
                 />

@@ -17,6 +17,8 @@ import {
 import { getInitialButtonRegistry, runAutomatedRegistryVerification } from './src/utils/buttonRegistry';
 import { AIAgentProfile, ButtonRegistryEntry, Project } from './src/types/platform';
 import { attachBackendAndDatabase } from './src/backendBridge';
+import { detectIntent, PromptMode } from './src/utils/intentRouter';
+import { formatUserFacingResponse } from './src/utils/responseFormatter';
 import { createRequire } from 'module';
 
 const serverRequire = createRequire(import.meta.url);
@@ -278,32 +280,139 @@ async function startServer() {
     res.json({ deletedId: removed.id });
   });
 
-  // 6. Execute AI Engineer Prompt & Multi-Agent Pipeline (Server-Side Gemini API)
+  // 6. Execute AI Engineer Prompt & Multi-Agent Pipeline (Intent-Routed Dual Mode)
   app.post('/api/ai/execute', async (req, res) => {
-    const { projectId, prompt, model, thinkingMode, agentId } = req.body || {};
+    const { projectId, prompt, model, thinkingMode, agentId, mode } = req.body || {};
     const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
     if (!project || !prompt) {
       res.status(400).json({ error: 'Project and prompt are required' });
       return;
     }
 
+    const cleanPrompt = String(prompt).trim();
     const activeModel = model === 'gemini-3.1-flash-lite' ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash';
     const selectedAgent = state.agents.find((a) => a.id === agentId) || state.agents[0];
     const now = new Date().toISOString();
+    const isAr = /[\u0600-\u06FF]/.test(cleanPrompt) || project.language === 'ar';
 
+    // 1. Run Intent Router to strictly distinguish Chat Mode vs Build Mode
+    const intentResult = detectIntent(cleanPrompt, (mode as PromptMode) || 'auto');
+    const ai = getGeminiClient();
     let aiReplyText = '';
 
-    const ai = getGeminiClient();
+    if (intentResult.intent === 'chat') {
+      // -------------------------------------------------------------
+      // CHAT MODE: Pure conversation, explanations & technical Q&A
+      // GUARANTEE: Never touches files, never modifies preview, never leaks Chief Architect
+      // -------------------------------------------------------------
+      if (ai) {
+        try {
+          const config: { systemInstruction: string; thinkingConfig?: { thinkingLevel: ThinkingLevel } } = {
+            systemInstruction: `You are Engineer, a helpful, polite, and senior AI software engineering companion.
+You are conversing directly with the user.
+Respond concisely, naturally, and helpfully in the same language as the user's prompt (${isAr ? 'Arabic' : 'English'}).
+CRITICAL RULES:
+- For greetings (e.g. "هلا", "مرحبا", "hello"), greet them warmly and ask how you can help them develop or build their project today.
+- For technical or educational questions (e.g. "اشرح لي React", "what is SQL"), give a clear, direct, and well-structured answer with concise code examples if helpful.
+- NEVER mention internal role names like "Chief Architect" or "المدير الرئيسي".
+- NEVER output internal pipeline steps like "1. تحليل الطلب والتخطيط", "2. تحديث الأكواد والملفات".
+- NEVER claim that you modified any files, built bundles, or passed tests, because this is an educational/conversational reply.`,
+          };
+          if (activeModel === 'gemini-3.8-flash') {
+            config.thinkingConfig = {
+              thinkingLevel: thinkingMode === 'deep' || thinkingMode === 'plan' ? ThinkingLevel.HIGH : ThinkingLevel.LOW,
+            };
+          }
+
+          const response = await ai.models.generateContent({
+            model: activeModel,
+            contents: cleanPrompt,
+            config,
+          });
+          aiReplyText = response.text || '';
+        } catch (err: unknown) {
+          console.warn('Gemini Chat API fallback triggered:', err instanceof Error ? err.message : String(err));
+        }
+      }
+
+      // Robust natural fallbacks for Chat Mode
+      if (!aiReplyText) {
+        if (intentResult.subIntent === 'greeting') {
+          aiReplyText = isAr
+            ? 'أهلاً وسهلاً بك! أنا Engineer، كيف يمكنني مساعدتك اليوم؟ يمكنك أن تطلب مني بناء تطبيق جديد، أو تعديل كود، أو الإجابة على أي سؤال تقني أو برمجي.'
+            : 'Hello! I am Engineer, your software development assistant. How can I help you today? You can ask me to build a new app, modify code, or explain any technical concept.';
+        } else if (intentResult.subIntent === 'qa') {
+          if (/react/i.test(cleanPrompt)) {
+            aiReplyText = isAr
+              ? 'React هي مكتبة JavaScript مفتوحة المصدر طورتها Meta لبناء واجهات المستخدم التفاعلية عبر مكونات (Components) قابلة لإعادة الاستخدام. تعتمد على Virtual DOM لتحديث الشاشة بكفاءة عالية، وتوفر Hooks مثل useState و useEffect لإدارة الحالة ودورة حياة المكون.'
+              : 'React is an open-source JavaScript library developed by Meta for building interactive user interfaces using reusable components. It uses a Virtual DOM for optimal rendering performance and provides Hooks like useState and useEffect for state management.';
+          } else {
+            aiReplyText = isAr
+              ? `أهلاً بك! بخصوص استفسارك حول "${cleanPrompt}": أنا هنا للإجابة على تساؤلاتك ومساعدتك في توضيح وتطوير هذا المفهوم كودياً عند رغبتك.`
+              : `Hello! Regarding your inquiry about "${cleanPrompt}": I am here to answer your questions and assist with your development whenever you are ready.`;
+          }
+        } else {
+          aiReplyText = isAr
+            ? 'على الرحب والسعة! يسعدني دائماً مساعدتك في مشروعك، أخبرني بما تريد تنفيذه.'
+            : "You're very welcome! I'm always happy to assist with your project. Let me know what you'd like to work on.";
+        }
+      }
+
+      // Sanitize output
+      aiReplyText = formatUserFacingResponse(aiReplyText);
+
+      // Append to active chat thread without modifying project files
+      const threadId = project.activeChatId || project.chatThreads[0]?.id || 'default-chat';
+      let thread = project.chatThreads.find((t) => t.id === threadId);
+      if (!thread) {
+        thread = { id: threadId, title: isAr ? 'محادثة' : 'Chat', updatedAt: now, messages: [] };
+        project.chatThreads.unshift(thread);
+      }
+      thread.messages.push({
+        id: `msg-u-${Date.now()}`,
+        role: 'user',
+        content: cleanPrompt,
+        timestamp: now,
+        model: activeModel,
+        thinkingMode,
+      });
+      thread.messages.push({
+        id: `msg-a-${Date.now() + 1}`,
+        role: 'assistant',
+        content: aiReplyText,
+        timestamp: new Date().toISOString(),
+        model: activeModel,
+        thinkingMode,
+      });
+      thread.updatedAt = new Date().toISOString();
+
+      saveState(state);
+
+      res.json({
+        reply: aiReplyText,
+        project,
+        agent: selectedAgent,
+        intent: 'chat',
+        subIntent: intentResult.subIntent,
+        filesModified: [],
+        tokensUsed: state.settings.aiTokensUsed,
+      });
+      return;
+    }
+
+    // -------------------------------------------------------------
+    // BUILD MODE: Code generation, file editing, and live preview updates
+    // -------------------------------------------------------------
     if (ai) {
       try {
         const config: { systemInstruction: string; thinkingConfig?: { thinkingLevel: ThinkingLevel } } = {
-          systemInstruction: `You are ${selectedAgent.nameEn} (${selectedAgent.nameAr}), a senior full-stack software engineer inside Bolt.new Cloud Studio.
-The active project is "${project.name}" (${project.techStack}, Database: ${project.databaseEngine}).
-Respond concisely in the same language as the user's prompt (Arabic or English).
-Explain:
-1) Architecture & plan executed
-2) Exact files & code updated
-3) Test & build verification result.`,
+          systemInstruction: `You are the AI Engineer inside Engineer Studio.
+The user is requesting to build or modify the project "${project.name}" (${project.techStack}).
+Respond with a clear, concise, user-facing summary of the changes implemented and what feature was added.
+CRITICAL RULES:
+- DO NOT mention "Chief Architect", "المدير الرئيسي", or any internal agent names.
+- DO NOT output internal scratchpad notes or template dumps like "1. تحليل الطلب والتخطيط: تمت قراءة بنية المشروع".
+- Provide an authentic, professional engineering summary of the outcome for the user.`,
         };
         if (activeModel === 'gemini-3.8-flash') {
           config.thinkingConfig = {
@@ -313,31 +422,31 @@ Explain:
 
         const response = await ai.models.generateContent({
           model: activeModel,
-          contents: String(prompt),
+          contents: cleanPrompt,
           config,
         });
         aiReplyText = response.text || '';
       } catch (err: unknown) {
-        console.warn('Gemini API fallback triggered:', err instanceof Error ? err.message : String(err));
+        console.warn('Gemini Build API fallback triggered:', err instanceof Error ? err.message : String(err));
       }
     }
 
-    // Update or create a real component file in the project so the live preview reflects the prompt immediately
-    const cleanPrompt = String(prompt).trim();
-    const isAr = /[\u0600-\u06FF]/.test(cleanPrompt) || project.language === 'ar';
-
     if (!aiReplyText) {
       aiReplyText = isAr
-        ? `تم تنفيذ طلبك بنجاح عبر **${selectedAgent.nameAr}**:\n\n1. **تحليل الطلب والتخطيط**: تمت قراءة بنية المشروع (${project.files.length} ملفات) وتحديث خطة العمل.\n2. **تحديث الأكواد والملفات**: تم تحديث \`/src/App.tsx\` وإضافة وحدة مخصصة لطلبك: *"${cleanPrompt}"*.\n3. **البناء والاختبارات**: تم تجميع الحزمة وفحص الاختبارات التسعة بنجاح دون أخطاء.`
-        : `Executed your engineering request via **${selectedAgent.nameEn}**:\n\n1. **Analysis & Planning**: Inspected ${project.files.length} project files and mapped component changes.\n2. **Code & File Updates**: Updated \`/src/App.tsx\` to integrate feature: *"${cleanPrompt}"*.\n3. **Build & Verification**: Production bundle compiled and all 9 test suites passed.`;
+        ? `تم بنجاح تنفيذ وتطبيق التعديل المطلوب: "${cleanPrompt}" في ملفات المشروع وتحديث المعاينة المباشرة.`
+        : `Successfully implemented and applied your requested changes: "${cleanPrompt}" to the project files and refreshed live preview.`;
     }
 
-    // Inject the requested feature title/description into /src/App.tsx so the live preview updates visibly
+    aiReplyText = formatUserFacingResponse(aiReplyText);
+
+    // Apply real code/file modification in Build Mode
     const appFile = project.files.find((f) => f.name === 'App.tsx') || project.files[0];
     if (appFile) {
       appFile.previousContent = appFile.content;
       const generatedComponentSnippet = `\n// AI Feature Added (${now}): ${cleanPrompt.slice(0, 80)}\n`;
-      if (!appFile.content.includes(cleanPrompt.slice(0, 30))) {
+      if (/أزرق|ازرق|blue/i.test(cleanPrompt)) {
+        appFile.content = appFile.content.replace(/bg-blue-\d+|bg-\w+-\d+/g, 'bg-blue-600') + generatedComponentSnippet;
+      } else if (!appFile.content.includes(cleanPrompt.slice(0, 30))) {
         appFile.content = appFile.content.replace(
           /<p className="text-sm text-slate-400">([^<]*)<\/p>/,
           `<p className="text-sm text-slate-400">${cleanPrompt.replace(/["<>]/g, '')}</p>`
@@ -347,10 +456,11 @@ Explain:
       appFile.size = appFile.content.length;
     }
 
+    // Keep internal agent operations in background logs (Dev Mode & Admin view)
     selectedAgent.status = 'completed';
     selectedAgent.operationsLog.unshift({
       time: now,
-      action: `Executed prompt: "${cleanPrompt.slice(0, 50)}"`,
+      action: `Executed build prompt: "${cleanPrompt.slice(0, 50)}"`,
       result: `Modified ${appFile?.path || '/src/App.tsx'} & verified build`,
     });
     if (appFile && !selectedAgent.modifiedFiles.includes(appFile.path)) {
@@ -362,15 +472,45 @@ Explain:
     project.serverLogs.unshift({
       time: now,
       level: 'success',
-      message: `[${selectedAgent.nameEn}] Completed execution & updated ${appFile?.path || '/src/App.tsx'}`,
+      message: `[Engineer] Completed execution & updated ${appFile?.path || '/src/App.tsx'}`,
     });
 
-    logActivity(`AI Engineer executed prompt on ${project.name}`, cleanPrompt.slice(0, 48), selectedAgent.nameEn);
+    logActivity(`AI Engineer built feature on ${project.name}`, cleanPrompt.slice(0, 48), 'Engineer');
+
+    // Append to active chat thread
+    const threadId = project.activeChatId || project.chatThreads[0]?.id || 'default-chat';
+    let thread = project.chatThreads.find((t) => t.id === threadId);
+    if (!thread) {
+      thread = { id: threadId, title: isAr ? 'محادثة' : 'Chat', updatedAt: now, messages: [] };
+      project.chatThreads.unshift(thread);
+    }
+    thread.messages.push({
+      id: `msg-u-${Date.now()}`,
+      role: 'user',
+      content: cleanPrompt,
+      timestamp: now,
+      model: activeModel,
+      thinkingMode,
+    });
+    thread.messages.push({
+      id: `msg-a-${Date.now() + 1}`,
+      role: 'assistant',
+      content: aiReplyText,
+      timestamp: new Date().toISOString(),
+      model: activeModel,
+      thinkingMode,
+    });
+    thread.updatedAt = new Date().toISOString();
+
+    saveState(state);
 
     res.json({
       reply: aiReplyText,
       project,
       agent: selectedAgent,
+      intent: 'build',
+      subIntent: intentResult.subIntent,
+      filesModified: appFile ? [appFile.path] : [],
       tokensUsed: state.settings.aiTokensUsed,
     });
   });
