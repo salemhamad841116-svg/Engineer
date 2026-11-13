@@ -1301,6 +1301,256 @@ CREATE INDEX IF NOT EXISTS idx_payment_audit_action ON payment_audit_logs(action
       `);
     },
   },
+  {
+    id: 24,
+    name: 'phase15_enterprise_super_admin_control_center',
+    up: (handle) => {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS ai_providers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  provider_type TEXT NOT NULL,
+  api_endpoint TEXT NOT NULL,
+  key_ciphertext TEXT,
+  key_iv TEXT,
+  key_tag TEXT,
+  key_prefix TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled', 'error', 'rate_limited')),
+  priority INTEGER NOT NULL DEFAULT 1,
+  fallback_provider_id TEXT REFERENCES ai_providers(id),
+  daily_budget_usd REAL NOT NULL DEFAULT 50.0,
+  monthly_budget_usd REAL NOT NULL DEFAULT 1000.0,
+  cost_incurred_today_usd REAL NOT NULL DEFAULT 0.0,
+  cost_incurred_month_usd REAL NOT NULL DEFAULT 0.0,
+  total_tokens_consumed INTEGER NOT NULL DEFAULT 0,
+  total_requests_count INTEGER NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  rate_limit_rpm INTEGER NOT NULL DEFAULT 60,
+  supported_models_json TEXT NOT NULL DEFAULT '[]',
+  default_model_coding TEXT,
+  default_model_chat TEXT,
+  default_model_research TEXT,
+  last_tested_at TEXT DEFAULT NULL,
+  last_test_latency_ms INTEGER DEFAULT 0,
+  last_test_status TEXT DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_providers_status ON ai_providers(status);
+CREATE INDEX IF NOT EXISTS idx_ai_providers_priority ON ai_providers(priority);
+
+CREATE TABLE IF NOT EXISTS ai_usage_events (
+  id TEXT PRIMARY KEY,
+  provider_id TEXT REFERENCES ai_providers(id),
+  model TEXT NOT NULL,
+  user_id TEXT REFERENCES users(id),
+  project_id TEXT,
+  request_type TEXT NOT NULL DEFAULT 'chat',
+  tokens_prompt INTEGER NOT NULL DEFAULT 0,
+  tokens_completion INTEGER NOT NULL DEFAULT 0,
+  tokens_total INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0.0,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'success' CHECK (status IN ('success', 'failed', 'rate_limited')),
+  error_message TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_provider ON ai_usage_events(provider_id);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage_events(created_at);
+
+CREATE TABLE IF NOT EXISTS user_profiles (
+  id TEXT PRIMARY KEY,
+  user_id TEXT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  phone TEXT DEFAULT NULL,
+  bio TEXT DEFAULT NULL,
+  company TEXT DEFAULT NULL,
+  country_code TEXT DEFAULT 'AE',
+  country_name TEXT DEFAULT 'United Arab Emirates',
+  city TEXT DEFAULT 'Dubai',
+  device_type TEXT DEFAULT 'desktop',
+  os TEXT DEFAULT 'macOS',
+  browser TEXT DEFAULT 'Chrome',
+  last_ip TEXT DEFAULT '127.0.0.1',
+  is_banned INTEGER NOT NULL DEFAULT 0,
+  ban_reason TEXT DEFAULT NULL,
+  suspended_until TEXT DEFAULT NULL,
+  total_sessions INTEGER NOT NULL DEFAULT 0,
+  total_usage_seconds INTEGER NOT NULL DEFAULT 0,
+  active_work_seconds INTEGER NOT NULL DEFAULT 0,
+  idle_seconds INTEGER NOT NULL DEFAULT 0,
+  total_ai_requests INTEGER NOT NULL DEFAULT 0,
+  total_ai_cost_usd REAL NOT NULL DEFAULT 0.0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_user ON user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_country ON user_profiles(country_code);
+
+CREATE TABLE IF NOT EXISTS guest_sessions (
+  id TEXT PRIMARY KEY,
+  session_token TEXT UNIQUE NOT NULL,
+  ip TEXT NOT NULL,
+  country_code TEXT DEFAULT 'AE',
+  country_name TEXT DEFAULT 'United Arab Emirates',
+  device_type TEXT DEFAULT 'desktop',
+  os TEXT DEFAULT 'macOS',
+  browser TEXT DEFAULT 'Chrome',
+  started_at TEXT NOT NULL,
+  last_heartbeat_at TEXT NOT NULL,
+  ended_at TEXT DEFAULT NULL,
+  duration_seconds INTEGER NOT NULL DEFAULT 0,
+  page_views INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_guest_sessions_token ON guest_sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_guest_sessions_started ON guest_sessions(started_at);
+
+CREATE TABLE IF NOT EXISTS presence_heartbeats (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  user_id TEXT,
+  is_guest INTEGER NOT NULL DEFAULT 0,
+  current_page TEXT NOT NULL DEFAULT '/',
+  current_project_id TEXT DEFAULT NULL,
+  state TEXT NOT NULL CHECK (state IN ('online', 'idle', 'offline')),
+  ip TEXT NOT NULL,
+  user_agent TEXT DEFAULT NULL,
+  client_timestamp TEXT NOT NULL,
+  server_timestamp TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_presence_user ON presence_heartbeats(user_id);
+CREATE INDEX IF NOT EXISTS idx_presence_session ON presence_heartbeats(session_id);
+CREATE INDEX IF NOT EXISTS idx_presence_server_time ON presence_heartbeats(server_timestamp);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  project_type TEXT DEFAULT 'web',
+  template TEXT DEFAULT 'react-vite',
+  build_status TEXT DEFAULT 'success' CHECK (build_status IN ('idle', 'building', 'success', 'failed')),
+  test_status TEXT DEFAULT 'passed' CHECK (test_status IN ('idle', 'running', 'passed', 'failed')),
+  last_deployment_status TEXT DEFAULT 'live',
+  last_deployed_at TEXT DEFAULT NULL,
+  total_work_seconds INTEGER NOT NULL DEFAULT 0,
+  code_generations_count INTEGER NOT NULL DEFAULT 0,
+  fixes_count INTEGER NOT NULL DEFAULT 0,
+  primary_model TEXT DEFAULT 'qwen2.5:7b',
+  ai_cost_usd REAL NOT NULL DEFAULT 0.0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id);
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(build_status);
+
+CREATE TABLE IF NOT EXISTS project_activity (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  event_type TEXT NOT NULL,
+  details_json TEXT DEFAULT '{}',
+  duration_seconds INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_project_activity_project ON project_activity(project_id);
+
+CREATE TABLE IF NOT EXISTS user_search_events (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id TEXT,
+  query_type TEXT NOT NULL DEFAULT 'code',
+  model_used TEXT NOT NULL,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'success' CHECK (status IN ('success', 'failed')),
+  cost_usd REAL NOT NULL DEFAULT 0.0,
+  prompt_preview TEXT NOT NULL,
+  full_prompt_encrypted TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_search_events_user ON user_search_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_search_events_created ON user_search_events(created_at);
+
+CREATE TABLE IF NOT EXISTS deployments (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  environment TEXT NOT NULL DEFAULT 'production',
+  status TEXT NOT NULL CHECK (status IN ('pending', 'deploying', 'live', 'failed', 'rolled_back')),
+  commit_hash TEXT DEFAULT NULL,
+  build_logs_snippet TEXT DEFAULT NULL,
+  deployed_url TEXT DEFAULT NULL,
+  duration_seconds INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);
+
+CREATE TABLE IF NOT EXISTS test_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  suite_name TEXT NOT NULL,
+  total_tests INTEGER NOT NULL DEFAULT 0,
+  passed_tests INTEGER NOT NULL DEFAULT 0,
+  failed_tests INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  logs_snippet TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_test_runs_project ON test_runs(project_id);
+
+CREATE TABLE IF NOT EXISTS system_notifications (
+  id TEXT PRIMARY KEY,
+  target_role TEXT NOT NULL DEFAULT 'all',
+  severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'critical')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  read_by TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_system_notifications_read ON system_notifications(is_read);
+      `);
+
+      // Seed initial 9 AI providers
+      const seedProviders = [
+        { id: 'prov_openai', name: 'OpenAI', type: 'openai', endpoint: 'https://api.openai.com/v1', priority: 1, models: ['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o3-mini'], defaultCoding: 'gpt-4o', defaultChat: 'gpt-4o-mini', defaultResearch: 'o1-preview' },
+        { id: 'prov_anthropic', name: 'Anthropic Claude', type: 'anthropic', endpoint: 'https://api.anthropic.com/v1', priority: 2, models: ['claude-3-7-sonnet-20250219', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'], defaultCoding: 'claude-3-7-sonnet-20250219', defaultChat: 'claude-3-5-haiku-20241022', defaultResearch: 'claude-3-7-sonnet-20250219' },
+        { id: 'prov_gemini', name: 'Google Gemini / Vertex AI', type: 'gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai', priority: 3, models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'], defaultCoding: 'gemini-2.0-flash', defaultChat: 'gemini-2.0-flash', defaultResearch: 'gemini-1.5-pro' },
+        { id: 'prov_xai', name: 'xAI Grok', type: 'xai', endpoint: 'https://api.x.ai/v1', priority: 4, models: ['grok-2', 'grok-2-mini', 'grok-beta'], defaultCoding: 'grok-2', defaultChat: 'grok-2-mini', defaultResearch: 'grok-2' },
+        { id: 'prov_mistral', name: 'Mistral AI', type: 'mistral', endpoint: 'https://api.mistral.ai/v1', priority: 5, models: ['mistral-large-latest', 'codestral-latest', 'mistral-small-latest'], defaultCoding: 'codestral-latest', defaultChat: 'mistral-small-latest', defaultResearch: 'mistral-large-latest' },
+        { id: 'prov_cohere', name: 'Cohere', type: 'cohere', endpoint: 'https://api.cohere.com/v2', priority: 6, models: ['command-r-plus', 'command-r', 'embed-multilingual-v3.0'], defaultCoding: 'command-r-plus', defaultChat: 'command-r', defaultResearch: 'command-r-plus' },
+        { id: 'prov_deepseek', name: 'DeepSeek', type: 'deepseek', endpoint: 'https://api.deepseek.com/v1', priority: 7, models: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'], defaultCoding: 'deepseek-coder', defaultChat: 'deepseek-chat', defaultResearch: 'deepseek-reasoner' },
+        { id: 'prov_openrouter', name: 'OpenRouter', type: 'openrouter', endpoint: 'https://openrouter.ai/api/v1', priority: 8, models: ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'deepseek/deepseek-r1'], defaultCoding: 'anthropic/claude-3.5-sonnet', defaultChat: 'openai/gpt-4o', defaultResearch: 'deepseek/deepseek-r1' },
+        { id: 'prov_custom', name: 'Custom Compatible API', type: 'custom', endpoint: 'http://localhost:8000/v1', priority: 9, models: ['custom-local-model'], defaultCoding: 'custom-local-model', defaultChat: 'custom-local-model', defaultResearch: 'custom-local-model' }
+      ];
+
+      const stmt = handle.prepare(`
+        INSERT OR IGNORE INTO ai_providers (
+          id, name, provider_type, api_endpoint, key_prefix, status, priority,
+          daily_budget_usd, monthly_budget_usd, supported_models_json,
+          default_model_coding, default_model_chat, default_model_research,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'active', ?, 50.0, 1000.0, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `);
+
+      for (const p of seedProviders) {
+        stmt.run(
+          p.id,
+          p.name,
+          p.type,
+          p.endpoint,
+          'sk-seed-...mock',
+          p.priority,
+          JSON.stringify(p.models),
+          p.defaultCoding,
+          p.defaultChat,
+          p.defaultResearch
+        );
+      }
+    },
+  },
 ];
 
 function openDb() {

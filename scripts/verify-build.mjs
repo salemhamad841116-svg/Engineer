@@ -310,6 +310,13 @@ runStep('Phase 14 Stripe UAE Subscriptions, Webhooks & Entitlements Gate', () =>
   execSync('node scripts/simulate-payment-lifecycle-e2e.mjs', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 21: Phase 15 Enterprise Super Admin Control Center Gate (14 Acceptance Criteria)
+// ----------------------------------------------------
+runStep('Phase 15 Enterprise Super Admin Control Center Gate (14 Acceptance Criteria)', () => {
+  execSync('node server_backend/tests/enterpriseSuperAdminSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

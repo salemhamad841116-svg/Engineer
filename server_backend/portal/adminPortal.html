@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>لوحة التحكم الإدارية المعزولة | Admin Subdomain Portal</title>
+  <title>Engineer — Enterprise Super Admin Control Center</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -20,17 +20,14 @@
       --rose: #f43f5e;
       --amber: #f59e0b;
       --indigo: #6366f1;
+      --purple: #8b5cf6;
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --font-cairo: 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       background-color: var(--bg-dark);
@@ -41,24 +38,55 @@
       overflow-x: hidden;
     }
 
-    /* Header */
-    header {
-      background-color: rgba(18, 24, 36, 0.95);
-      backdrop-filter: blur(8px);
+    /* Top Header */
+    header.admin-header {
+      background-color: rgba(18, 24, 36, 0.98);
+      backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border-color);
       position: sticky;
       top: 0;
       z-index: 50;
-      padding: 0.75rem 1.5rem;
+      height: 60px;
+      padding: 0 1.25rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
-    .brand {
+    .brand-wrap {
       display: flex;
       align-items: center;
       gap: 0.75rem;
+    }
+
+    .sidebar-toggle-btn {
+      background: none;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-radius: 6px;
+      padding: 0.4rem 0.6rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+    }
+    .sidebar-toggle-btn:hover { background-color: var(--bg-card-hover); }
+
+    .logo-badge {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      color: #fff;
+      font-weight: 800;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .header-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-main);
     }
 
     .badge-subdomain {
@@ -72,7 +100,7 @@
       font-weight: 600;
     }
 
-    .badge-security {
+    .badge-online {
       background: rgba(16, 185, 129, 0.15);
       color: #34d399;
       border: 1px solid rgba(16, 185, 129, 0.3);
@@ -80,13 +108,28 @@
       border-radius: 9999px;
       font-size: 0.75rem;
       font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
     }
 
-    .user-profile {
+    .header-actions {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.75rem;
     }
+
+    .lang-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .lang-btn:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.1); }
 
     .role-badge {
       font-size: 0.75rem;
@@ -95,49 +138,126 @@
       font-weight: 700;
     }
     .role-super_admin { background: #7c3aed; color: #fff; }
+    .role-admin { background: #2563eb; color: #fff; }
+    .role-support { background: #0284c7; color: #fff; }
+    .role-finance { background: #059669; color: #fff; }
+    .role-auditor { background: #d97706; color: #fff; }
     .role-support_agent { background: #0284c7; color: #fff; }
 
-    /* Navigation Tabs */
-    nav.admin-tabs {
-      background-color: var(--bg-card);
-      border-bottom: 1px solid var(--border-color);
+    /* Layout */
+    .portal-layout {
       display: flex;
-      overflow-x: auto;
-      padding: 0 1.5rem;
-      gap: 0.5rem;
+      min-height: calc(100vh - 60px);
     }
 
-    .tab-btn {
-      background: none;
-      border: none;
-      color: var(--text-muted);
+    /* Collapsible Sidebar */
+    .admin-sidebar {
+      width: 270px;
+      background-color: var(--bg-card);
+      border-inline-end: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: width 0.2s ease, transform 0.2s ease;
+      position: sticky;
+      top: 60px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+    }
+
+    .admin-sidebar.collapsed {
+      width: 72px;
+    }
+
+    .admin-sidebar.collapsed .nav-text,
+    .admin-sidebar.collapsed .sidebar-search-wrap,
+    .admin-sidebar.collapsed .nav-section-title {
+      display: none;
+    }
+
+    .admin-sidebar.collapsed .nav-item {
+      justify-content: center;
+      padding: 0.65rem 0;
+    }
+
+    .sidebar-search-wrap {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .sidebar-search-input {
+      width: 100%;
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
       font-family: var(--font-cairo);
-      font-size: 0.95rem;
-      font-weight: 600;
-      padding: 0.85rem 1rem;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
+      outline: none;
+    }
+    .sidebar-search-input:focus { border-color: var(--border-focus); }
+
+    .sidebar-nav-list {
+      list-style: none;
+      padding: 0.5rem 0.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .nav-section-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 0.6rem 0.75rem 0.2rem 0.75rem;
+      letter-spacing: 0.5px;
+    }
+
+    .nav-item {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      white-space: nowrap;
-      transition: all 0.2s;
+      gap: 0.65rem;
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border-radius: 6px;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      font-family: var(--font-cairo);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: start;
+      transition: all 0.15s;
     }
 
-    .tab-btn:hover {
+    .nav-item:hover {
+      background-color: var(--bg-card-hover);
       color: var(--text-main);
     }
 
-    .tab-btn.active {
+    .nav-item.active {
+      background: rgba(37, 99, 235, 0.15);
       color: #60a5fa;
-      border-bottom-color: #3b82f6;
+      border-inline-start: 3px solid #3b82f6;
     }
 
-    /* Main Container */
-    main {
+    .nav-icon {
+      font-size: 1.05rem;
+      min-width: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Main Content */
+    .admin-main {
+      flex: 1;
+      min-width: 0;
       padding: 1.5rem;
-      max-width: 1400px;
-      margin: 0 auto;
+      overflow-y: auto;
     }
 
     .tab-content {
@@ -157,39 +277,53 @@
     /* Cards & Grids */
     .grid-4 {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 1rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
     }
 
     .grid-2 {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
       gap: 1rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.25rem;
     }
 
     .card {
       background-color: var(--bg-card);
       border: 1px solid var(--border-color);
       border-radius: 8px;
-      padding: 1.25rem;
+      padding: 1.15rem;
+      position: relative;
     }
 
     .card-title {
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       color: var(--text-muted);
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.4rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
     .card-value {
-      font-size: 1.75rem;
+      font-size: 1.7rem;
       font-weight: 800;
       color: var(--text-main);
       font-family: var(--font-mono);
+    }
+
+    .card-subtitle {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
     }
 
     /* Tables */
@@ -198,26 +332,32 @@
       border: 1px solid var(--border-color);
       border-radius: 8px;
       overflow-x: auto;
-      margin-top: 1rem;
+      margin-top: 0.75rem;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
       text-align: right;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
+    }
+
+    html[dir="ltr"] table {
+      text-align: left;
     }
 
     th {
       background-color: rgba(255, 255, 255, 0.02);
       color: var(--text-muted);
       font-weight: 600;
-      padding: 0.85rem 1rem;
+      padding: 0.75rem 0.9rem;
       border-bottom: 1px solid var(--border-color);
+      font-size: 0.8rem;
+      text-transform: uppercase;
     }
 
     td {
-      padding: 0.85rem 1rem;
+      padding: 0.75rem 0.9rem;
       border-bottom: 1px solid var(--border-color);
       color: var(--text-main);
     }
@@ -238,50 +378,45 @@
     .badge-danger { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
     .badge-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
     .badge-info { background: rgba(37, 99, 235, 0.2); color: #60a5fa; }
+    .badge-purple { background: rgba(139, 92, 246, 0.2); color: #c084fc; }
 
     .btn {
       background-color: var(--primary);
       color: #fff;
       border: none;
       border-radius: 6px;
-      padding: 0.5rem 1rem;
+      padding: 0.45rem 0.85rem;
       font-family: var(--font-cairo);
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      transition: background 0.15s;
+      gap: 0.4rem;
+      transition: background-color 0.15s;
     }
-
     .btn:hover { background-color: var(--primary-hover); }
-    .btn-secondary { background-color: #334155; }
-    .btn-secondary:hover { background-color: #475569; }
-    .btn-danger { background-color: #dc2626; }
-    .btn-danger:hover { background-color: #b91c1c; }
-    .btn-success { background-color: #059669; }
-    .btn-success:hover { background-color: #047857; }
+    .btn-secondary { background-color: #1e293b; color: var(--text-main); }
+    .btn-secondary:hover { background-color: #334155; }
+    .btn-success { background-color: var(--emerald); }
+    .btn-success:hover { background-color: #059669; }
+    .btn-danger { background-color: var(--rose); }
+    .btn-danger:hover { background-color: #e11d48; }
 
-    /* Inputs */
     input, select, textarea {
-      background-color: #0d121d;
+      background-color: var(--bg-dark);
       border: 1px solid var(--border-color);
       color: var(--text-main);
-      padding: 0.6rem 0.85rem;
+      padding: 0.5rem 0.75rem;
       border-radius: 6px;
       font-family: var(--font-cairo);
-      font-size: 0.9rem;
-      width: 100%;
-    }
-
-    input:focus, select:focus, textarea:focus {
+      font-size: 0.88rem;
       outline: none;
-      border-color: var(--border-focus);
     }
+    input:focus, select:focus, textarea:focus { border-color: var(--border-focus); }
 
-    /* Modal */
-    .modal-backdrop {
+    /* Modals */
+    .modal-overlay {
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.75);
@@ -292,651 +427,942 @@
       z-index: 100;
       padding: 1rem;
     }
+    .modal-overlay.active { display: flex; }
 
-    .modal-backdrop.open { display: flex; }
-
-    .modal-box {
+    .modal-card {
       background-color: var(--bg-card);
       border: 1px solid var(--border-color);
       border-radius: 10px;
-      max-width: 550px;
       width: 100%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
       padding: 1.5rem;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
     }
 
-    .modal-title {
-      font-size: 1.15rem;
-      font-weight: 700;
-      margin-bottom: 1rem;
+    .modal-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.75rem;
     }
 
-    /* Login Screen Container */
+    /* Login Form Section */
     #login-section {
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 1rem;
-      background: radial-gradient(circle at top, #172033 0%, #0a0d14 70%);
+      padding: 1.5rem;
+      background: radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0a0d14 70%);
     }
 
-    .login-card {
-      background: var(--bg-card);
+    .login-box {
+      background-color: var(--bg-card);
       border: 1px solid var(--border-color);
       border-radius: 12px;
-      max-width: 440px;
       width: 100%;
-      padding: 2.25rem;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      max-width: 440px;
+      padding: 2rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
     }
 
-    .form-group {
-      margin-bottom: 1.15rem;
-    }
-
-    .form-group label {
-      display: block;
-      margin-bottom: 0.4rem;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      font-weight: 600;
-    }
-
-    .alert-box {
+    /* Filter Bar */
+    .filter-bar {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
       padding: 0.75rem 1rem;
-      border-radius: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
       margin-bottom: 1rem;
-      font-size: 0.85rem;
-      display: none;
     }
 
-    .alert-box.show { display: block; }
-    .alert-error { background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #fb7185; }
-    .alert-success { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; }
+    /* Responsive */
+    @media (max-width: 900px) {
+      .admin-sidebar {
+        position: fixed;
+        left: 0;
+        top: 60px;
+        z-index: 40;
+        transform: translateX(100%);
+      }
+      html[dir="ltr"] .admin-sidebar {
+        left: 0;
+        transform: translateX(-100%);
+      }
+      .admin-sidebar.mobile-open {
+        transform: translateX(0) !important;
+      }
+    }
   </style>
 </head>
 <body>
 
-  <!-- LOGIN SECTION (SHOWN IF NOT AUTHENTICATED) -->
+  <!-- ========================================== -->
+  <!-- 1. AUTHENTICATION SECTION (TOTP + 2FA)     -->
+  <!-- ========================================== -->
   <div id="login-section">
-    <div class="login-card">
+    <div class="login-box">
       <div style="text-align: center; margin-bottom: 1.5rem;">
-        <span class="badge-subdomain">admin.domain</span>
-        <h2 style="font-size: 1.4rem; font-weight: 800; margin-top: 0.5rem;">منظومة الإدارة المعزولة</h2>
-        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">التحقق الثنائي الإلزامي (RFC 6238 TOTP)</p>
+        <span class="logo-badge">ENGINEER CONTROL CENTER</span>
+        <h2 style="font-size: 1.25rem; font-weight: 800; margin-top: 0.5rem;" id="login-title">تسجيل دخول المشرف العام</h2>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">بوابة إدارية معزولة | مصادقة ثنائية RFC 6238 TOTP</p>
       </div>
 
-      <div id="login-alert" class="alert-box alert-error"></div>
+      <div id="login-alert" class="badge badge-danger" style="display: none; width: 100%; padding: 0.6rem; margin-bottom: 1rem; text-align: center;"></div>
 
       <form id="login-form">
-        <div class="form-group">
-          <label>البريد الإلكتروني للإدارة</label>
-          <input type="email" id="login-email" required placeholder="admin@cloudstudio.dev" autocomplete="username">
+        <div style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;" id="lbl-email">البريد الإلكتروني الإداري</label>
+          <input type="email" id="login-email" required placeholder="admin@cloudstudio.dev" style="width: 100%;" value="admin@cloudstudio.dev">
         </div>
 
-        <div class="form-group">
-          <label>كلمة المرور المشفرة</label>
-          <input type="password" id="login-password" required placeholder="••••••••••••" autocomplete="current-password">
+        <div style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;" id="lbl-pwd">كلمة المرور المشفرة</label>
+          <input type="password" id="login-password" required placeholder="••••••••••••" style="width: 100%;">
         </div>
 
-        <div class="form-group" id="totp-group">
-          <label style="display: flex; justify-content: space-between;">
-            <span>رمز التحقق الثنائي (TOTP - 6 أرقام)</span>
-            <a href="#" id="toggle-recovery-btn" style="color: #60a5fa; text-decoration: none; font-size: 0.75rem;">استخدام رمز الطوارئ</a>
-          </label>
-          <input type="text" id="login-totp" placeholder="123456" maxlength="6" inputmode="numeric" style="letter-spacing: 0.25em; text-align: center; font-family: var(--font-mono); font-size: 1.1rem;">
+        <div id="totp-group" style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;" id="lbl-totp">رمز التحقق الثنائي (2FA TOTP)</label>
+          <input type="text" id="login-totp" placeholder="6 أرقام (Authenticator App)" maxlength="6" style="width: 100%; font-family: var(--font-mono); letter-spacing: 2px;">
+          <div style="text-align: end; margin-top: 0.25rem;">
+            <a href="#" id="toggle-recovery-btn" style="font-size: 0.75rem; color: #60a5fa; text-decoration: none;">استخدام رمز استعادة طارئ</a>
+          </div>
         </div>
 
-        <div class="form-group" id="recovery-group" style="display: none;">
-          <label style="display: flex; justify-content: space-between;">
-            <span>رمز استعادة الطوارئ (مرة واحدة)</span>
-            <a href="#" id="toggle-totp-btn" style="color: #60a5fa; text-decoration: none; font-size: 0.75rem;">استخدام TOTP</a>
-          </label>
-          <input type="text" id="login-recovery" placeholder="REC-XXXX-XXXX" style="letter-spacing: 0.1em; text-align: center; font-family: var(--font-mono);">
+        <div id="recovery-group" style="display: none; margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.82rem; color: #f59e0b; margin-bottom: 0.3rem;">رمز الاستعادة أحادي الاستخدام (Emergency Recovery)</label>
+          <input type="text" id="login-recovery" placeholder="REC-XXXX-XXXX" style="width: 100%; font-family: var(--font-mono);">
+          <div style="text-align: end; margin-top: 0.25rem;">
+            <a href="#" id="toggle-totp-btn" style="font-size: 0.75rem; color: #60a5fa; text-decoration: none;">الرجوع لرمز 2FA</a>
+          </div>
         </div>
 
-        <button type="submit" class="btn" style="width: 100%; justify-content: center; padding: 0.75rem; margin-top: 0.5rem;" id="login-btn">
-          تسجيل الدخول الآمن (2FA)
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.65rem; justify-content: center;" id="btn-login-submit">
+          تسجيل الدخول والتحقق
         </button>
       </form>
     </div>
   </div>
 
-  <!-- PORTAL SECTION (SHOWN AFTER AUTHENTICATION) -->
+  <!-- ========================================== -->
+  <!-- 2. ENTERPRISE PORTAL SECTION               -->
+  <!-- ========================================== -->
   <div id="portal-section" style="display: none;">
-    <header>
-      <div class="brand">
-        <span class="badge-subdomain">admin.domain</span>
-        <h1 style="font-size: 1.15rem; font-weight: 800;">لوحة الإدارة الشاملة | Phase 9</h1>
-        <span class="badge-security">🔒 2FA نشط وجلسة معزولة</span>
+    <!-- Top Header -->
+    <header class="admin-header">
+      <div class="brand-wrap">
+        <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" title="Toggle Sidebar">☰</button>
+        <span class="logo-badge">ENGINEER</span>
+        <span class="header-title" id="hdr-title">مركز التحكم الإداري الفائق</span>
+        <span class="badge-subdomain">engineer-mgt.misruq.com</span>
+        <span class="badge-online">● النظام يعمل بنسبة 100%</span>
       </div>
 
-      <div class="user-profile">
+      <div class="header-actions">
+        <button id="lang-toggle-btn" class="lang-btn">English</button>
         <span id="current-user-role" class="role-badge role-super_admin">super_admin</span>
-        <span id="current-user-email" style="font-size: 0.85rem; color: var(--text-muted);">admin@cloudstudio.dev</span>
-        <button id="logout-btn" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">خروج</button>
+        <span id="current-user-email" style="font-size: 0.82rem; color: var(--text-muted); font-family: var(--font-mono);">admin@cloudstudio.dev</span>
+        <button id="logout-btn" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.78rem;">خروج</button>
       </div>
     </header>
 
-    <nav class="admin-tabs">
-      <button type="button" class="tab-btn active" data-tab="tab-dashboard">📊 المؤشرات الحية</button>
-      <button type="button" class="tab-btn" data-tab="tab-users">👥 المستخدمين والاستهلاك</button>
-      <button type="button" class="tab-btn" data-tab="tab-content">📚 المحتوى والمكتبة</button>
-      <button type="button" class="tab-btn" data-tab="tab-alerts">🚨 مركز التنبيهات</button>
-      <button type="button" class="tab-btn" data-tab="tab-retrieval">🎯 جودة الاسترجاع والفجوات</button>
-      <button type="button" class="tab-btn" data-tab="tab-audit">📜 سجل التدقيق الحصين</button>
-      <button type="button" class="tab-btn" data-tab="tab-settings" id="tab-btn-settings">⚙️ إعدادات المنظومة</button>
-      <button type="button" class="tab-btn" data-tab="tab-team" id="tab-btn-team">🛡️ فريق الإدارة</button>
-      <button type="button" class="tab-btn" data-tab="tab-service-keys" id="tab-btn-service-keys">🔑 مفاتيح الخدمات</button>
-    </nav>
-
-    <main>
-      <!-- TAB 1: DASHBOARD -->
-      <section id="tab-dashboard" class="tab-content active">
-        <div class="grid-4">
-          <div class="card">
-            <div class="card-title">حالة الخادم ووقت التشغيل</div>
-            <div class="card-value" id="dash-uptime">--</div>
-            <div style="font-size: 0.8rem; color: #34d399; margin-top: 0.25rem;">● خادم Node.js قيد العمل</div>
-          </div>
-          <div class="card">
-            <div class="card-title">بوابات الجودة (Quality Gates)</div>
-            <div class="card-value" style="color: #34d399;">14 / 14</div>
-            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">جميع البوابات تعمل بنجاح (100%)</div>
-          </div>
-          <div class="card">
-            <div class="card-title">استهلاك الذاكرة (RSS)</div>
-            <div class="card-value" id="dash-memory">--</div>
-            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;" id="dash-heap">Heap: --</div>
-          </div>
-          <div class="card">
-            <div class="card-title">آخر تدريب استعادة (Restore Drill)</div>
-            <div class="card-value" style="color: #34d399;" id="dash-drill-status">PASSED</div>
-            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;" id="dash-backup-time">--</div>
-          </div>
+    <!-- Main Layout with Collapsible Sidebar -->
+    <div class="portal-layout">
+      <!-- Sidebar Navigation (21 Sections) -->
+      <aside id="admin-sidebar" class="admin-sidebar">
+        <div class="sidebar-search-wrap">
+          <input type="text" id="sidebar-nav-search" placeholder="بحث في الأقسام..." class="sidebar-search-input">
         </div>
 
-        <div class="grid-4">
-          <div class="card">
-            <div class="card-title">المستخدمون النشطون</div>
-            <div class="card-value" id="dash-users">0</div>
-          </div>
-          <div class="card">
-            <div class="card-title">الكتب والمصادر المفهرسة</div>
-            <div class="card-value" id="dash-docs">0</div>
-          </div>
-          <div class="card">
-            <div class="card-title">الشواهد المستخرجة مع الإحداثيات</div>
-            <div class="card-value" id="dash-evidence">0</div>
-          </div>
-          <div class="card">
-            <div class="card-title">التنبيهات التشغيلية المفتوحة</div>
-            <div class="card-value" id="dash-alerts" style="color: #fbbf24;">0</div>
-          </div>
-        </div>
+        <ul class="sidebar-nav-list" id="sidebar-nav-items">
+          <li class="nav-section-title">الرئيسية والمراقبة</li>
+          <li><button class="nav-item tab-btn active" data-tab="tab-dashboard"><span class="nav-icon">📊</span><span class="nav-text">لوحة المؤشرات</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-live-users"><span class="nav-icon">🟢</span><span class="nav-text">المستخدمون النشطون</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-guest-visitors"><span class="nav-icon">🌐</span><span class="nav-text">جلسات الزوار</span></button></li>
 
-        <div class="card" style="margin-top: 1rem;">
-          <div class="card-title">
-            <span>إجراء النسخ الاحتياطي الفوري (Atomic SQLite Snapshot)</span>
-            <button id="trigger-backup-btn" class="btn btn-success" style="font-size: 0.8rem;">أخذ نسخة احتياطية فورية الآن</button>
+          <li class="nav-section-title">مزودو الذكاء الاصطناعي</li>
+          <li><button class="nav-item tab-btn" data-tab="tab-ai-providers"><span class="nav-icon">🤖</span><span class="nav-text">مزودو الذكاء الاصطناعي</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-models-routing"><span class="nav-icon">🔀</span><span class="nav-text">توجيه النماذج</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-ai-costs"><span class="nav-icon">💳</span><span class="nav-text">التكاليف والفوترة</span></button></li>
+
+          <li class="nav-section-title">المستخدمون والمشاريع</li>
+          <li><button class="nav-item tab-btn" data-tab="tab-users"><span class="nav-icon">👥</span><span class="nav-text">دليل المستخدمين</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-user-profile"><span class="nav-icon">👤</span><span class="nav-text">الملفات الإدارية</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-projects"><span class="nav-icon">💻</span><span class="nav-text">إدارة المشاريع</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-search-analytics"><span class="nav-icon">🔍</span><span class="nav-text">سجل البحث والأوامر</span></button></li>
+
+          <li class="nav-section-title">التحليلات وساعات العمل</li>
+          <li><button class="nav-item tab-btn" data-tab="tab-country-analytics"><span class="nav-icon">🌍</span><span class="nav-text">التحليلات الجغرافية</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-usage-hours"><span class="nav-icon">⏱️</span><span class="nav-text">ساعات العمل الفعلية</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-files-storage"><span class="nav-icon">📁</span><span class="nav-text">الملفات والتخزين</span></button></li>
+
+          <li class="nav-section-title">الجودة والتشغيل</li>
+          <li><button class="nav-item tab-btn" data-tab="tab-tests-quality"><span class="nav-icon">🧪</span><span class="nav-text">الاختبارات وبوابات الجودة</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-deployments"><span class="nav-icon">🚀</span><span class="nav-text">سجلات النشر السحابي</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-system-health"><span class="nav-icon">🩺</span><span class="nav-text">صحة المنظومة والموارد</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-notifications"><span class="nav-icon">🔔</span><span class="nav-text">التنبيهات الإدارية</span></button></li>
+
+          <li class="nav-section-title">الأمان والإدارة</li>
+          <li><button class="nav-item tab-btn" data-tab="tab-activity-logs"><span class="nav-icon">📜</span><span class="nav-text">سجل الأحداث التشغيلية</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-security"><span class="nav-icon">🛡️</span><span class="nav-text">سجل التدقيق الحصين</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-admin-staff"><span class="nav-icon">👔</span><span class="nav-text">فريق الإدارة والمشرفين</span></button></li>
+          <li><button class="nav-item tab-btn" data-tab="tab-settings"><span class="nav-icon">⚙️</span><span class="nav-text">الإعدادات العامة</span></button></li>
+        </ul>
+      </aside>
+
+      <!-- Main Content Container -->
+      <main class="admin-main">
+
+        <!-- ========================================== -->
+        <!-- TAB 1: DASHBOARD                          -->
+        <!-- ========================================== -->
+        <section id="tab-dashboard" class="tab-content active">
+          <div class="filter-bar">
+            <span style="font-weight: 700; font-size: 0.9rem;">تصفية لوحة الإدارة:</span>
+            <select id="dash-filter-period">
+              <option value="today">اليوم (Today)</option>
+              <option value="week" selected>آخر 7 أيام (Last 7 Days)</option>
+              <option value="month">آخر 30 يوماً (Last 30 Days)</option>
+              <option value="all">كل الأوقات (All Time)</option>
+            </select>
+            <select id="dash-filter-country">
+              <option value="all">جميع الدول (All Countries)</option>
+              <option value="AE">الإمارات العربية المتحدة</option>
+              <option value="SA">المملكة العربية السعودية</option>
+              <option value="US">الولايات المتحدة</option>
+            </select>
+            <button id="refresh-dash-btn" class="btn btn-secondary">🔄 تحديث البيانات الحية</button>
+            <span id="dash-last-updated" style="font-size: 0.78rem; color: var(--text-muted); margin-inline-start: auto;">آخر تحديث: --</span>
           </div>
-          <p style="font-size: 0.85rem; color: var(--text-muted);">
-            تعتمد المنصة تقنية SQLite VACUUM INTO الذرية مع الحفاظ على دوران النسخ (Rotation) لآخر 5 نسخ وتدريب الاستعادة الإلزامي.
-          </p>
-        </div>
-      </section>
 
-      <!-- TAB 2: USERS -->
-      <section id="tab-users" class="tab-content">
-        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
-          <input type="text" id="user-search-input" placeholder="البحث بالاسم أو البريد..." style="max-width: 320px;">
-          <select id="user-status-filter" style="max-width: 180px;">
-            <option value="">جميع الحالات</option>
-            <option value="active">نشط (Active)</option>
-            <option value="disabled">معطل (Disabled)</option>
-          </select>
-          <button id="refresh-users-btn" class="btn btn-secondary">تحديث</button>
-        </div>
-
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>الاسم</th>
-                <th>البريد الإلكتروني</th>
-                <th>الدور</th>
-                <th>الحالة</th>
-                <th>استعلامات البحث</th>
-                <th>المشاريع</th>
-                <th>الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody id="users-tbody">
-              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">جارٍ تحميل المستخدمين...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- TAB 3: CONTENT & MODERATION -->
-      <section id="tab-content" class="tab-content">
-        <div class="grid-4">
-          <div class="card">
-            <div class="card-title">إجمالي الوثائق</div>
-            <div class="card-value" id="cnt-total-docs">0</div>
+          <!-- KPI Cards Grid -->
+          <div class="grid-4">
+            <div class="card">
+              <div class="card-title">إجمالي المستخدمين المسجلين</div>
+              <div class="card-value" id="kpi-total-users">0</div>
+              <div class="card-subtitle" id="kpi-new-users">جدد اليوم: 0 | هذا الأسبوع: 0</div>
+            </div>
+            <div class="card">
+              <div class="card-title">المستخدمون النشطون الآن</div>
+              <div class="card-value" style="color: #34d399;" id="kpi-active-now">0</div>
+              <div class="card-subtitle" id="kpi-guests-now">الزوار النشطون: 0</div>
+            </div>
+            <div class="card">
+              <div class="card-title">المشاريع المنشأة</div>
+              <div class="card-value" id="kpi-total-projects">0</div>
+              <div class="card-subtitle" id="kpi-projects-status">نشطة: 0 | مكتملة: 0 | فاشلة: 0</div>
+            </div>
+            <div class="card">
+              <div class="card-title">ساعات الاستخدام الفعلية</div>
+              <div class="card-value" style="color: #60a5fa;" id="kpi-usage-hours">0.0h</div>
+              <div class="card-subtitle">استخدام حقيقي (باستثناء الخمول)</div>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-title">مكتبة النظام العامة</div>
-            <div class="card-value" id="cnt-shared-docs">0</div>
+
+          <div class="grid-4">
+            <div class="card">
+              <div class="card-title">المحادثات والرسائل</div>
+              <div class="card-value" id="kpi-total-conversations">0</div>
+              <div class="card-subtitle" id="kpi-total-messages">الرسائل المتبادلة: 0</div>
+            </div>
+            <div class="card">
+              <div class="card-title">عمليات توليد الكود</div>
+              <div class="card-value" style="color: #c084fc;" id="kpi-code-gen">0</div>
+              <div class="card-subtitle">توليد وإصلاح برمجي ذاتي</div>
+            </div>
+            <div class="card">
+              <div class="card-title">الاختبارات الناجحة والفاشلة</div>
+              <div class="card-value" id="kpi-tests">0 / 0</div>
+              <div class="card-subtitle" id="kpi-tests-pass-rate">نسبة النجاح: 100%</div>
+            </div>
+            <div class="card">
+              <div class="card-title">استهلاك الـ AI والتكلفة</div>
+              <div class="card-value" style="color: #fbbf24;" id="kpi-ai-cost">$0.00</div>
+              <div class="card-subtitle" id="kpi-ai-tokens">الرموز المستهلكة: 0</div>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-title">المقاطع الدلالية (Chunks)</div>
-            <div class="card-value" id="cnt-total-chunks">0</div>
+
+          <!-- Top Countries & Top Models -->
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-title">أكثر الدول استخداماً للمنصة (Top Countries)</div>
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr><th>الدولة</th><th>المستخدمين</th><th>النشطون الآن</th></tr>
+                  </thead>
+                  <tbody id="dash-countries-tbody">
+                    <tr><td colspan="3" style="text-align: center;">جارٍ التحميل...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">أكثر نماذج الذكاء الاصطناعي طلباً (Top Models)</div>
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr><th>النموذج</th><th>الطلبات</th><th>الرموز</th><th>التكلفة ($)</th></tr>
+                  </thead>
+                  <tbody id="dash-models-tbody">
+                    <tr><td colspan="4" style="text-align: center;">جارٍ التحميل...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-title">الجداول والأشكال المستخرجة</div>
-            <div class="card-value" id="cnt-total-tables">0</div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 2: AI PROVIDERS MANAGEMENT            -->
+        <!-- ========================================== -->
+        <section id="tab-ai-providers" class="tab-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h2 style="font-size: 1.15rem; font-weight: 700;">إدارة مزودي الذكاء الاصطناعي (AI Providers Management)</h2>
+              <p style="font-size: 0.82rem; color: var(--text-muted);">
+                تشفير آمن AES-256-GCM | حجب المفاتيح | مراقبة الميزانيات | فحص الاتصال الحي
+              </p>
+            </div>
+            <button id="open-add-provider-btn" class="btn btn-primary">➕ إضافة مزود جديد أو مخصص</button>
           </div>
-        </div>
 
-        <div class="card-title" style="margin-top: 1.5rem;">أحدث المصادر المفهرسة في النظام</div>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>عنوان الكتاب</th>
-                <th>المؤلف</th>
-                <th>النوع</th>
-                <th>المكتبة العامة</th>
-                <th>تاريخ الفهرسة</th>
-                <th>الإجراء الإداري</th>
-              </tr>
-            </thead>
-            <tbody id="content-tbody">
-              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">جارٍ التحميل...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+          <div class="grid-3" id="ai-providers-grid">
+            <!-- Populated via JS -->
+          </div>
+        </section>
 
-      <!-- TAB 4: ALERTS -->
-      <section id="tab-alerts" class="tab-content">
-        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
-          <select id="alerts-level-filter" style="max-width: 180px;">
-            <option value="">جميع المستويات</option>
-            <option value="critical">حرجة (Critical)</option>
-            <option value="error">أخطاء (Error)</option>
-            <option value="warning">تحذيرات (Warning)</option>
-            <option value="info">معلومات (Info)</option>
-          </select>
-          <select id="alerts-cat-filter" style="max-width: 180px;">
-            <option value="">جميع الفئات</option>
-            <option value="security">أمان (Security)</option>
-            <option value="memory">ذاكرة (Memory)</option>
-            <option value="disk">قرص (Disk)</option>
-            <option value="backup">نسخ احتياطي (Backup)</option>
-          </select>
-          <button id="refresh-alerts-btn" class="btn btn-secondary">تحديث التنبيهات</button>
-        </div>
+        <!-- ========================================== -->
+        <!-- TAB 3: MODELS & ROUTING                   -->
+        <!-- ========================================== -->
+        <section id="tab-models-routing" class="tab-content">
+          <div class="card" style="max-width: 800px;">
+            <div class="card-title">توجيه النماذج التلقائي حسب المهمة (Task Routing & Failover)</div>
+            <form id="routing-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">المزود الأساسي (Primary Provider)</label>
+                <select id="route-primary-provider" style="width: 100%;"></select>
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">المزود الاحتياطي التلقائي (Automatic Fallback Provider)</label>
+                <select id="route-fallback-provider" style="width: 100%;"></select>
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">النموذج الافتراضي للبرمجة (Default Coding Model)</label>
+                <input type="text" id="route-coding-model" style="width: 100%;" value="gpt-4o">
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">النموذج الافتراضي للمحادثة السريعة (Default Chat Model)</label>
+                <input type="text" id="route-chat-model" style="width: 100%;" value="gpt-4o-mini">
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">النموذج الافتراضي للبحث العميق والاستدلال (Deep Research & Reasoning)</label>
+                <input type="text" id="route-research-model" style="width: 100%;" value="o1-preview">
+              </div>
+              <button type="submit" class="btn btn-primary" style="align-self: flex-start;">حفظ إعدادات التوجيه</button>
+            </form>
+          </div>
+        </section>
 
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>المستوى</th>
-                <th>الفئة</th>
-                <th>الرسالة المنقاة</th>
-                <th>التاريخ</th>
-                <th>المسؤول المعين</th>
-                <th>الإجراء</th>
-              </tr>
-            </thead>
-            <tbody id="alerts-tbody">
-              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">جارٍ تحميل التنبيهات...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <!-- ========================================== -->
+        <!-- TAB 4: USERS DIRECTORY                    -->
+        <!-- ========================================== -->
+        <section id="tab-users" class="tab-content">
+          <div class="filter-bar">
+            <input type="text" id="user-search-input" placeholder="البحث بالاسم أو البريد أو المعرف..." style="min-width: 280px;">
+            <select id="user-status-filter">
+              <option value="all">جميع الحالات</option>
+              <option value="active">نشط (Active)</option>
+              <option value="disabled">معطل (Disabled)</option>
+            </select>
+            <button id="refresh-users-btn" class="btn btn-secondary">تحديث</button>
+            <span id="users-count-badge" style="font-size: 0.8rem; color: var(--text-muted); margin-inline-start: auto;">--</span>
+          </div>
 
-      <!-- TAB 5: RETRIEVAL QUALITY -->
-      <section id="tab-retrieval" class="tab-content">
-        <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
-          تحليل تقييمات الباحثين السلبية وتصنيفها حسب الموضوعات للكشف التلقائي عن فجوات الفهرسة الدلالية:
-        </p>
-        <div class="grid-4" id="retrieval-breakdown-cards">
-          <!-- Populated by JS -->
-        </div>
-
-        <div class="card" style="margin-top: 1.5rem;">
-          <div class="card-title">الاستعلامات التي أبلغ الباحثون عن فجوات فيها</div>
           <div class="table-container">
             <table>
               <thead>
                 <tr>
-                  <th>الاستعلام</th>
-                  <th>ملاحظة الباحث</th>
-                  <th>درجة بوابة الجودة</th>
-                  <th>التاريخ</th>
+                  <th>المعرف والاسم</th>
+                  <th>البريد الإلكتروني</th>
+                  <th>الدور والخطة</th>
+                  <th>الحالة</th>
+                  <th>الموقع التقديري</th>
+                  <th>ساعات العمل</th>
+                  <th>الإجراءات</th>
                 </tr>
               </thead>
-              <tbody id="retrieval-issues-tbody">
-                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">لا توجد فجوات مسجلة حديثاً.</td></tr>
+              <tbody id="users-table-body">
+                <tr><td colspan="7" style="text-align: center;">جارٍ تحميل المستخدمين...</td></tr>
               </tbody>
             </table>
           </div>
-        </div>
-      </section>
+          <div id="users-pagination" style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem;"></div>
+        </section>
 
-      <!-- TAB 6: AUDIT LOGS -->
-      <section id="tab-audit" class="tab-content">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <input type="text" id="audit-search-input" placeholder="البحث في سجل التدقيق..." style="max-width: 350px;">
-          <span class="badge badge-info">سجل Append-Only غير قابل للتعديل أو الحذف</span>
-        </div>
+        <!-- ========================================== -->
+        <!-- TAB 5: USER ADMIN PROFILE                 -->
+        <!-- ========================================== -->
+        <section id="tab-user-profile" class="tab-content">
+          <div id="profile-container">
+            <p style="color: var(--text-muted);">يرجى اختيار مستخدم من قائمة المستخدمين لعرض ملفه الإداري الشامل وسجله الزمني.</p>
+          </div>
+        </section>
 
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>التاريخ</th>
-                <th>المنفذ</th>
-                <th>نوع الإجراء</th>
-                <th>المبرر الإداري</th>
-                <th>الهدف</th>
-                <th>عنوان IP</th>
-              </tr>
-            </thead>
-            <tbody id="audit-tbody">
-              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">جارٍ تحميل السجلات...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- TAB 7: SETTINGS (SUPER ADMIN ONLY) -->
-      <section id="tab-settings" class="tab-content">
-        <div class="card" style="max-width: 700px;">
-          <h2 style="font-size: 1.1rem; margin-bottom: 1rem;">إعدادات المنظومة وحدود التكلفة (Super Admin)</h2>
-          <form id="settings-form">
-            <div class="form-group">
-              <label>سقف التكلفة اليومي لاستعلامات البحث العميق ($)</label>
-              <input type="number" id="setting-cost-ceiling" step="0.01">
-            </div>
-            <div class="form-group">
-              <label>الحد الأقصى للـ Tokens اليومية</label>
-              <input type="number" id="setting-tokens-limit">
-            </div>
-            <div class="form-group">
-              <label>زمن بقاء التحقق من الويب للمواصفات القياسية (أيام TTL)</label>
-              <input type="number" id="setting-ttl-standard">
-            </div>
-            <div class="form-group">
-              <label>زمن بقاء التحقق من الويب للبرمجيات والتحديثات (أيام TTL)</label>
-              <input type="number" id="setting-ttl-software">
-            </div>
-            <div class="form-group">
-              <label>معامل الترتيب الهجين Reciprocal Rank Fusion (k-weight)</label>
-              <input type="number" id="setting-rrf-k">
-            </div>
-            <button type="submit" class="btn" id="save-settings-btn">حفظ وتطبيق الإعدادات</button>
-          </form>
-        </div>
-
-        <!-- Card: 16GB Host Local Model Fleet Management -->
-        <div class="card" style="max-width: 700px; margin-top: 1.5rem;" id="models-fleet-card">
+        <!-- ========================================== -->
+        <!-- TAB 6: LIVE USERS & ACTIVE SESSIONS       -->
+        <!-- ========================================== -->
+        <section id="tab-live-users" class="tab-content">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <h2 style="font-size: 1.1rem; margin: 0;">🤖 منظومة النماذج المحلية والذاكرة (16GB RAM Host)</h2>
-            <span id="current-provider-badge" class="badge" style="background: rgba(99,102,241,0.2); color: #818cf8; border: 1px solid rgba(99,102,241,0.3);">Ollama (Local)</span>
+            <div>
+              <h2 style="font-size: 1.15rem; font-weight: 700;">المستخدمون النشطون حالياً والجلسات الحية</h2>
+              <p style="font-size: 0.82rem; color: var(--text-muted);">نظام نبضات التواجد اللحظي | التمييز بين Online و Idle و Offline</p>
+            </div>
+            <button id="refresh-live-users-btn" class="btn btn-secondary">🔄 تحديث الجلسات الحية</button>
           </div>
 
-          <!-- Resident Model & Memory Gauge -->
-          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.5rem;">
-              <span>النموذج المقيم في الذاكرة حالياً: <strong id="resident-model-name" style="color: #38bdf8;">--</strong></span>
-              <span>الذاكرة المستهلكة: <strong id="resident-model-memory" style="color: #fbbf24;">-- MB</strong> / <span style="color: #94a3b8;">12,288 MB</span></span>
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-title">المستخدمون النشطون الآن (Online)</div>
+              <div class="card-value" style="color: #34d399;" id="live-active-users-count">0</div>
             </div>
-            <div style="background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
-              <div id="model-memory-progress" style="background: #38bdf8; width: 0%; height: 100%; transition: width 0.3s;"></div>
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-top: 0.4rem;">
-              <span>قاعدة ميزانية الذاكرة: (النموذج + KV Cache) ≤ 12GB</span>
-              <span id="disk-preflight-status">فحص القرص: جاري الفحص...</span>
+            <div class="card">
+              <div class="card-title">الزوار النشطون الآن (Active Guests)</div>
+              <div class="card-value" style="color: #60a5fa;" id="live-active-guests-count">0</div>
             </div>
           </div>
 
-          <!-- Tier Model Mapping Form -->
-          <form id="tier-models-form">
-            <div class="form-group">
-              <label>نموذج الاستجابة السريعة (Quick Tier - 1 pt):</label>
-              <input type="text" id="model-tier-quick" placeholder="llama3.2:3b أو qwen2.5:1.5b">
-            </div>
-            <div class="form-group">
-              <label>نموذج البحث العميق الرئيسي (Deep Tier - 3 pts):</label>
-              <input type="text" id="model-tier-deep" placeholder="qwen2.5:7b">
-            </div>
-            <div class="form-group">
-              <label>نموذج الاستدلال الخبير (Expert Tier - 10 pts):</label>
-              <input type="text" id="model-tier-expert" placeholder="deepseek-r1:7b أو qwen3:8b">
-            </div>
-            <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
-              <button type="submit" class="btn" id="save-tier-models-btn" style="flex: 1;">حفظ توزيع النماذج</button>
-              <button type="button" class="btn" id="quick-rollback-btn" style="flex: 1; background: #dc2626; color: white;" title="تبديل فوري إلى OpenAI API دون تعديل كود">⚠️ تراجع فوري لـ OpenAI API</button>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      <!-- TAB 8: TEAM MANAGEMENT (SUPER ADMIN ONLY) -->
-      <section id="tab-team" class="tab-content">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <h2 style="font-size: 1.1rem;">أعضاء فريق الإدارة والتحكم</h2>
-          <button id="open-new-admin-btn" class="btn btn-success">+ إضافة مشرف إداري جديد</button>
-        </div>
-
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>الاسم</th>
-                <th>البريد</th>
-                <th>الدور</th>
-                <th>2FA</th>
-                <th>المحاولات الفاشلة</th>
-                <th>الحالة</th>
-                <th>الإجراء</th>
-              </tr>
-            </thead>
-            <tbody id="team-tbody">
-              <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">جارٍ التحميل...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- TAB 9: SERVICE API KEYS -->
-      <section id="tab-service-keys" class="tab-content">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-          <div>
-            <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.25rem;">مفاتيح خدمات الربط الخارجي (Service API Keys)</h2>
-            <p style="color: var(--text-muted); font-size: 0.85rem;">إدارة المفاتيح المعتمدة للربط مع تطبيق الإدخال القديم مع صلاحية كتب وحيدة (books:crud) ومعدل 60 طلب/دقيقة.</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>المستخدم / الجلسة</th>
+                  <th>الحالة</th>
+                  <th>الصفحة الحالية</th>
+                  <th>المشروع النشط</th>
+                  <th>الموقع التقديري</th>
+                  <th>الجهاز والنظام</th>
+                  <th>آخر نبضة</th>
+                </tr>
+              </thead>
+              <tbody id="live-sessions-tbody">
+                <tr><td colspan="7" style="text-align: center;">جارٍ تحميل الجلسات الحية...</td></tr>
+              </tbody>
+            </table>
           </div>
-          <button id="btn-open-create-key" class="btn btn-primary" onclick="openCreateServiceKeyModal()">+ إنشاء مفتاح خدمة جديد</button>
-        </div>
+        </section>
 
-        <div class="grid-4" style="margin-bottom: 1.5rem;">
+        <!-- ========================================== -->
+        <!-- TAB 7: GUEST VISITORS                     -->
+        <!-- ========================================== -->
+        <section id="tab-guest-visitors" class="tab-content">
+          <div class="card" style="margin-bottom: 1rem;">
+            <div class="card-title">جلسات الزوار غير المسجلين (Guest Visitors Analytics)</div>
+            <p style="font-size: 0.82rem; color: var(--text-muted);">
+              معرفات جلسات عشوائية مؤقتة | احترام كامل للخصوصية | منع بصمات التتبع الخفية
+            </p>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>معرف الجلسة</th>
+                  <th>الدولة التقديرية</th>
+                  <th>نوع الجهاز</th>
+                  <th>المتصفح</th>
+                  <th>مدة الجلسة</th>
+                  <th>مشاهدات الصفحة</th>
+                  <th>تاريخ الزيارة</th>
+                </tr>
+              </thead>
+              <tbody id="guests-tbody">
+                <tr><td colspan="7" style="text-align: center;">جارٍ تحميل سجل الزوار...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 8: PROJECTS MANAGEMENT                -->
+        <!-- ========================================== -->
+        <section id="tab-projects" class="tab-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h2 style="font-size: 1.15rem; font-weight: 700;">إدارة مشاريع المستخدمين (User Projects)</h2>
+              <p style="font-size: 0.82rem; color: var(--text-muted);">متابعة البناء والاختبار وساعات العمل وتكلفة كل مشروع</p>
+            </div>
+            <button id="refresh-projects-btn" class="btn btn-secondary">تحديث المشاريع</button>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>المشروع</th>
+                  <th>المالك</th>
+                  <th>حالة البناء</th>
+                  <th>الاختبارات</th>
+                  <th>ساعات العمل</th>
+                  <th>النموذج</th>
+                  <th>تكلفة AI</th>
+                  <th>الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody id="projects-tbody">
+                <tr><td colspan="8" style="text-align: center;">جارٍ تحميل المشاريع...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 9: CONVERSATIONS & SEARCH HISTORY     -->
+        <!-- ========================================== -->
+        <section id="tab-search-analytics" class="tab-content">
+          <div class="card" style="margin-bottom: 1rem;">
+            <div class="card-title">سجل البحث والأوامر البرمجية (Search & Query History)</div>
+            <p style="font-size: 0.82rem; color: var(--text-muted);">
+              يتم إخفاء النص الكامل للأوامر افتراضياً لحماية الخصوصية | يتطلب الاطلاع تصريحاً وتبريراً موثقاً في سجل التدقيق
+            </p>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>الوقت</th>
+                  <th>المستخدم</th>
+                  <th>النوع</th>
+                  <th>النموذج</th>
+                  <th>الزمن (ms)</th>
+                  <th>الحالة</th>
+                  <th>معاينة الطلب</th>
+                  <th>الإجراء</th>
+                </tr>
+              </thead>
+              <tbody id="search-history-tbody">
+                <tr><td colspan="8" style="text-align: center;">جارٍ التحميل...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 10: FILES & STORAGE                   -->
+        <!-- ========================================== -->
+        <section id="tab-files-storage" class="tab-content">
+          <div class="grid-3">
+            <div class="card">
+              <div class="card-title">المستندات والكتب المفهرسة</div>
+              <div class="card-value" id="storage-docs-count">0</div>
+              <div class="card-subtitle">مستندات المعرفة التلقائية</div>
+            </div>
+            <div class="card">
+              <div class="card-title">الشواهد والأدلة المستخرجة</div>
+              <div class="card-value" id="storage-chunks-count">0</div>
+              <div class="card-subtitle">قطع نصية موثقة بالبايت</div>
+            </div>
+            <div class="card">
+              <div class="card-title">حجم التخزين الفعلي</div>
+              <div class="card-value" style="color: #60a5fa;" id="storage-size">--</div>
+              <div class="card-subtitle">SQLite + Assets Storage</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 11: COUNTRY ANALYTICS                 -->
+        <!-- ========================================== -->
+        <section id="tab-country-analytics" class="tab-content">
+          <div class="card" style="margin-bottom: 1rem;">
+            <div class="card-title">التحليلات الجغرافية العالمية (Global Usage Analytics)</div>
+            <p style="font-size: 0.82rem; color: var(--text-muted);" id="geo-disclaimer">
+              الموقع الجغرافي محسوب تقريبياً استناداً إلى بيانات IP المتاحة بشكل مشروع
+            </p>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>رمز الدولة</th>
+                  <th>اسم الدولة</th>
+                  <th>إجمالي المستخدمين</th>
+                  <th>ساعات العمل</th>
+                  <th>تكلفة الذكاء الاصطناعي ($)</th>
+                </tr>
+              </thead>
+              <tbody id="geo-tbody">
+                <tr><td colspan="5" style="text-align: center;">جارٍ تحميل التحليلات الجغرافية...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 12: USAGE HOURS                       -->
+        <!-- ========================================== -->
+        <section id="tab-usage-hours" class="tab-content">
+          <div class="grid-3">
+            <div class="card">
+              <div class="card-title">إجمالي ساعات الجلسات</div>
+              <div class="card-value" id="hours-total-sessions">0.0h</div>
+            </div>
+            <div class="card">
+              <div class="card-title">ساعات العمل الفعلي</div>
+              <div class="card-value" style="color: #34d399;" id="hours-actual-work">0.0h</div>
+            </div>
+            <div class="card">
+              <div class="card-title">نسبة الإنتاجية (العمل / الإجمالي)</div>
+              <div class="card-value" style="color: #60a5fa;" id="hours-ratio">100%</div>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 1rem;">
+            <div class="card-title">سياسة احتساب ساعات العمل</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">
+              تعتمد المنصة نبضات Heartbeat تفاعلية تقيس حركة الفأرة والكتابة. عند توقف النشاط لأكثر من دقيقتين تتحول الجلسة إلى الخمول (Idle) ويتوقف احتساب ساعات العمل الفعلي ضماناً لدقة مقاييس الإنتاجية.
+            </p>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 13: AI COSTS & BILLING                -->
+        <!-- ========================================== -->
+        <section id="tab-ai-costs" class="tab-content">
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-title">إجمالي التكلفة اليومية للمزودين</div>
+              <div class="card-value" style="color: #fbbf24;" id="costs-daily-total">$0.00</div>
+            </div>
+            <div class="card">
+              <div class="card-title">إجمالي التكلفة الشهرية المتراكمة</div>
+              <div class="card-value" style="color: #34d399;" id="costs-monthly-total">$0.00</div>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>المزود</th>
+                  <th>الحالة</th>
+                  <th>الميزانية اليومية</th>
+                  <th>الميزانية الشهرية</th>
+                  <th>الاستهلاك اليومي</th>
+                  <th>الاستهلاك الشهري</th>
+                  <th>إجمالي الرموز</th>
+                </tr>
+              </thead>
+              <tbody id="costs-providers-tbody">
+                <tr><td colspan="7" style="text-align: center;">جارٍ التحميل...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 14: TESTS & QUALITY GATES             -->
+        <!-- ========================================== -->
+        <section id="tab-tests-quality" class="tab-content">
+          <div class="grid-3">
+            <div class="card">
+              <div class="card-title">إجمالي الاختبارات المنفذة</div>
+              <div class="card-value" id="tests-total-runs">0</div>
+            </div>
+            <div class="card">
+              <div class="card-title">نسبة النجاح الإجمالية</div>
+              <div class="card-value" style="color: #34d399;" id="tests-pass-percent">100%</div>
+            </div>
+            <div class="card">
+              <div class="card-title">الاختبارات الفاشلة المرصودة</div>
+              <div class="card-value" style="color: #f43f5e;" id="tests-failed-count">0</div>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>حزمة الاختبار</th>
+                  <th>المشروع</th>
+                  <th>الناجحة</th>
+                  <th>الفاشلة</th>
+                  <th>المدة (ms)</th>
+                  <th>الوقت</th>
+                </tr>
+              </thead>
+              <tbody id="tests-tbody">
+                <tr><td colspan="6" style="text-align: center;">جارٍ التحميل...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 15: DEPLOYMENTS                       -->
+        <!-- ========================================== -->
+        <section id="tab-deployments" class="tab-content">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>المشروع</th>
+                  <th>المستخدم</th>
+                  <th>البيئة</th>
+                  <th>الحالة</th>
+                  <th>الرابط المنشور</th>
+                  <th>الوقت</th>
+                </tr>
+              </thead>
+              <tbody id="deployments-tbody">
+                <tr><td colspan="6" style="text-align: center;">جارٍ التحميل...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 16: ACTIVITY LOGS                     -->
+        <!-- ========================================== -->
+        <section id="tab-activity-logs" class="tab-content">
           <div class="card">
-            <div class="card-label">إجمالي المفاتيح</div>
-            <div class="card-value" id="cnt-total-keys">0</div>
+            <div class="card-title">سجل الأحداث التشغيلية للمنظومة</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+              توثيق حي لكافة أحداث النظام، بما في ذلك التعديلات وحالات البناء وعمليات النشر.
+            </p>
+            <div id="activity-logs-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
           </div>
-          <div class="card">
-            <div class="card-label">المفاتيح النشطة</div>
-            <div class="card-value" id="cnt-active-keys" style="color: #10b981;">0</div>
-          </div>
-          <div class="card">
-            <div class="card-label">المفاتيح الملغاة</div>
-            <div class="card-value" id="cnt-revoked-keys" style="color: #ef4444;">0</div>
-          </div>
-          <div class="card">
-            <div class="card-label">حد المعدل الافتراضي</div>
-            <div class="card-value">60 / دقيقة</div>
-          </div>
-        </div>
+        </section>
 
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>اسم المفتاح</th>
-                <th>بادئة المفتاح</th>
-                <th>الصلاحيات</th>
-                <th>الحد (طلب/دقيقة)</th>
-                <th>الحالة</th>
-                <th>تاريخ الإنشاء</th>
-                <th>آخر استخدام</th>
-                <th>الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody id="service-keys-tbody">
-              <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">جارٍ التحميل...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-  </div>
+        <!-- ========================================== -->
+        <!-- TAB 17: SECURITY & IMMUTABLE AUDIT        -->
+        <!-- ========================================== -->
+        <section id="tab-security" class="tab-content">
+          <div class="card" style="margin-bottom: 1rem;">
+            <div class="card-title">
+              <span>سجل التدقيق الحصين غير القابل للتعديل (Immutable Audit Trail)</span>
+              <span class="badge badge-success">🔒 محمي ضد الحذف والتعديل (405 Method Not Allowed)</span>
+            </div>
+            <p style="font-size: 0.82rem; color: var(--text-muted);">
+              يسجل كل إجراء إداري مع اسم المشرف، والتبرير الإلزامي، وعنوان IP، والوقت بدقة الميلي ثانية.
+            </p>
+          </div>
 
-  <!-- MODAL: JUSTIFICATION REQUIRED TO INSPECT USER CONTENT -->
-  <div id="justification-modal" class="modal-backdrop">
-    <div class="modal-box">
-      <div class="modal-title">
-        <span>طلب مبرر إداري إلزامي</span>
-        <button class="btn btn-secondary close-modal" style="padding: 0.2rem 0.5rem;">✕</button>
-      </div>
-      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-        الاطلاع على محتوى المستخدم الخاص (المشاريع، المستندات، الجلسات) يخضع لرقابة صارمة. يلزم تقديم مبرر رسمي وسيتم تسجيله بشكل دائم في سجل التدقيق.
-      </p>
-      <div class="form-group">
-        <label>المبرر الإداري الرسمي (5 أحرف على الأقل):</label>
-        <textarea id="justification-input" rows="3" placeholder="مثال: مراجعة بلاغ أمني رسمي رقم #419"></textarea>
-      </div>
-      <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-        <button class="btn btn-secondary close-modal">إلغاء</button>
-        <button id="confirm-inspect-btn" class="btn">تأكيد وتسجيل في التدقيق</button>
-      </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>الوقت</th>
+                  <th>المشرف</th>
+                  <th>الإجراء</th>
+                  <th>الهدف</th>
+                  <th>التبرير الإداري</th>
+                  <th>عنوان IP</th>
+                </tr>
+              </thead>
+              <tbody id="audit-table-body">
+                <tr><td colspan="6" style="text-align: center;">جارٍ تحميل سجل التدقيق...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 18: ADMIN STAFF & RBAC                -->
+        <!-- ========================================== -->
+        <section id="tab-admin-staff" class="tab-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h2 style="font-size: 1.15rem; font-weight: 700;">فريق الإدارة والمشرفين (Admin Staff & RBAC)</h2>
+              <p style="font-size: 0.82rem; color: var(--text-muted);">
+                إدارة الصلاحيات: Super Admin, Admin, Support, Finance, Auditor
+              </p>
+            </div>
+            <button id="add-admin-btn" class="btn btn-primary">➕ إضافة مشرف جديد</button>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>الاسم</th>
+                  <th>البريد الإلكتروني</th>
+                  <th>الدور</th>
+                  <th>حالة 2FA</th>
+                  <th>الحالة</th>
+                  <th>تاريخ الإنشاء</th>
+                </tr>
+              </thead>
+              <tbody id="admin-staff-tbody">
+                <tr><td colspan="6" style="text-align: center;">جارٍ التحميل...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 19: SYSTEM HEALTH                     -->
+        <!-- ========================================== -->
+        <section id="tab-system-health" class="tab-content">
+          <div class="grid-4">
+            <div class="card">
+              <div class="card-title">حالة الـ Backend</div>
+              <div class="card-value" style="color: #34d399;" id="health-backend">Healthy</div>
+            </div>
+            <div class="card">
+              <div class="card-title">حالة قاعدة البيانات SQLite</div>
+              <div class="card-value" style="color: #34d399;" id="health-db">Connected</div>
+            </div>
+            <div class="card">
+              <div class="card-title">استهلاك الذاكرة (Memory RSS)</div>
+              <div class="card-value" id="health-mem">--</div>
+            </div>
+            <div class="card">
+              <div class="card-title">معدل أخطاء مزودي AI</div>
+              <div class="card-value" style="color: #34d399;" id="health-ai-errors">0.0%</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 20: NOTIFICATIONS                     -->
+        <!-- ========================================== -->
+        <section id="tab-notifications" class="tab-content">
+          <div class="card">
+            <div class="card-title">مركز الإشعارات والتنبيهات الإدارية</div>
+            <div id="notifications-list" style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem;"></div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 21: GENERAL SETTINGS                  -->
+        <!-- ========================================== -->
+        <section id="tab-settings" class="tab-content">
+          <div class="card" style="max-width: 800px;">
+            <div class="card-title">إعدادات المنظومة وقواعد الاحتفاظ بالبيانات</div>
+            <form id="settings-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">مدة الاحتفاظ بسجلات التدقيق (Audit Retention Days)</label>
+                <input type="number" id="set-retention-days" value="365" style="width: 100%;">
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">سقف التكلفة الشهري الأقصى لمنظومة الذكاء الاصطناعي ($ USD)</label>
+                <input type="number" id="set-cost-ceiling" value="5000" style="width: 100%;">
+              </div>
+              <button type="submit" class="btn btn-primary" style="align-self: flex-start;">حفظ الإعدادات</button>
+            </form>
+          </div>
+        </section>
+
+      </main>
     </div>
   </div>
 
-  <!-- MODAL: USER PRIVATE DATA DISPLAY -->
-  <div id="user-data-modal" class="modal-backdrop">
-    <div class="modal-box" style="max-width: 700px;">
-      <div class="modal-title">
-        <span id="inspected-user-title">محتوى المستخدم الخاص</span>
-        <button class="btn btn-secondary close-modal" style="padding: 0.2rem 0.5rem;">✕</button>
+  <!-- ========================================== -->
+  <!-- MODAL: ADD / EDIT AI PROVIDER              -->
+  <!-- ========================================== -->
+  <div id="provider-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem; font-weight: 700;" id="prov-modal-title">إضافة مزود ذكاء اصطناعي</h3>
+        <button class="btn btn-secondary close-modal-btn" style="padding: 0.2rem 0.5rem;">✕</button>
       </div>
-      <div id="inspected-user-content" style="max-height: 400px; overflow-y: auto; font-size: 0.85rem;"></div>
-    </div>
-  </div>
-
-  <!-- MODAL: ADD ADMIN TEAM MEMBER -->
-  <div id="new-admin-modal" class="modal-backdrop">
-    <div class="modal-box">
-      <div class="modal-title">
-        <span>إضافة مشرف إداري جديد</span>
-        <button class="btn btn-secondary close-modal" style="padding: 0.2rem 0.5rem;">✕</button>
-      </div>
-      <form id="new-admin-form">
-        <div class="form-group">
-          <label>الاسم الكامل</label>
-          <input type="text" id="new-admin-name" required placeholder="سالم المهندس">
+      <form id="provider-form" style="display: flex; flex-direction: column; gap: 1rem;">
+        <div>
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;">اسم المزود (Provider Name)</label>
+          <input type="text" id="prov-input-name" required placeholder="مثال: OpenAI Production" style="width: 100%;">
         </div>
-        <div class="form-group">
-          <label>البريد الإلكتروني</label>
-          <input type="email" id="new-admin-email" required placeholder="ops@cloudstudio.dev">
-        </div>
-        <div class="form-group">
-          <label>المستوى الصلاحي (RBAC Role)</label>
-          <select id="new-admin-role">
-            <option value="support_agent">فريق الدعم (Support Agent - قراءة ومتابعة بلاغات)</option>
-            <option value="super_admin">مدير أعلى (Super Admin - صلاحيات كاملة)</option>
+        <div>
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;">نوع المزود (Provider Type)</label>
+          <select id="prov-input-type" style="width: 100%;">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic Claude</option>
+            <option value="gemini">Google Gemini / Vertex AI</option>
+            <option value="xai">xAI Grok</option>
+            <option value="mistral">Mistral AI</option>
+            <option value="cohere">Cohere</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="custom">مزود مخصص عبر API متوافق (Custom API)</option>
           </select>
         </div>
-        <div class="form-group">
-          <label>كلمة المرور المبدئية</label>
-          <input type="password" id="new-admin-pwd" required placeholder="••••••••••••">
+        <div>
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;">نقطة الاتصال الأساسية (Base Endpoint URL)</label>
+          <input type="url" id="prov-input-endpoint" required placeholder="https://api.openai.com/v1" style="width: 100%; font-family: var(--font-mono);">
         </div>
-        <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-          <button type="button" class="btn btn-secondary close-modal">إلغاء</button>
-          <button type="submit" class="btn btn-success">إنشاء الحساب وتوليد 2FA</button>
+        <div>
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;">مفتاح الـ API (API Key - يُشفر فوراً بـ AES-256-GCM)</label>
+          <input type="password" id="prov-input-key" placeholder="sk-..." style="width: 100%; font-family: var(--font-mono);">
+          <span style="font-size: 0.75rem; color: var(--text-muted);">لن يتم عرض هذا المفتاح أبداً مرة أخرى وسيُحجب تلقائياً.</span>
+        </div>
+        <div style="display: flex; gap: 1rem;">
+          <div style="flex: 1;">
+            <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;">الميزانية اليومية ($)</label>
+            <input type="number" id="prov-input-daily" value="50" style="width: 100%;">
+          </div>
+          <div style="flex: 1;">
+            <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;">الميزانية الشهرية ($)</label>
+            <input type="number" id="prov-input-monthly" value="1000" style="width: 100%;">
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem;">
+          <button type="button" class="btn btn-secondary close-modal-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ وتشفير المفتاح</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: CREATE & REVEAL SERVICE KEY -->
-  <div id="service-key-modal" class="modal-backdrop">
-    <div class="modal-box">
-      <div class="modal-title">
-        <span id="service-key-modal-title">إنشاء مفتاح خدمة جديد (Service API Key)</span>
-        <button class="btn btn-secondary close-modal" onclick="closeServiceKeyModal()" style="padding: 0.2rem 0.5rem;">✕</button>
+  <!-- ========================================== -->
+  <!-- MODAL: JUSTIFIED INSPECT PROMPT           -->
+  <!-- ========================================== -->
+  <div id="inspect-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem; font-weight: 700;">طلب الاطلاع على المحتوى الحساس</h3>
+        <button class="btn btn-secondary close-modal-btn" style="padding: 0.2rem 0.5rem;">✕</button>
       </div>
-      <div id="service-key-create-view">
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-          يُستخدم مفتاح الخدمة حصراً للربط مع تطبيق الإدخال القديم مع صلاحية وحيدة (books:crud) وعزل كامل للمستأجرين.
+      <div style="margin-bottom: 1rem;">
+        <p style="font-size: 0.85rem; color: var(--text-muted);">
+          وفقاً لسياسة الخصوصية الصارمة، لا يُسمح بفك تشفير نص البحث أو الأوامر البرمجية الخاصة بالمستخدم دون تبرير إداري وقانوني واضح يتم توثيقه في سجل التدقيق الحصين.
         </p>
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label style="display:block; margin-bottom:0.4rem; font-size:0.85rem;">اسم المفتاح / النظام المصدر:</label>
-          <input type="text" id="service-key-name-input" class="input-text" placeholder="مثال: تطبيق الإدخال القديم - إنتاج" style="width:100%;" />
-        </div>
-        <div class="form-group" style="margin-bottom: 1.5rem;">
-          <label style="display:block; margin-bottom:0.4rem; font-size:0.85rem;">الحد الأقصى للطلبات (طلب/دقيقة):</label>
-          <input type="number" id="service-key-rpm-input" class="input-text" value="60" min="1" max="1000" style="width:100%;" />
-        </div>
-        <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-          <button class="btn btn-secondary" onclick="closeServiceKeyModal()">إلغاء</button>
-          <button class="btn btn-primary" onclick="submitCreateServiceKey()">توليد المفتاح</button>
-        </div>
       </div>
-
-      <div id="service-key-reveal-view" style="display: none;">
-        <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.85rem; margin-bottom: 1rem;">
-          <div style="color: #ef4444; font-weight: 700; font-size: 0.95rem; margin-bottom: 0.35rem;">⚠️ تحذير أمني صارم: احفظ المفتاح الآن!</div>
-          <div style="font-size: 0.85rem; color: #f87171; line-height: 1.4;">
-            سيظهر هذا المفتاح السري <strong>لمرة واحدة فقط</strong>، ولن يمكن استرجاعه أبداً لأنه يُخزن مُجزأً (SHA-256). انسخه فوراً وضعه في بيئة تطبيق الإدخال.
-          </div>
-        </div>
-        <div class="form-group" style="margin-bottom: 1.5rem;">
-          <label style="display:block; margin-bottom:0.4rem; font-size:0.85rem;">مفتاح الخدمة السري (X-Service-Key):</label>
-          <div style="display: flex; gap: 0.5rem;">
-            <input type="text" id="revealed-service-key-text" class="input-text" readonly style="width:100%; font-family: monospace; font-size: 0.9rem; direction: ltr;" />
-            <button class="btn btn-primary" onclick="copyServiceKeyToClipboard()">نسخ</button>
-          </div>
-        </div>
-        <div style="display: flex; justify-content: flex-end;">
-          <button class="btn btn-secondary" onclick="closeServiceKeyModal()">تم الحفظ في مكان آمن</button>
-        </div>
+      <div style="margin-bottom: 1rem;">
+        <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem;">التبرير الإداري الإلزامي (10 أحرف كحد أدنى)</label>
+        <textarea id="inspect-justification" rows="3" placeholder="اكتب سبب الاطلاع المبرر (مثال: التحقيق في تذكرة الدعم الفني #1042)..." style="width: 100%;"></textarea>
+      </div>
+      <div id="inspect-result-box" style="display: none; background: var(--bg-dark); padding: 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.82rem; margin-bottom: 1rem; max-height: 200px; overflow-y: auto;"></div>
+      <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+        <button type="button" class="btn btn-secondary close-modal-btn">إغلاق</button>
+        <button type="button" id="confirm-inspect-btn" class="btn btn-primary">فك التشفير وتوثيق الإجراء</button>
       </div>
     </div>
   </div>
 
+  <!-- ========================================== -->
+  <!-- CLIENT JAVASCRIPT ENGINE                   -->
+  <!-- ========================================== -->
   <script>
     let currentAdminUser = null;
-    let pendingInspectUserId = null;
+    let currentLang = 'ar';
+    let activeInspectEventId = null;
 
-    // Helper functions
+    // Helpers
     async function apiRequest(endpoint, options = {}) {
       const opts = {
+        ...options,
         headers: {
           'Content-Type': 'application/json',
           ...(options.headers || {}),
         },
-        credentials: 'include',
-        ...options,
       };
-
       const res = await fetch(`/api/admin${endpoint}`, opts);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -945,7 +1371,37 @@
       return data;
     }
 
-    // Tab Navigation
+    // Toggle Sidebar
+    document.getElementById('sidebar-toggle-btn')?.addEventListener('click', () => {
+      const sidebar = document.getElementById('admin-sidebar');
+      if (window.innerWidth <= 900) {
+        sidebar.classList.toggle('mobile-open');
+      } else {
+        sidebar.classList.toggle('collapsed');
+      }
+    });
+
+    // Sidebar search filter
+    document.getElementById('sidebar-nav-search')?.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      document.querySelectorAll('#sidebar-nav-items li').forEach((li) => {
+        if (li.classList.contains('nav-section-title')) return;
+        const text = li.innerText.toLowerCase();
+        li.style.display = text.includes(query) ? '' : 'none';
+      });
+    });
+
+    // Language toggle
+    document.getElementById('lang-toggle-btn')?.addEventListener('click', () => {
+      currentLang = currentLang === 'ar' ? 'en' : 'ar';
+      const isAr = currentLang === 'ar';
+      document.documentElement.lang = currentLang;
+      document.documentElement.dir = isAr ? 'rtl' : 'ltr';
+      document.getElementById('lang-toggle-btn').innerText = isAr ? 'English' : 'العربية';
+      document.getElementById('hdr-title').innerText = isAr ? 'مركز التحكم الإداري الفائق' : 'Enterprise Control Center';
+    });
+
+    // Navigation Switcher
     document.querySelectorAll('.tab-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
@@ -957,19 +1413,35 @@
       });
     });
 
-    // 2FA / Recovery code toggle in Login form
-    document.getElementById('toggle-recovery-btn')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      document.getElementById('totp-group').style.display = 'none';
-      document.getElementById('recovery-group').style.display = 'block';
-      document.getElementById('login-totp').value = '';
+    function loadTabContent(tabId) {
+      if (tabId === 'tab-dashboard') loadDashboard();
+      if (tabId === 'tab-ai-providers') loadAiProviders();
+      if (tabId === 'tab-models-routing') loadModelsRouting();
+      if (tabId === 'tab-users') loadUsers();
+      if (tabId === 'tab-live-users') loadLiveUsers();
+      if (tabId === 'tab-guest-visitors') loadGuestVisitors();
+      if (tabId === 'tab-projects') loadProjects();
+      if (tabId === 'tab-search-analytics') loadSearchHistory();
+      if (tabId === 'tab-country-analytics') loadCountryAnalytics();
+      if (tabId === 'tab-usage-hours') loadUsageHours();
+      if (tabId === 'tab-ai-costs') loadAiCosts();
+      if (tabId === 'tab-tests-quality') loadTestsQuality();
+      if (tabId === 'tab-deployments') loadDeployments();
+      if (tabId === 'tab-system-health') loadSystemHealth();
+      if (tabId === 'tab-notifications') loadNotifications();
+      if (tabId === 'tab-security') loadAuditLogs();
+      if (tabId === 'tab-admin-staff') loadAdminStaff();
+    }
+
+    // Modal controls
+    document.querySelectorAll('.close-modal-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.modal-overlay').forEach((m) => m.classList.remove('active'));
+      });
     });
 
-    document.getElementById('toggle-totp-btn')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      document.getElementById('recovery-group').style.display = 'none';
-      document.getElementById('totp-group').style.display = 'block';
-      document.getElementById('login-recovery').value = '';
+    document.getElementById('open-add-provider-btn')?.addEventListener('click', () => {
+      document.getElementById('provider-modal').classList.add('active');
     });
 
     // Check Current Admin Session
@@ -1001,19 +1473,633 @@
       roleBadge.innerText = user.role;
       roleBadge.className = `role-badge role-${user.role}`;
 
-      // RBAC UI masking
-      const isSuper = user.role === 'super_admin';
-      if (!isSuper) {
-        document.getElementById('tab-btn-settings').style.display = 'none';
-        document.getElementById('tab-btn-team').style.display = 'none';
-        document.getElementById('trigger-backup-btn').style.display = 'none';
-      } else {
-        document.getElementById('tab-btn-settings').style.display = 'flex';
-        document.getElementById('tab-btn-team').style.display = 'flex';
-        document.getElementById('trigger-backup-btn').style.display = 'inline-flex';
-      }
-
       loadDashboard();
+    }
+
+    // 1. Dashboard Loader
+    async function loadDashboard() {
+      try {
+        const period = document.getElementById('dash-filter-period')?.value || 'week';
+        const country = document.getElementById('dash-filter-country')?.value || 'all';
+        const res = await apiRequest(`/dashboard/stats?period=${period}&country=${country}`);
+        const s = res.stats;
+
+        document.getElementById('kpi-total-users').innerText = s.total_users;
+        document.getElementById('kpi-new-users').innerText = `جدد اليوم: ${s.new_today} | هذا الأسبوع: ${s.new_this_week}`;
+        document.getElementById('kpi-active-now').innerText = s.active_now;
+        document.getElementById('kpi-guests-now').innerText = `الزوار النشطون: ${s.guest_visitors_now}`;
+        document.getElementById('kpi-total-projects').innerText = s.total_projects;
+        document.getElementById('kpi-projects-status').innerText = `نشطة: ${s.projects_active} | مكتملة: ${s.projects_completed} | فاشلة: ${s.projects_failed}`;
+        document.getElementById('kpi-usage-hours').innerText = `${s.total_usage_hours}h`;
+        document.getElementById('kpi-total-conversations').innerText = s.total_conversations;
+        document.getElementById('kpi-total-messages').innerText = `الرسائل: ${s.total_messages}`;
+        document.getElementById('kpi-code-gen').innerText = s.total_code_generations;
+        document.getElementById('kpi-tests').innerText = `${s.tests_passed} / ${s.tests_failed}`;
+        const passRate = (s.tests_passed + s.tests_failed) > 0 ? ((s.tests_passed / (s.tests_passed + s.tests_failed)) * 100).toFixed(1) : '100';
+        document.getElementById('kpi-tests-pass-rate').innerText = `نسبة النجاح: ${passRate}%`;
+        document.getElementById('kpi-ai-cost').innerText = `$${s.total_cost_usd.toFixed(2)}`;
+        document.getElementById('kpi-ai-tokens').innerText = `الرموز: ${s.total_tokens.toLocaleString()}`;
+        document.getElementById('dash-last-updated').innerText = `آخر تحديث: ${new Date(s.last_updated_at).toLocaleTimeString()}`;
+
+        // Top Countries
+        const cBody = document.getElementById('dash-countries-tbody');
+        cBody.innerHTML = (s.top_countries || []).map((c) => `
+          <tr>
+            <td style="font-weight: 600;">${c.country_name} (${c.country_code})</td>
+            <td style="font-family: var(--font-mono);">${c.user_count}</td>
+            <td><span class="badge badge-success">${c.active_count || 0} نشط</span></td>
+          </tr>
+        `).join('') || '<tr><td colspan="3" style="text-align: center;">لا توجد بيانات متاحة</td></tr>';
+
+        // Top Models
+        const mBody = document.getElementById('dash-models-tbody');
+        mBody.innerHTML = (s.top_models || []).map((m) => `
+          <tr>
+            <td style="font-weight: 600; font-family: var(--font-mono); font-size: 0.8rem;">${m.model}</td>
+            <td>${m.request_count}</td>
+            <td style="font-family: var(--font-mono);">${(m.tokens || 0).toLocaleString()}</td>
+            <td style="color: #fbbf24; font-family: var(--font-mono);">$${(m.cost_usd || 0).toFixed(4)}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="4" style="text-align: center;">لا توجد بيانات متاحة</td></tr>';
+      } catch (err) {
+        console.error('Failed to load dashboard:', err);
+      }
+    }
+
+    document.getElementById('refresh-dash-btn')?.addEventListener('click', loadDashboard);
+    document.getElementById('dash-filter-period')?.addEventListener('change', loadDashboard);
+    document.getElementById('dash-filter-country')?.addEventListener('change', loadDashboard);
+
+    // 2. AI Providers Loader
+    async function loadAiProviders() {
+      const grid = document.getElementById('ai-providers-grid');
+      grid.innerHTML = '<div class="card"><p style="color: var(--text-muted);">جارٍ تحميل المزودين...</p></div>';
+      try {
+        const res = await apiRequest('/ai-providers');
+        grid.innerHTML = res.providers.map((p) => `
+          <div class="card" style="border-top: 3px solid ${p.status === 'active' ? '#10b981' : '#f43f5e'};">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+              <div>
+                <h3 style="font-size: 1rem; font-weight: 700;">${p.name}</h3>
+                <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${p.provider_type}</span>
+              </div>
+              <span class="badge ${p.status === 'active' ? 'badge-success' : 'badge-danger'}">${p.status}</span>
+            </div>
+
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; word-break: break-all;">
+              نقطة الاتصال: <span style="font-family: var(--font-mono); color: var(--text-main);">${p.api_endpoint}</span>
+            </div>
+
+            <div style="font-size: 0.8rem; margin-bottom: 0.5rem;">
+              المفتاح المشفر: <span class="badge badge-info" style="font-family: var(--font-mono);">${p.key_prefix || 'غير محدد'}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.5rem; background: var(--bg-dark); padding: 0.4rem; border-radius: 4px;">
+              <span>اليومي: $${(p.cost_incurred_today_usd || 0).toFixed(2)} / $${p.daily_budget_usd}</span>
+              <span>الشهري: $${(p.cost_incurred_month_usd || 0).toFixed(2)} / $${p.monthly_budget_usd}</span>
+            </div>
+
+            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.75rem;">
+              <button class="btn btn-secondary test-prov-btn" data-id="${p.id}" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">⚡ اختبار الاتصال</button>
+              <button class="btn btn-secondary toggle-prov-btn" data-id="${p.id}" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">${p.status === 'active' ? 'تعطيل' : 'تفعيل'}</button>
+              <button class="btn btn-secondary rotate-prov-btn" data-id="${p.id}" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">🔄 تدوير المفتاح</button>
+            </div>
+            <div id="test-result-${p.id}" style="font-size: 0.75rem; margin-top: 0.4rem; color: #34d399;"></div>
+          </div>
+        `).join('');
+
+        // Wire Provider Buttons
+        document.querySelectorAll('.test-prov-btn').forEach((b) => {
+          b.addEventListener('click', async () => {
+            const id = b.getAttribute('data-id');
+            const resBox = document.getElementById(`test-result-${id}`);
+            resBox.innerText = 'جارٍ الفحص...';
+            try {
+              const res = await apiRequest(`/ai-providers/${id}/test`, { method: 'POST' });
+              resBox.innerText = `✅ متصل بنجاح (${res.testResult.latencyMs}ms)`;
+            } catch (err) {
+              resBox.innerText = `❌ خطأ: ${err.message}`;
+              resBox.style.color = '#f43f5e';
+            }
+          });
+        });
+
+        document.querySelectorAll('.toggle-prov-btn').forEach((b) => {
+          b.addEventListener('click', async () => {
+            const id = b.getAttribute('data-id');
+            await apiRequest(`/ai-providers/${id}/toggle`, { method: 'POST' });
+            loadAiProviders();
+          });
+        });
+
+        document.querySelectorAll('.rotate-prov-btn').forEach((b) => {
+          b.addEventListener('click', async () => {
+            const id = b.getAttribute('data-id');
+            const newKey = prompt('أدخل مفتاح الـ API الجديد للتشفير والتدوير الفوري:');
+            if (newKey) {
+              await apiRequest(`/ai-providers/${id}/rotate`, {
+                method: 'POST',
+                body: JSON.stringify({ new_api_key: newKey }),
+              });
+              alert('تم تدوير وتشفير المفتاح الجديد بنجاح!');
+              loadAiProviders();
+            }
+          });
+        });
+      } catch (err) {
+        grid.innerHTML = `<div class="card"><p style="color: #f43f5e;">فشل تحميل المزودين: ${err.message}</p></div>`;
+      }
+    }
+
+    // Provider Form Submit
+    document.getElementById('provider-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('prov-input-name').value;
+      const provider_type = document.getElementById('prov-input-type').value;
+      const api_endpoint = document.getElementById('prov-input-endpoint').value;
+      const api_key = document.getElementById('prov-input-key').value;
+      const daily_budget_usd = document.getElementById('prov-input-daily').value;
+      const monthly_budget_usd = document.getElementById('prov-input-monthly').value;
+
+      try {
+        await apiRequest('/ai-providers', {
+          method: 'POST',
+          body: JSON.stringify({ name, provider_type, api_endpoint, api_key, daily_budget_usd, monthly_budget_usd }),
+        });
+        document.getElementById('provider-modal').classList.remove('active');
+        document.getElementById('provider-form').reset();
+        loadAiProviders();
+      } catch (err) {
+        alert('فشل إضافة المزود: ' + err.message);
+      }
+    });
+
+    // 3. Models & Routing Loader
+    async function loadModelsRouting() {
+      try {
+        const res = await apiRequest('/models/routing');
+        const r = res.routing;
+        document.getElementById('route-coding-model').value = r.defaultCodingModel;
+        document.getElementById('route-chat-model').value = r.defaultChatModel;
+        document.getElementById('route-research-model').value = r.defaultResearchModel;
+
+        const provRes = await apiRequest('/ai-providers');
+        const priSelect = document.getElementById('route-primary-provider');
+        const falSelect = document.getElementById('route-fallback-provider');
+        priSelect.innerHTML = provRes.providers.map((p) => `<option value="${p.id}">${p.name} (${p.provider_type})</option>`).join('');
+        falSelect.innerHTML = provRes.providers.map((p) => `<option value="${p.id}">${p.name} (${p.provider_type})</option>`).join('');
+      } catch (err) {
+        console.error('Failed to load routing:', err);
+      }
+    }
+
+    // 4. Users Loader
+    async function loadUsers(page = 1) {
+      const search = document.getElementById('user-search-input')?.value || '';
+      const status = document.getElementById('user-status-filter')?.value || 'all';
+      const tbody = document.getElementById('users-table-body');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">جارٍ تحميل المستخدمين...</td></tr>';
+
+      try {
+        const res = await apiRequest(`/users/list?search=${encodeURIComponent(search)}&status=${status}&page=${page}&limit=10`);
+        document.getElementById('users-count-badge').innerText = `إجمالي النتائج: ${res.pagination.total}`;
+
+        if (res.users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">لم يتم العثور على أي مستخدمين.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = res.users.map((u) => `
+          <tr>
+            <td>
+              <div style="font-weight: 700;">${u.name}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">${u.id}</div>
+            </td>
+            <td style="font-family: var(--font-mono); font-size: 0.82rem;">${u.email}</td>
+            <td>
+              <span class="badge badge-info">${u.role}</span>
+              <span class="badge badge-purple">${u.plan_id || 'free'}</span>
+            </td>
+            <td>
+              <span class="badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}">${u.is_banned ? 'محظور (Banned)' : u.status}</span>
+            </td>
+            <td style="font-size: 0.8rem;">${u.location_approximate}</td>
+            <td style="font-family: var(--font-mono);">${u.work_hours}h</td>
+            <td>
+              <button class="btn btn-secondary view-profile-btn" data-id="${u.id}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">👤 الملف الإداري</button>
+            </td>
+          </tr>
+        `).join('');
+
+        document.querySelectorAll('.view-profile-btn').forEach((b) => {
+          b.addEventListener('click', () => {
+            const uid = b.getAttribute('data-id');
+            loadUserProfile(uid);
+          });
+        });
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #f43f5e; text-align: center;">فشل التحميل: ${err.message}</td></tr>`;
+      }
+    }
+
+    document.getElementById('user-search-input')?.addEventListener('input', () => loadUsers(1));
+    document.getElementById('user-status-filter')?.addEventListener('change', () => loadUsers(1));
+    document.getElementById('refresh-users-btn')?.addEventListener('click', () => loadUsers(1));
+
+    // 5. User Profile Loader
+    async function loadUserProfile(userId) {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+      document.querySelector('[data-tab="tab-user-profile"]')?.classList.add('active');
+      document.getElementById('tab-user-profile')?.classList.add('active');
+
+      const container = document.getElementById('profile-container');
+      container.innerHTML = '<p style="color: var(--text-muted);">جارٍ تحميل ملف المستخدم...</p>';
+
+      try {
+        const res = await apiRequest(`/users/${userId}/profile`);
+        const p = res.profile;
+        const iden = p.identity;
+        const act = p.activityMetrics;
+
+        container.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h2 style="font-size: 1.2rem; font-weight: 800;">${iden.name} (${iden.email})</h2>
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">ID: ${iden.userId} | انضم في: ${new Date(iden.createdAt).toLocaleDateString()}</span>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-secondary action-user-btn" data-action="${iden.status === 'banned' ? 'activate' : 'ban'}">
+                ${iden.status === 'banned' ? 'رفع الحظر' : '🚫 حظر الحساب'}
+              </button>
+              <button class="btn btn-secondary export-user-btn">📥 تصدير البيانات (GDPR)</button>
+            </div>
+          </div>
+
+          <div class="grid-4">
+            <div class="card">
+              <div class="card-title">الموقع التقديري المستنتج</div>
+              <div style="font-size: 1.1rem; font-weight: 700; color: #60a5fa;">${iden.approximateLocation.city}, ${iden.approximateLocation.country}</div>
+              <div class="card-subtitle">تقديري مستنتج من IP متاح بشكل مشروع</div>
+            </div>
+            <div class="card">
+              <div class="card-title">الجهاز والنظام والمتصفح</div>
+              <div style="font-size: 1.1rem; font-weight: 700;">${iden.device.os} | ${iden.device.browser}</div>
+              <div class="card-subtitle">نوع الجهاز: ${iden.device.type}</div>
+            </div>
+            <div class="card">
+              <div class="card-title">ساعات العمل الفعلية</div>
+              <div class="card-value" style="color: #34d399;">${act.actualWorkHours}h</div>
+              <div class="card-subtitle">وقت الخمول: ${act.idleHours}h</div>
+            </div>
+            <div class="card">
+              <div class="card-title">استهلاك الـ AI والتكلفة</div>
+              <div class="card-value" style="color: #fbbf24;">$${act.aiCostUsd}</div>
+              <div class="card-subtitle">الطلبات: ${act.aiRequestsCount} | الرموز: ${act.aiTokensConsumed.toLocaleString()}</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 1rem;">
+            <div class="card-title">السجل الزمني للأحداث (Activity Timeline)</div>
+            <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.75rem;">
+              ${(p.timeline || []).map((t) => `
+                <div style="display: flex; gap: 1rem; align-items: flex-start; padding: 0.5rem; background: var(--bg-dark); border-radius: 6px;">
+                  <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono); min-width: 140px;">${new Date(t.timestamp).toLocaleString()}</span>
+                  <div>
+                    <div style="font-weight: 700; font-size: 0.85rem;">${t.title}</div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">${t.detail}</div>
+                  </div>
+                </div>
+              `).join('') || '<p style="color: var(--text-muted);">لا توجد أحداث مسجلة بعد.</p>'}
+            </div>
+          </div>
+        `;
+
+        container.querySelector('.action-user-btn')?.addEventListener('click', async (e) => {
+          const actType = e.target.getAttribute('data-action');
+          if (confirm(`هل أنت متأكد من تنفيذ ${actType} على هذا المستخدم؟`)) {
+            await apiRequest(`/users/${userId}/action`, {
+              method: 'POST',
+              body: JSON.stringify({ action: actType }),
+            });
+            loadUserProfile(userId);
+          }
+        });
+
+        container.querySelector('.export-user-btn')?.addEventListener('click', async () => {
+          const exp = await apiRequest(`/users/${userId}/export`);
+          alert('تم تصدير البيانات بنجاح وفق معايير الامتثال:\n' + JSON.stringify(exp.exportData, null, 2));
+        });
+      } catch (err) {
+        container.innerHTML = `<p style="color: #f43f5e;">فشل تحميل الملف: ${err.message}</p>`;
+      }
+    }
+
+    // 6. Live Users Loader
+    async function loadLiveUsers() {
+      const tbody = document.getElementById('live-sessions-tbody');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">جارٍ التحميل...</td></tr>';
+      try {
+        const res = await apiRequest('/presence/live');
+        document.getElementById('live-active-users-count').innerText = res.activeUsersCount;
+        document.getElementById('live-active-guests-count').innerText = res.activeGuestsCount;
+
+        tbody.innerHTML = res.sessions.map((s) => `
+          <tr>
+            <td>
+              <div style="font-weight: 700;">${s.userName}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">${s.sessionId}</div>
+            </td>
+            <td>
+              <span class="badge ${s.status === 'online' ? 'badge-success' : s.status === 'idle' ? 'badge-warning' : 'badge-danger'}">
+                ● ${s.status.toUpperCase()}
+              </span>
+            </td>
+            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${s.currentPage}</td>
+            <td>${s.currentProject}</td>
+            <td style="font-size: 0.8rem;">${s.approximateCountry}</td>
+            <td style="font-size: 0.8rem;">${s.os} (${s.deviceType})</td>
+            <td style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${new Date(s.lastHeartbeat).toLocaleTimeString()}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="7" style="text-align: center;">لا توجد جلسات حية حالياً.</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+    document.getElementById('refresh-live-users-btn')?.addEventListener('click', loadLiveUsers);
+
+    // 7. Guest Visitors Loader
+    async function loadGuestVisitors() {
+      const tbody = document.getElementById('guests-tbody');
+      try {
+        const res = await apiRequest('/guests');
+        tbody.innerHTML = res.guests.map((g) => `
+          <tr>
+            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${g.session_token.slice(0, 16)}...</td>
+            <td>${g.countryApproximate}</td>
+            <td>${g.device_type}</td>
+            <td>${g.browser}</td>
+            <td style="font-family: var(--font-mono);">${g.durationFormatted}</td>
+            <td>${g.page_views}</td>
+            <td style="font-size: 0.75rem; color: var(--text-muted);">${new Date(g.started_at).toLocaleString()}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="7" style="text-align: center;">لا توجد جلسات زوار مسجلة بعد.</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+
+    // 8. Projects Loader
+    async function loadProjects() {
+      const tbody = document.getElementById('projects-tbody');
+      try {
+        const res = await apiRequest('/projects');
+        tbody.innerHTML = res.projects.map((p) => `
+          <tr>
+            <td>
+              <div style="font-weight: 700;">${p.name}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">${p.id}</div>
+            </td>
+            <td>${p.owner_name} (${p.owner_email})</td>
+            <td><span class="badge ${p.build_status === 'success' ? 'badge-success' : 'badge-danger'}">${p.build_status}</span></td>
+            <td><span class="badge ${p.test_status === 'passed' ? 'badge-success' : 'badge-danger'}">${p.test_status}</span></td>
+            <td style="font-family: var(--font-mono);">${((p.total_work_seconds || 0) / 3600).toFixed(1)}h</td>
+            <td style="font-family: var(--font-mono); font-size: 0.78rem;">${p.primary_model}</td>
+            <td style="color: #fbbf24; font-family: var(--font-mono);">$${(p.ai_cost_usd || 0).toFixed(2)}</td>
+            <td>
+              <button class="btn btn-secondary view-project-btn" data-id="${p.id}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">🔍 فحص السجلات</button>
+            </td>
+          </tr>
+        `).join('') || '<tr><td colspan="8" style="text-align: center;">لا توجد مشاريع مسجلة بعد.</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+    document.getElementById('refresh-projects-btn')?.addEventListener('click', loadProjects);
+
+    // 9. Search History Loader & Inspect
+    async function loadSearchHistory() {
+      const tbody = document.getElementById('search-history-tbody');
+      try {
+        const res = await apiRequest('/search-history');
+        tbody.innerHTML = res.searchEvents.map((s) => `
+          <tr>
+            <td style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${new Date(s.created_at).toLocaleTimeString()}</td>
+            <td>${s.user_name || s.user_email}</td>
+            <td><span class="badge badge-info">${s.query_type}</span></td>
+            <td style="font-family: var(--font-mono); font-size: 0.78rem;">${s.model_used}</td>
+            <td style="font-family: var(--font-mono);">${s.latency_ms}</td>
+            <td><span class="badge ${s.status === 'success' ? 'badge-success' : 'badge-danger'}">${s.status}</span></td>
+            <td style="font-size: 0.8rem; color: var(--text-muted);">${s.prompt_preview}</td>
+            <td>
+              <button class="btn btn-secondary inspect-prompt-btn" data-id="${s.id}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">🔒 فك التشفير</button>
+            </td>
+          </tr>
+        `).join('') || '<tr><td colspan="8" style="text-align: center;">لا توجد عمليات بحث مسجلة بعد.</td></tr>';
+
+        document.querySelectorAll('.inspect-prompt-btn').forEach((b) => {
+          b.addEventListener('click', () => {
+            activeInspectEventId = b.getAttribute('data-id');
+            document.getElementById('inspect-justification').value = '';
+            document.getElementById('inspect-result-box').style.display = 'none';
+            document.getElementById('inspect-modal').classList.add('active');
+          });
+        });
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+
+    document.getElementById('confirm-inspect-btn')?.addEventListener('click', async () => {
+      const justification = document.getElementById('inspect-justification').value;
+      if (!justification || justification.trim().length < 10) {
+        alert('يرجى إدخال تبرير رسمي مكون من 10 أحرف على الأقل.');
+        return;
+      }
+      try {
+        const res = await apiRequest(`/search-history/${activeInspectEventId}/inspect`, {
+          method: 'POST',
+          body: JSON.stringify({ justification }),
+        });
+        const box = document.getElementById('inspect-result-box');
+        box.style.display = 'block';
+        box.innerText = `النص الكامل المفكوك تشفيره:\n${res.fullPrompt}`;
+      } catch (err) {
+        alert('فشل فك التشفير: ' + err.message);
+      }
+    });
+
+    // 10. Country Analytics Loader
+    async function loadCountryAnalytics() {
+      const tbody = document.getElementById('geo-tbody');
+      try {
+        const res = await apiRequest('/analytics/geographic');
+        document.getElementById('geo-disclaimer').innerText = res.disclaimer;
+        tbody.innerHTML = res.top10.map((c) => `
+          <tr>
+            <td style="font-family: var(--font-mono); font-weight: 700;">${c.countryCode}</td>
+            <td style="font-weight: 600;">${c.countryName}</td>
+            <td style="font-family: var(--font-mono);">${c.totalUsers}</td>
+            <td style="font-family: var(--font-mono);">${c.usageHours}h</td>
+            <td style="color: #fbbf24; font-family: var(--font-mono);">$${c.aiCostUsd}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="5" style="text-align: center;">لا توجد بيانات جغرافية مسجلة بعد.</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+
+    // 11. Usage Hours Loader
+    async function loadUsageHours() {
+      try {
+        const res = await apiRequest('/analytics/usage-hours');
+        document.getElementById('hours-total-sessions').innerText = `${res.totalSessionHours}h`;
+        document.getElementById('hours-actual-work').innerText = `${res.actualWorkHours}h`;
+        document.getElementById('hours-ratio').innerText = `${res.productivityRatio}%`;
+      } catch (err) {
+        console.error('Failed to load usage hours:', err);
+      }
+    }
+
+    // 12. AI Costs Loader
+    async function loadAiCosts() {
+      const tbody = document.getElementById('costs-providers-tbody');
+      try {
+        const res = await apiRequest('/analytics/ai-costs');
+        document.getElementById('costs-daily-total').innerText = `$${res.dailyTotalUsd}`;
+        document.getElementById('costs-monthly-total').innerText = `$${res.monthlyTotalUsd}`;
+
+        tbody.innerHTML = res.providers.map((p) => `
+          <tr>
+            <td style="font-weight: 700;">${p.name}</td>
+            <td><span class="badge ${p.status === 'active' ? 'badge-success' : 'badge-danger'}">${p.status}</span></td>
+            <td style="font-family: var(--font-mono);">$${p.daily_budget_usd}</td>
+            <td style="font-family: var(--font-mono);">$${p.monthly_budget_usd}</td>
+            <td style="color: #fbbf24; font-family: var(--font-mono);">$${(p.cost_incurred_today_usd || 0).toFixed(2)}</td>
+            <td style="color: #34d399; font-family: var(--font-mono);">$${(p.cost_incurred_month_usd || 0).toFixed(2)}</td>
+            <td style="font-family: var(--font-mono);">${(p.total_tokens_consumed || 0).toLocaleString()}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="7" style="text-align: center;">لا توجد بيانات استهلاك.</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+
+    // 13. Tests Quality Loader
+    async function loadTestsQuality() {
+      const tbody = document.getElementById('tests-tbody');
+      try {
+        const res = await apiRequest('/tests/summary');
+        document.getElementById('tests-total-runs').innerText = res.summary.totalTests;
+        document.getElementById('tests-pass-percent').innerText = `${res.summary.passRatePercent}%`;
+        document.getElementById('tests-failed-count').innerText = res.summary.failed;
+
+        tbody.innerHTML = res.runs.map((t) => `
+          <tr>
+            <td style="font-weight: 700;">${t.suite_name}</td>
+            <td>${t.project_name || 'عام'}</td>
+            <td><span class="badge badge-success">${t.passed_tests}</span></td>
+            <td><span class="badge ${t.failed_tests > 0 ? 'badge-danger' : 'badge-secondary'}">${t.failed_tests}</span></td>
+            <td style="font-family: var(--font-mono);">${t.duration_ms}ms</td>
+            <td style="font-size: 0.75rem; color: var(--text-muted);">${new Date(t.created_at).toLocaleTimeString()}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="6" style="text-align: center;">لا توجد اختبارات مسجلة بعد.</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+
+    // 14. Deployments Loader
+    async function loadDeployments() {
+      const tbody = document.getElementById('deployments-tbody');
+      try {
+        const res = await apiRequest('/deployments');
+        tbody.innerHTML = res.deployments.map((d) => `
+          <tr>
+            <td style="font-weight: 700;">${d.project_name}</td>
+            <td>${d.user_email}</td>
+            <td><span class="badge badge-purple">${d.environment}</span></td>
+            <td><span class="badge ${d.status === 'live' ? 'badge-success' : 'badge-danger'}">${d.status}</span></td>
+            <td><a href="${d.deployed_url || '#'}" target="_blank" style="color: #60a5fa; font-family: var(--font-mono); font-size: 0.8rem;">${d.deployed_url || '--'}</a></td>
+            <td style="font-size: 0.75rem; color: var(--text-muted);">${new Date(d.created_at).toLocaleString()}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="6" style="text-align: center;">لا توجد عمليات نشر مسجلة بعد.</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+
+    // 15. System Health Loader
+    async function loadSystemHealth() {
+      try {
+        const res = await apiRequest('/system-health/deep');
+        const inf = res.infrastructure;
+        document.getElementById('health-backend').innerText = inf.backendStatus.toUpperCase();
+        document.getElementById('health-db').innerText = inf.databaseStatus.toUpperCase();
+        document.getElementById('health-mem').innerText = `${inf.memory.rssMb} MB`;
+        document.getElementById('health-ai-errors').innerText = `${inf.aiProviderFailureRatePercent}%`;
+      } catch (err) {
+        console.error('Failed to load system health:', err);
+      }
+    }
+
+    // 16. Notifications Loader
+    async function loadNotifications() {
+      const list = document.getElementById('notifications-list');
+      try {
+        const res = await apiRequest('/notifications');
+        list.innerHTML = res.notifications.map((n) => `
+          <div style="background: var(--bg-dark); padding: 0.85rem; border-radius: 6px; border-inline-start: 4px solid ${n.severity === 'critical' ? '#f43f5e' : n.severity === 'warning' ? '#f59e0b' : '#3b82f6'};">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+              <span style="font-weight: 700; font-size: 0.9rem;">${n.title}</span>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">${new Date(n.created_at).toLocaleString()}</span>
+            </div>
+            <p style="font-size: 0.82rem; color: var(--text-muted);">${n.message}</p>
+          </div>
+        `).join('') || '<p style="color: var(--text-muted);">لا توجد إشعارات نشطة حالياً.</p>';
+      } catch (err) {
+        list.innerHTML = `<p style="color: #f43f5e;">فشل: ${err.message}</p>`;
+      }
+    }
+
+    // 17. Audit Logs Loader
+    async function loadAuditLogs() {
+      const tbody = document.getElementById('audit-table-body');
+      try {
+        const res = await apiRequest('/audit-logs');
+        tbody.innerHTML = res.logs.map((l) => `
+          <tr>
+            <td style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${new Date(l.created_at).toLocaleString()}</td>
+            <td style="font-weight: 600;">${l.admin_email}</td>
+            <td><span class="badge badge-info">${l.action}</span></td>
+            <td style="font-family: var(--font-mono); font-size: 0.78rem;">${l.target_type}:${l.target_id || '--'}</td>
+            <td style="font-size: 0.8rem;">${l.justification || '--'}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.78rem;">${l.ip}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="6" style="text-align: center;">سجل التدقيق فارغ.</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
+    }
+
+    // 18. Admin Staff Loader
+    async function loadAdminStaff() {
+      const tbody = document.getElementById('admin-staff-tbody');
+      try {
+        const res = await apiRequest('/team');
+        tbody.innerHTML = res.team.map((m) => `
+          <tr>
+            <td style="font-weight: 700;">${m.name}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.82rem;">${m.email}</td>
+            <td><span class="role-badge role-${m.role}">${m.role}</span></td>
+            <td><span class="badge badge-success">2FA نشط (TOTP)</span></td>
+            <td><span class="badge ${m.status === 'active' ? 'badge-success' : 'badge-danger'}">${m.status}</span></td>
+            <td style="font-size: 0.75rem; color: var(--text-muted);">${new Date(m.created_at).toLocaleDateString()}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color: #f43f5e; text-align: center;">فشل: ${err.message}</td></tr>`;
+      }
     }
 
     // Login Form Submit
@@ -1024,22 +2110,34 @@
       const totp = document.getElementById('login-totp').value;
       const recoveryCode = document.getElementById('login-recovery').value;
       const alertBox = document.getElementById('login-alert');
-
-      alertBox.classList.remove('show');
+      alertBox.style.display = 'none';
 
       try {
         const res = await apiRequest('/auth/login', {
           method: 'POST',
           body: JSON.stringify({ email, password, totp, recoveryCode }),
         });
-
         if (res.success) {
           showPortal(res.adminUser);
         }
       } catch (err) {
         alertBox.innerText = err.message;
-        alertBox.classList.add('show');
+        alertBox.style.display = 'block';
       }
+    });
+
+    // 2FA Recovery Toggle
+    document.getElementById('toggle-recovery-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('totp-group').style.display = 'none';
+      document.getElementById('recovery-group').style.display = 'block';
+      document.getElementById('login-totp').value = '';
+    });
+    document.getElementById('toggle-totp-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('recovery-group').style.display = 'none';
+      document.getElementById('totp-group').style.display = 'block';
+      document.getElementById('login-recovery').value = '';
     });
 
     // Logout
@@ -1051,642 +2149,7 @@
       showLogin();
     });
 
-    // Load Tab Contents
-    function loadTabContent(tabId) {
-      if (tabId === 'tab-dashboard') loadDashboard();
-      if (tabId === 'tab-users') loadUsers();
-      if (tabId === 'tab-content') loadContentSummary();
-      if (tabId === 'tab-alerts') loadAlerts();
-      if (tabId === 'tab-retrieval') loadRetrievalAnalytics();
-      if (tabId === 'tab-audit') loadAuditLogs();
-      if (tabId === 'tab-settings') loadSettings();
-      if (tabId === 'tab-team') loadTeam();
-      if (tabId === 'tab-service-keys') loadServiceKeys();
-    }
-
-    // Dashboard
-    async function loadDashboard() {
-      try {
-        const res = await apiRequest('/dashboard');
-        const d = res.dashboard;
-        const uptimeMin = Math.floor(d.server.uptimeSeconds / 60);
-        document.getElementById('dash-uptime').innerText = `${uptimeMin} دقيقة`;
-        document.getElementById('dash-memory').innerText = `${d.server.memory.rssMb} MB`;
-        document.getElementById('dash-heap').innerText = `Heap: ${d.server.memory.heapUsedMb} MB`;
-        document.getElementById('dash-users').innerText = d.stats.users;
-        document.getElementById('dash-docs').innerText = d.stats.documents;
-        document.getElementById('dash-evidence').innerText = d.stats.researchEvidence;
-        document.getElementById('dash-alerts').innerText = d.stats.unresolvedAlerts;
-        document.getElementById('dash-backup-time').innerText = d.backup.lastBackupTimestamp
-          ? new Date(d.backup.lastBackupTimestamp).toLocaleString('ar-AE')
-          : 'لا توجد نسخ سابقة';
-      } catch (err) {
-        console.error('Failed to load dashboard:', err);
-      }
-    }
-
-    // Instant Backup
-    document.getElementById('trigger-backup-btn')?.addEventListener('click', async () => {
-      if (!confirm('هل تريد تشغيل نسخ احتياطي فوري لقاعدة بيانات SQLite الآن؟')) return;
-      try {
-        const res = await apiRequest('/backup/trigger', { method: 'POST' });
-        alert(`تم إنشاء النسخة الاحتياطية بنجاح:\n${res.backup.filename} (${res.backup.sizeBytes} بايت)`);
-        loadDashboard();
-      } catch (err) {
-        alert(`فشل النسخ: ${err.message}`);
-      }
-    });
-
-    // Users
-    async function loadUsers() {
-      const search = document.getElementById('user-search-input').value;
-      const status = document.getElementById('user-status-filter').value;
-      const tbody = document.getElementById('users-tbody');
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">جارٍ التحميل...</td></tr>';
-
-      try {
-        const res = await apiRequest(`/users?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`);
-        if (res.users.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">لم يتم العثور على مستخدمين.</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = res.users.map((u) => `
-          <tr>
-            <td style="font-weight: 600;">${u.name}</td>
-            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${u.email}</td>
-            <td><span class="badge badge-info">${u.role}</span></td>
-            <td><span class="badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}">${u.status}</span></td>
-            <td>${u.consumption.researchQueries}</td>
-            <td>${u.consumption.projectsCreated}</td>
-            <td>
-              <button class="btn btn-secondary toggle-user-status" data-id="${u.id}" data-status="${u.status}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
-                ${u.status === 'active' ? 'تعطيل' : 'تفعيل'}
-              </button>
-              <button class="btn btn-primary inspect-user-btn" data-id="${u.id}" data-name="${u.name}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
-                عرض المحتوى
-              </button>
-            </td>
-          </tr>
-        `).join('');
-
-        // Wire user actions
-        document.querySelectorAll('.toggle-user-status').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const uid = btn.getAttribute('data-id');
-            const curStatus = btn.getAttribute('data-status');
-            const newStatus = curStatus === 'active' ? 'disabled' : 'active';
-            if (confirm(`هل أنت متأكد من تغيير حالة المستخدم إلى ${newStatus}؟`)) {
-              await apiRequest(`/users/${uid}/status`, {
-                method: 'POST',
-                body: JSON.stringify({ status: newStatus }),
-              });
-              loadUsers();
-            }
-          });
-        });
-
-        document.querySelectorAll('.inspect-user-btn').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            pendingInspectUserId = btn.getAttribute('data-id');
-            document.getElementById('inspected-user-title').innerText = `المحتوى الخاص للمستخدم: ${btn.getAttribute('data-name')}`;
-            document.getElementById('justification-input').value = '';
-            document.getElementById('justification-modal').classList.add('open');
-          });
-        });
-      } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="7" style="color: #fb7185;">خطأ: ${err.message}</td></tr>`;
-      }
-    }
-
-    document.getElementById('refresh-users-btn')?.addEventListener('click', loadUsers);
-
-    // Confirm User Inspection
-    document.getElementById('confirm-inspect-btn')?.addEventListener('click', async () => {
-      const justification = document.getElementById('justification-input').value;
-      if (!justification || justification.trim().length < 5) {
-        alert('يجب تقديم مبرر إداري رسمي لا يقل عن 5 أحرف.');
-        return;
-      }
-
-      try {
-        const res = await apiRequest(`/users/${pendingInspectUserId}/inspect-private`, {
-          method: 'POST',
-          body: JSON.stringify({ justification }),
-        });
-
-        document.getElementById('justification-modal').classList.remove('open');
-        const contentDiv = document.getElementById('inspected-user-content');
-        contentDiv.innerHTML = `
-          <h4 style="margin-bottom: 0.5rem;">المشاريع (${res.privateData.projects.length})</h4>
-          <ul style="padding-right: 1.2rem; margin-bottom: 1rem;">
-            ${res.privateData.projects.map((p) => `<li><b>${p.name}</b> (${p.status}) - ${p.description || ''}</li>`).join('')}
-          </ul>
-          <h4 style="margin-bottom: 0.5rem;">جلسات البحث (${res.privateData.sessions.length})</h4>
-          <ul style="padding-right: 1.2rem;">
-            ${res.privateData.sessions.map((s) => `<li><b>${s.session_name || 'جلسة بحث'}</b> - ${s.status}</li>`).join('')}
-          </ul>
-        `;
-        document.getElementById('user-data-modal').classList.add('open');
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-
-    // Content
-    async function loadContentSummary() {
-      try {
-        const res = await apiRequest('/content/summary');
-        document.getElementById('cnt-total-docs').innerText = res.summary.totalDocuments;
-        document.getElementById('cnt-shared-docs').innerText = res.summary.sharedLibraryDocuments;
-        document.getElementById('cnt-total-chunks').innerText = res.summary.totalChunks;
-        document.getElementById('cnt-total-tables').innerText = res.summary.totalTables + res.summary.totalFigures;
-
-        const tbody = document.getElementById('content-tbody');
-        tbody.innerHTML = res.recentDocuments.map((doc) => `
-          <tr>
-            <td style="font-weight: 600;">${doc.title}</td>
-            <td>${doc.author || 'غير محدد'}</td>
-            <td><span class="badge badge-info">${doc.kind}</span></td>
-            <td><span class="badge ${doc.is_shared_library ? 'badge-success' : 'badge-warning'}">${doc.is_shared_library ? 'نعم' : 'خاص'}</span></td>
-            <td style="font-size: 0.8rem;">${new Date(doc.uploaded_at).toLocaleDateString('ar-AE')}</td>
-            <td>
-              <button class="btn btn-danger moderate-doc-btn" data-id="${doc.id}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">حذف</button>
-            </td>
-          </tr>
-        `).join('');
-
-        document.querySelectorAll('.moderate-doc-btn').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const id = btn.getAttribute('data-id');
-            if (confirm('هل أنت متأكد من حذف هذا المحتوى؟')) {
-              await apiRequest(`/content/${id}/moderate`, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'delete', reason: 'إزالة محتوى مخالف عبر لوحة الإدارة' }),
-              });
-              loadContentSummary();
-            }
-          });
-        });
-      } catch (err) {
-        console.error('Failed to load content summary:', err);
-      }
-    }
-
-    // Alerts
-    async function loadAlerts() {
-      const level = document.getElementById('alerts-level-filter').value;
-      const cat = document.getElementById('alerts-cat-filter').value;
-      const tbody = document.getElementById('alerts-tbody');
-
-      try {
-        const res = await apiRequest(`/system-alerts?level=${level}&category=${cat}`);
-        if (res.alerts.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #34d399;">لا توجد تنبيهات نشطة.</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = res.alerts.map((alt) => `
-          <tr>
-            <td><span class="badge ${alt.level === 'critical' ? 'badge-danger' : alt.level === 'warning' ? 'badge-warning' : 'badge-info'}">${alt.level}</span></td>
-            <td><span class="badge badge-secondary">${alt.category}</span></td>
-            <td style="font-size: 0.85rem;">${alt.message}</td>
-            <td style="font-size: 0.8rem;">${new Date(alt.timestamp).toLocaleTimeString('ar-AE')}</td>
-            <td style="font-size: 0.8rem;">${alt.tenant_id || 'غير معين'}</td>
-            <td>
-              <button class="btn btn-success resolve-alert-btn" data-id="${alt.id}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">حل وإغلاق</button>
-            </td>
-          </tr>
-        `).join('');
-
-        document.querySelectorAll('.resolve-alert-btn').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const id = btn.getAttribute('data-id');
-            await apiRequest(`/system-alerts/${id}/resolve`, { method: 'POST' });
-            loadAlerts();
-            loadDashboard();
-          });
-        });
-      } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" style="color: #fb7185;">خطأ: ${err.message}</td></tr>`;
-      }
-    }
-
-    document.getElementById('refresh-alerts-btn')?.addEventListener('click', loadAlerts);
-
-    // Retrieval Quality
-    async function loadRetrievalAnalytics() {
-      try {
-        const res = await apiRequest('/analytics/retrieval-gaps');
-        const b = res.breakdown;
-        const container = document.getElementById('retrieval-breakdown-cards');
-        const categories = [
-          { key: 'aqeedah', label: 'العقيدة والتوحيد' },
-          { key: 'fiqh', label: 'الفقه والأحكام' },
-          { key: 'history', label: 'التاريخ والسير' },
-          { key: 'hadith', label: 'الحديث الشريف' },
-          { key: 'code', label: 'البرمجيات والهندسة' },
-          { key: 'general', label: 'عام' },
-        ];
-
-        container.innerHTML = categories.map((cat) => {
-          const item = b[cat.key] || { positive: 0, negative: 0, issues: [] };
-          return `
-            <div class="card">
-              <div class="card-title">${cat.label}</div>
-              <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                <span style="color: #34d399; font-weight: 700;">+${item.positive} إيجابي</span>
-                <span style="color: #fb7185; font-weight: 700;">-${item.negative} فجوات</span>
-              </div>
-            </div>
-          `;
-        }).join('');
-
-        const allIssues = Object.values(b).flatMap((v) => v.issues || []);
-        const issuesTbody = document.getElementById('retrieval-issues-tbody');
-        if (allIssues.length === 0) {
-          issuesTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #34d399;">لا توجد فجوات استرجاع دلالية مسجلة.</td></tr>';
-        } else {
-          issuesTbody.innerHTML = allIssues.map((iss) => `
-            <tr>
-              <td style="font-weight: 600;">${iss.query || 'استعلام عام'}</td>
-              <td>${iss.comment || 'تقييم سلبي'}</td>
-              <td><span class="badge badge-warning">${iss.qualityGateScore || '5.0'}</span></td>
-              <td style="font-size: 0.8rem;">${new Date(iss.createdAt).toLocaleDateString('ar-AE')}</td>
-            </tr>
-          `).join('');
-        }
-      } catch (err) {
-        console.error('Failed to load retrieval analytics:', err);
-      }
-    }
-
-    // Audit Logs
-    async function loadAuditLogs() {
-      const search = document.getElementById('audit-search-input').value;
-      const tbody = document.getElementById('audit-tbody');
-
-      try {
-        const res = await apiRequest(`/audit-logs?search=${encodeURIComponent(search)}`);
-        if (res.actions.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">لا توجد أحداث تدقيق مطابقة.</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = res.actions.map((act) => `
-          <tr>
-            <td style="font-size: 0.8rem; font-family: var(--font-mono);">${new Date(act.created_at).toLocaleString('ar-AE')}</td>
-            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${act.admin_user_id}</td>
-            <td><span class="badge badge-info">${act.action}</span></td>
-            <td>${act.justification || '-'}</td>
-            <td>${act.target_type ? `${act.target_type}:${act.target_id || ''}` : '-'}</td>
-            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${act.ip || '-'}</td>
-          </tr>
-        `).join('');
-      } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" style="color: #fb7185;">خطأ: ${err.message}</td></tr>`;
-      }
-    }
-
-    document.getElementById('audit-search-input')?.addEventListener('input', loadAuditLogs);
-
-    // Settings
-    async function loadSettings() {
-      try {
-        const res = await apiRequest('/settings');
-        const s = res.settings;
-        document.getElementById('setting-cost-ceiling').value = s.aiResearchCostCeilingUsd;
-        document.getElementById('setting-tokens-limit').value = s.aiDailyTokenLimit;
-        document.getElementById('setting-ttl-standard').value = s.webVerificationTtlStandardDays;
-        document.getElementById('setting-ttl-software').value = s.webVerificationTtlSoftwareDays;
-        document.getElementById('setting-rrf-k').value = s.hybridRrfKWeight;
-      } catch (err) {
-        console.error('Failed to load settings:', err);
-      }
-
-      // Load 16GB Model Fleet Status
-      try {
-        const fleetRes = await apiRequest('/models/fleet');
-        const provider = fleetRes.provider || 'ollama';
-        const providerBadge = document.getElementById('current-provider-badge');
-        if (providerBadge) {
-          providerBadge.textContent = provider.toUpperCase() + (fleetRes.fleet?.ok ? ' (متصل)' : '');
-          providerBadge.style.background = provider === 'openai' ? 'rgba(16,185,129,0.2)' : 'rgba(99,102,241,0.2)';
-          providerBadge.style.color = provider === 'openai' ? '#34d399' : '#818cf8';
-        }
-
-        const tierModels = fleetRes.tierModels || {};
-        if (document.getElementById('model-tier-quick')) document.getElementById('model-tier-quick').value = tierModels.quick || '';
-        if (document.getElementById('model-tier-deep')) document.getElementById('model-tier-deep').value = tierModels.deep || '';
-        if (document.getElementById('model-tier-expert')) document.getElementById('model-tier-expert').value = tierModels.expert || '';
-
-        const resident = fleetRes.fleet || {};
-        const residentModel = resident.residentModels?.[0]?.name || (provider === 'openai' ? 'OpenAI Cloud (API)' : 'لا يوجد نموذج مقيم (خامل)');
-        const residentMemMb = resident.totalResidentAndKvMb || 0;
-        const budgetMb = fleetRes.memoryBudgetMaxMb || 12288;
-        const memPercent = Math.min(100, Math.round((residentMemMb / budgetMb) * 100));
-
-        if (document.getElementById('resident-model-name')) document.getElementById('resident-model-name').textContent = residentModel;
-        if (document.getElementById('resident-model-memory')) document.getElementById('resident-model-memory').textContent = `${residentMemMb} MB`;
-        const prog = document.getElementById('model-memory-progress');
-        if (prog) {
-          prog.style.width = `${memPercent}%`;
-          prog.style.background = memPercent > 90 ? '#ef4444' : (memPercent > 75 ? '#f59e0b' : '#38bdf8');
-        }
-
-        const disk = fleetRes.diskPreflight || {};
-        const diskEl = document.getElementById('disk-preflight-status');
-        if (diskEl) {
-          diskEl.textContent = disk.passed
-            ? `القرص متاح: ${disk.freeGb} GB (كافٍ ومؤهل)`
-            : `القرص متاح: ${disk.freeGb} GB (⚠️ يلزم التوسيع إلى 100GB)`;
-          diskEl.style.color = disk.passed ? '#34d399' : '#f59e0b';
-        }
-
-        const rollbackBtn = document.getElementById('quick-rollback-btn');
-        if (rollbackBtn) {
-          rollbackBtn.textContent = provider === 'openai' ? '🔄 إعادة التفعيل لـ Ollama (محلي)' : '⚠️ تراجع فوري لـ OpenAI API';
-          rollbackBtn.style.background = provider === 'openai' ? '#2563eb' : '#dc2626';
-        }
-      } catch (fleetErr) {
-        console.error('Failed to load fleet status:', fleetErr);
-      }
-    }
-
-    document.getElementById('tier-models-form')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try {
-        await apiRequest('/models/tiers', {
-          method: 'PUT',
-          body: JSON.stringify({
-            quick: document.getElementById('model-tier-quick').value,
-            deep: document.getElementById('model-tier-deep').value,
-            expert: document.getElementById('model-tier-expert').value,
-            justification: 'تحديث توزيع منظومة النماذج على المستويات عبر لوحة الإدارة',
-          }),
-        });
-        alert('تم تحديث نماذج المستويات بنجاح.');
-        loadSettings();
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-
-    document.getElementById('quick-rollback-btn')?.addEventListener('click', async () => {
-      const isCurrentlyOpenAi = document.getElementById('current-provider-badge')?.textContent?.includes('OPENAI');
-      const targetProvider = isCurrentlyOpenAi ? 'ollama' : 'openai';
-      const confirmMsg = isCurrentlyOpenAi
-        ? 'هل تريد إعادة تفعيل منظومة النماذج المحلية (Ollama) على خادم 16GB؟'
-        : 'هل تريد التراجع الفوري إلى OpenAI API السحابي لتفادي أي ضغط موارد محلي؟';
-
-      if (!confirm(confirmMsg)) return;
-
-      try {
-        await apiRequest('/models/provider', {
-          method: 'POST',
-          body: JSON.stringify({
-            provider: targetProvider,
-            justification: `تبديل الموفر الفوري إلى ${targetProvider}`,
-          }),
-        });
-        alert(`تم تحويل الموفر إلى ${targetProvider.toUpperCase()} بنجاح.`);
-        loadSettings();
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-
-    document.getElementById('settings-form')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try {
-        await apiRequest('/settings', {
-          method: 'PUT',
-          body: JSON.stringify({
-            aiResearchCostCeilingUsd: parseFloat(document.getElementById('setting-cost-ceiling').value),
-            aiDailyTokenLimit: parseInt(document.getElementById('setting-tokens-limit').value, 10),
-            webVerificationTtlStandardDays: parseInt(document.getElementById('setting-ttl-standard').value, 10),
-            webVerificationTtlSoftwareDays: parseInt(document.getElementById('setting-ttl-software').value, 10),
-            hybridRrfKWeight: parseInt(document.getElementById('setting-rrf-k').value, 10),
-            justification: 'تعديل الإعدادات عبر لوحة تحكم المشرف الأعلى',
-          }),
-        });
-        alert('تم حفظ الإعدادات بنجاح وتسجيل العملية في سجل التدقيق.');
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-
-    // Team Management
-    async function loadTeam() {
-      const tbody = document.getElementById('team-tbody');
-      try {
-        const res = await apiRequest('/team');
-        tbody.innerHTML = res.team.map((adm) => `
-          <tr>
-            <td style="font-weight: 600;">${adm.name}</td>
-            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${adm.email}</td>
-            <td><span class="role-badge role-${adm.role}">${adm.role}</span></td>
-            <td><span class="badge ${adm.totp_enabled ? 'badge-success' : 'badge-danger'}">${adm.totp_enabled ? 'مفعل' : 'معطل'}</span></td>
-            <td>${adm.failed_logins}</td>
-            <td><span class="badge ${adm.status === 'active' ? 'badge-success' : 'badge-danger'}">${adm.status}</span></td>
-            <td>
-              <button class="btn btn-secondary toggle-team-status" data-id="${adm.id}" data-status="${adm.status}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
-                ${adm.status === 'active' ? 'تعليق' : 'تفعيل'}
-              </button>
-            </td>
-          </tr>
-        `).join('');
-
-        document.querySelectorAll('.toggle-team-status').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const id = btn.getAttribute('data-id');
-            const cur = btn.getAttribute('data-status');
-            const newSt = cur === 'active' ? 'suspended' : 'active';
-            if (confirm(`هل أنت متأكد من تغيير حالة المدير إلى ${newSt}؟`)) {
-              await apiRequest(`/team/${id}/status`, {
-                method: 'POST',
-                body: JSON.stringify({ status: newSt }),
-              });
-              loadTeam();
-            }
-          });
-        });
-      } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="7" style="color: #fb7185;">خطأ: ${err.message}</td></tr>`;
-      }
-    }
-
-    document.getElementById('open-new-admin-btn')?.addEventListener('click', () => {
-      document.getElementById('new-admin-modal').classList.add('open');
-    });
-
-    document.getElementById('new-admin-form')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = document.getElementById('new-admin-name').value;
-      const email = document.getElementById('new-admin-email').value;
-      const role = document.getElementById('new-admin-role').value;
-      const password = document.getElementById('new-admin-pwd').value;
-
-      try {
-        const res = await apiRequest('/team', {
-          method: 'POST',
-          body: JSON.stringify({ name, email, role, password }),
-        });
-        document.getElementById('new-admin-modal').classList.remove('open');
-        alert(`تم إنشاء المشرف بنجاح!\nسر الـ 2FA (Base32):\n${res.totpSecret}\n\nرموز الطوارئ:\n${res.recoveryCodes.join(', ')}`);
-        loadTeam();
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-
-    // Close Modals
-    document.querySelectorAll('.close-modal').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.modal-backdrop').forEach((m) => m.classList.remove('open'));
-      });
-    });
-
-    // Service API Keys Management
-    async function loadServiceKeys() {
-      const tbody = document.getElementById('service-keys-tbody');
-      if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">جارٍ التحميل...</td></tr>';
-
-      try {
-        const res = await apiRequest('/service-keys');
-        const keys = res.keys || [];
-
-        const total = keys.length;
-        const active = keys.filter((k) => !k.isRevoked).length;
-        const revoked = keys.filter((k) => k.isRevoked).length;
-
-        document.getElementById('cnt-total-keys').innerText = total;
-        document.getElementById('cnt-active-keys').innerText = active;
-        document.getElementById('cnt-revoked-keys').innerText = revoked;
-
-        if (keys.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">لا توجد مفاتيح خدمات منشأة حالياً.</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = keys
-          .map((k) => {
-            const statusBadge = k.isRevoked
-              ? '<span class="badge badge-danger">ملغى (Revoked)</span>'
-              : '<span class="badge badge-success">نشط (Active)</span>';
-
-            const actions = k.isRevoked
-              ? '<span style="color: var(--text-muted); font-size: 0.8rem;">تم الإبطال</span>'
-              : `
-                <div style="display: flex; gap: 0.35rem;">
-                  <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="rotateServiceKeyUi('${k.id}', '${k.name}')">تدوير</button>
-                  <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="revokeServiceKeyUi('${k.id}', '${k.name}')">إبطال</button>
-                </div>
-              `;
-
-            return `
-              <tr>
-                <td style="font-weight: 600;">${k.name}</td>
-                <td><code style="font-size: 0.8rem; background: var(--bg-card); padding: 0.15rem 0.35rem; border-radius: 4px;">${k.keyPrefix}...</code></td>
-                <td><span style="font-size: 0.8rem; color: var(--text-muted);">${(k.scopes || []).join(', ')}</span></td>
-                <td>${k.rateLimitRpm} / د</td>
-                <td>${statusBadge}</td>
-                <td style="font-size: 0.8rem;">${new Date(k.createdAt).toLocaleDateString('ar-AE')}</td>
-                <td style="font-size: 0.8rem; color: var(--text-muted);">${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('ar-AE') : 'لم يُستخدم بعد'}</td>
-                <td>${actions}</td>
-              </tr>
-            `;
-          })
-          .join('');
-      } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #ef4444;">فشل جلب المفاتيح: ${err.message}</td></tr>`;
-      }
-    }
-
-    function openCreateServiceKeyModal() {
-      document.getElementById('service-key-modal-title').innerText = 'إنشاء مفتاح خدمة جديد (Service API Key)';
-      document.getElementById('service-key-create-view').style.display = 'block';
-      document.getElementById('service-key-reveal-view').style.display = 'none';
-      document.getElementById('service-key-name-input').value = '';
-      document.getElementById('service-key-rpm-input').value = '60';
-      document.getElementById('service-key-modal').classList.add('open');
-    }
-
-    function closeServiceKeyModal() {
-      document.getElementById('service-key-modal').classList.remove('open');
-    }
-
-    async function submitCreateServiceKey() {
-      const name = document.getElementById('service-key-name-input').value.trim();
-      const rateLimitRpm = parseInt(document.getElementById('service-key-rpm-input').value, 10) || 60;
-      if (!name) {
-        alert('يرجى إدخال اسم النظام الخارجي أو المفتاح.');
-        return;
-      }
-
-      try {
-        const res = await apiRequest('/service-keys', {
-          method: 'POST',
-          body: JSON.stringify({ name, rateLimitRpm, scopes: ['books:crud'] }),
-        });
-
-        if (res.success && res.serviceKey) {
-          document.getElementById('service-key-create-view').style.display = 'none';
-          document.getElementById('service-key-reveal-view').style.display = 'block';
-          document.getElementById('revealed-service-key-text').value = res.serviceKey.rawKey;
-          loadServiceKeys();
-        }
-      } catch (err) {
-        alert(`فشل إنشاء المفتاح: ${err.message}`);
-      }
-    }
-
-    function copyServiceKeyToClipboard() {
-      const input = document.getElementById('revealed-service-key-text');
-      input.select();
-      navigator.clipboard.writeText(input.value).then(() => {
-        alert('تم نسخ مفتاح الخدمة إلى الحافظة بنجاح!');
-      }).catch(() => {
-        alert('يرجى نسخ المفتاح يدوياً: ' + input.value);
-      });
-    }
-
-    async function revokeServiceKeyUi(id, name) {
-      if (!confirm(`هل أنت متأكد من رغبتك في إبطال المفتاح "${name}" فوراً؟\\nسيتم حظر أي طلب صادر به خلال أقل من ثانية واحدة.`)) {
-        return;
-      }
-      try {
-        const res = await apiRequest(`/service-keys/${id}/revoke`, { method: 'POST' });
-        if (res.success) {
-          alert(`تم إبطال المفتاح "${name}" بنجاح.`);
-          loadServiceKeys();
-        }
-      } catch (err) {
-        alert(`فشل إبطال المفتاح: ${err.message}`);
-      }
-    }
-
-    async function rotateServiceKeyUi(id, name) {
-      if (!confirm(`هل أنت متأكد من تدوير المفتاح "${name}"؟\\nسيتم إبطال المفتاح القديم وتوليد مفتاح جديد بنفس الإعدادات وعرضه لمرة واحدة.`)) {
-        return;
-      }
-      try {
-        const res = await apiRequest(`/service-keys/${id}/rotate`, { method: 'POST' });
-        if (res.success && res.serviceKey) {
-          document.getElementById('service-key-modal-title').innerText = `تدوير المفتاح: ${name}`;
-          document.getElementById('service-key-create-view').style.display = 'none';
-          document.getElementById('service-key-reveal-view').style.display = 'block';
-          document.getElementById('revealed-service-key-text').value = res.serviceKey.rawKey;
-          document.getElementById('service-key-modal').classList.add('open');
-          loadServiceKeys();
-        }
-      } catch (err) {
-        alert(`فشل تدوير المفتاح: ${err.message}`);
-      }
-    }
-
-    // Initial session bootstrap check
+    // Initialize session check on load
     checkCurrentSession();
   </script>
 </body>

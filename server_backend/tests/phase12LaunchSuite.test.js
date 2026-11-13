@@ -285,7 +285,10 @@ async function runTestSuite() {
   // Test 7: Multi-Account Abuse Detection (3+ accounts log alert, NO auto-ban)
   // --------------------------------------------------------------------------
   console.log('[Test 7] Testing Multi-Account Abuse Detection & Security Alert Logging...');
-  const suspiciousIp = `203.0.113.${Math.floor(Math.random() * 200) + 10}`;
+  let suspiciousIp;
+  do {
+    suspiciousIp = `203.0.${Math.floor(Math.random() * 250) + 1}.${Math.floor(Math.random() * 250) + 1}`;
+  } while (get('SELECT id FROM users WHERE registration_ip = ?', suspiciousIp));
   const sharedFingerprint = `fp_device_multi_bot_${Date.now()}`;
 
   // Account 1

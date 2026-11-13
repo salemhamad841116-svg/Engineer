@@ -105,10 +105,14 @@ function requireAdminRole(...roles) {
       });
     }
 
-    if (!roles.includes(req.adminUser.role)) {
+    const userRole = req.adminUser.role;
+    // super_admin always satisfies any required role; otherwise role must match directly
+    const isAuthorized = roles.includes(userRole) || userRole === 'super_admin';
+
+    if (!isAuthorized) {
       return res.status(403).json({
         success: false,
-        error: `Permission denied. This operation requires one of: [${roles.join(', ')}]. Current role: ${req.adminUser.role}.`,
+        error: `Permission denied. This operation requires one of: [${roles.join(', ')}]. Current role: ${userRole}.`,
         code: 'ADMIN_FORBIDDEN',
       });
     }

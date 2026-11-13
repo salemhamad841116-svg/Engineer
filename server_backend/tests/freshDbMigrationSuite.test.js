@@ -97,7 +97,18 @@ try {
     'subscription_plans',
     'subscriptions',
     'payment_webhook_events',
-    'payment_audit_logs'
+    'payment_audit_logs',
+    'ai_providers',
+    'ai_usage_events',
+    'user_profiles',
+    'guest_sessions',
+    'presence_heartbeats',
+    'projects',
+    'project_activity',
+    'user_search_events',
+    'deployments',
+    'test_runs',
+    'system_notifications'
   ];
 
   for (const t of requiredTables) {
