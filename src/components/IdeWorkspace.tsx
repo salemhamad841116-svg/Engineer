@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import JSZip from 'jszip';
 import {
   Play,
@@ -134,6 +134,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileUploadInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Right Pane state: Preview & Runtime
   const [runtimeState, setRuntimeState] = useState<'running' | 'stopped' | 'restarting'>('running');
@@ -177,6 +179,19 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   }, [searchText, searchScope, activeFile, project.files]);
 
   const unfixedErrorsCount = project.diagnostics.filter((d) => !d.fixed).length;
+
+  // Auto-scroll chat messages smoothly to bottom when new messages arrive or when generating
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [activeChatThread?.messages.length, isGenerating]);
+
+  // Dynamic textarea height adjustment so text never gets stuck or hidden at bottom
+  useEffect(() => {
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.style.height = 'auto';
+      chatTextareaRef.current.style.height = `${Math.min(chatTextareaRef.current.scrollHeight, 180)}px`;
+    }
+  }, [chatInput]);
 
   // --- Editor Handlers ---
   const updateActiveFileContent = (newContent: string, markDirty = true) => {
@@ -524,6 +539,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     if (!chatInput.trim() || isGenerating) return;
     const text = chatInput.trim();
     setChatInput('');
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.style.height = 'auto';
+    }
     setEditingMsgId(null);
     const result = await onExecutePrompt(text, {
       model: selectedModel,
@@ -639,7 +657,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
         {!isFullscreenPreview && (
           <aside
             dir={isAr ? 'rtl' : 'ltr'}
-            className="w-[32%] min-w-[340px] max-w-[440px] shrink-0 border-e border-white/8 bg-[#0c0e15] flex flex-col min-h-0"
+            className="w-[32%] min-w-[340px] max-w-[440px] shrink-0 border-e border-white/8 bg-[#0c0e15] flex flex-col min-h-0 h-full overflow-hidden"
           >
             {/* Clean Chat Header */}
             <div className="px-3.5 py-2.5 border-b border-white/8 bg-[#10131c] flex items-center justify-between gap-2 shrink-0">
@@ -698,7 +716,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             )}
 
             {/* Messages Stream - Clean Q&A ONLY (User + Engineer) */}
-            <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
+            <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3 overscroll-contain">
               {(activeChatThread?.messages || [])
                 .filter((m) => !chatSearchQuery.trim() || m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()))
                 .map((msg) => (
@@ -791,59 +809,16 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   </button>
                 </div>
               )}
+              {/* Auto-scroll target */}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Unified Floating Prompt Composer */}
-            <form onSubmit={handleSendChatMessage} className="p-3 bg-transparent shrink-0">
-              <div className="rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-white/15 focus-within:border-blue-500/70 focus-within:shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)] p-3 transition-all space-y-2.5">
-                {/* Segmented Pill Mode Selector: Auto / Chat / Build */}
-                <div className="flex items-center justify-between text-[11px]">
-                  <div className="bg-slate-950/90 p-1 rounded-xl border border-white/10 inline-flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setPromptMode('auto')}
-                      className={`rounded-lg px-3 py-1 font-medium transition-all cursor-pointer ${
-                        promptMode === 'auto'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-100'
-                      }`}
-                    >
-                      {isAr ? 'تلقائي' : 'Auto'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPromptMode('chat')}
-                      className={`rounded-lg px-3 py-1 font-medium transition-all cursor-pointer ${
-                        promptMode === 'chat'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-100'
-                      }`}
-                    >
-                      {isAr ? 'محادثة' : 'Chat'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPromptMode('build')}
-                      className={`rounded-lg px-3 py-1 font-medium transition-all cursor-pointer ${
-                        promptMode === 'build'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-100'
-                      }`}
-                    >
-                      {isAr ? 'بناء' : 'Build'}
-                    </button>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {promptMode === 'chat'
-                      ? (isAr ? 'محادثة وشرح فقط' : 'Chat & Q&A only')
-                      : promptMode === 'build'
-                      ? (isAr ? 'بناء وتعديل الكود' : 'Build & edit code')
-                      : (isAr ? 'توجيه ذكي تلقائي' : 'Smart auto-routing')}
-                  </span>
-                </div>
-
-                {/* Textarea without double-border */}
+            <form onSubmit={handleSendChatMessage} className="p-3 bg-[#0c0e15] border-t border-white/5 shrink-0 z-10">
+              <div className="rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-white/15 focus-within:border-blue-500/70 focus-within:shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)] p-3 transition-all space-y-2">
+                {/* Auto-expanding Textarea on Top (Clear, Spacious, and Responsive) */}
                 <textarea
+                  ref={chatTextareaRef}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -852,45 +827,87 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       handleSendChatMessage();
                     }
                   }}
-                  rows={3}
+                  rows={2}
                   placeholder={
                     editingMsgId
                       ? (isAr ? 'عدّل رسالتك ثم اضغط إرسال...' : 'Edit your message and press Send...')
                       : promptMode === 'chat'
-                      ? (isAr ? 'اسأل سؤالاً تقنياً أو اكتب رسالة ترحيبية...' : 'Ask a question or send a message...')
+                      ? (isAr ? 'اسأل سؤالاً تقنياً أو اطلب شرحاً...' : 'Ask a technical question or discuss...')
                       : promptMode === 'build'
                       ? (isAr ? 'صف ما تريد بناءه أو تعديله في المشروع...' : 'Describe what to build or modify in the project...')
                       : (isAr ? 'اسأل سؤالاً أو اطلب بناء وتعديل المشروع...' : 'Ask a question or request to build/modify...')
                   }
-                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs leading-relaxed resize-none focus:outline-none"
+                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs leading-relaxed resize-none focus:outline-none min-h-[50px] max-h-[180px] overflow-y-auto"
                 />
 
-                {/* Bottom Action Row with glowing CTA button inside composer */}
-                <div className="flex items-center justify-between pt-1 border-t border-white/5">
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {isAr ? 'Enter للإرسال · Shift+Enter لسطر جديد' : 'Enter to send · Shift+Enter for newline'}
-                  </span>
-                  {isGenerating ? (
+                {/* Bottom Action Row: Mode Pill Selector (Auto/Chat/Build) beside newly styled Send CTA */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5">
+                  {/* Segmented Pill Mode Selector: Auto / Chat / Build moved to bottom toolbar */}
+                  <div className="bg-slate-950/90 p-0.5 rounded-xl border border-white/10 inline-flex items-center gap-0.5 shrink-0">
                     <button
                       type="button"
-                      onClick={onStopGeneration}
-                      className="btn btn-danger btn-sm h-8 px-3 rounded-xl text-xs font-semibold"
-                      title={isAr ? 'إيقاف التوليد' : 'Stop Generation'}
+                      onClick={() => setPromptMode('auto')}
+                      title={isAr ? 'توجيه ذكي تلقائي' : 'Smart auto-routing'}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
+                        promptMode === 'auto'
+                          ? 'bg-blue-600 text-white shadow-sm font-semibold'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
                     >
-                      <StopCircle className="w-3.5 h-3.5 stroke-[2]" />
-                      <span>{isAr ? 'إيقاف' : 'Stop'}</span>
+                      {isAr ? 'تلقائي' : 'Auto'}
                     </button>
-                  ) : (
                     <button
-                      type="submit"
-                      disabled={!chatInput.trim()}
-                      className="h-8 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_0_20px_-4px_rgba(79,70,229,0.6)] text-white font-semibold text-xs inline-flex items-center gap-1.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                      title={isAr ? 'إرسال الطلب' : 'Send Request'}
+                      type="button"
+                      onClick={() => setPromptMode('chat')}
+                      title={isAr ? 'محادثة وشرح فقط' : 'Chat & Q&A only'}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
+                        promptMode === 'chat'
+                          ? 'bg-blue-600 text-white shadow-sm font-semibold'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
                     >
-                      <Send className="w-3.5 h-3.5 stroke-[2]" />
-                      <span>{isAr ? 'إرسال' : 'Send'}</span>
+                      {isAr ? 'محادثة' : 'Chat'}
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => setPromptMode('build')}
+                      title={isAr ? 'بناء وتعديل الكود' : 'Build & edit code'}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
+                        promptMode === 'build'
+                          ? 'bg-blue-600 text-white shadow-sm font-semibold'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {isAr ? 'بناء' : 'Build'}
+                    </button>
+                  </div>
+
+                  {/* Send or Stop Action Button (Modern High-Contrast Luminous Aesthetic) */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isGenerating ? (
+                      <button
+                        type="button"
+                        onClick={onStopGeneration}
+                        className="h-8 px-3 rounded-xl bg-rose-600/90 hover:bg-rose-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_0_15px_-3px_rgba(225,29,72,0.6)] text-white font-semibold text-xs inline-flex items-center gap-1.5 transition-all duration-200 cursor-pointer"
+                        title={isAr ? 'إيقاف التوليد' : 'Stop Generation'}
+                      >
+                        <StopCircle className="w-3.5 h-3.5 stroke-[2.2]" />
+                        <span>{isAr ? 'إيقاف' : 'Stop'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={!chatInput.trim()}
+                        className="h-8.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:via-indigo-500 hover:to-violet-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35),0_0_20px_-3px_rgba(79,70,229,0.7)] text-white font-semibold text-xs inline-flex items-center gap-2 transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] disabled:opacity-30 disabled:hover:scale-100 disabled:shadow-none cursor-pointer group"
+                        title={isAr ? 'إرسال الطلب (Enter)' : 'Send Request (Enter)'}
+                      >
+                        <span>{isAr ? 'إرسال' : 'Send'}</span>
+                        <div className="w-4 h-4 rounded-md bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 rtl:group-hover:-translate-x-0.5">
+                          <Send className="w-2.5 h-2.5 text-white stroke-[2.4]" />
+                        </div>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </form>

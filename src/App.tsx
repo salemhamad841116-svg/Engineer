@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Bot,
   Server,
+  Sparkles,
 } from 'lucide-react';
 import {
   AIAgentProfile,
@@ -529,10 +530,15 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setActiveView('home')}
-                className="flex items-center gap-0.5 text-lg font-extrabold tracking-tight text-white cursor-pointer"
+                className="flex items-center gap-2 text-base font-extrabold tracking-tight text-white cursor-pointer group"
+                title={isAr ? 'منصة Engineer' : 'Engineer Platform'}
               >
-                <span className="italic font-black">bolt</span>
-                <span className="text-xs font-semibold text-blue-400">.new</span>
+                <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center shadow-[0_0_12px_rgba(59,130,246,0.5)]">
+                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="font-extrabold tracking-tight text-white group-hover:text-blue-400 transition-colors">
+                  Engineer
+                </span>
               </button>
             )}
 
