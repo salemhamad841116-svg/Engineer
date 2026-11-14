@@ -4,6 +4,7 @@
 // Identifies all affected callers and call sites before committing changes.
 // ==============================================================================
 
+import crypto from 'node:crypto';
 import { ProjectFile } from '../../types/platform';
 
 export interface CodeSymbol {
@@ -391,3 +392,74 @@ export function calculateSymbolImpact(
 function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+// -----------------------------------------------------------------------------
+// 4. Incremental Symbol & AST Cache Engine (Fast Re-indexing)
+// -----------------------------------------------------------------------------
+
+export interface CachedFileEntry {
+  filePath: string;
+  contentHash: string;
+  symbols: CodeSymbol[];
+  indexedAt: string;
+}
+
+export class IncrementalSymbolCache {
+  private static cache: Map<string, CachedFileEntry> = new Map();
+
+  public static hashContent(content: string): string {
+    return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
+  }
+
+  public static getSymbolsForFile(filePath: string, content: string): { symbols: CodeSymbol[]; wasCached: boolean } {
+    const hash = this.hashContent(content);
+    const existing = this.cache.get(filePath);
+
+    if (existing && existing.contentHash === hash) {
+      return { symbols: existing.symbols, wasCached: true };
+    }
+
+    const freshlyParsed = parseSymbolsInFile(filePath, content);
+    this.cache.set(filePath, {
+      filePath,
+      contentHash: hash,
+      symbols: freshlyParsed,
+      indexedAt: new Date().toISOString(),
+    });
+
+    return { symbols: freshlyParsed, wasCached: false };
+  }
+
+  public static indexProjectFilesIncrementally(files: ProjectFile[]): {
+    allSymbols: CodeSymbol[];
+    reIndexedFiles: string[];
+    cachedFiles: string[];
+    totalSymbols: number;
+  } {
+    const allSymbols: CodeSymbol[] = [];
+    const reIndexedFiles: string[] = [];
+    const cachedFiles: string[] = [];
+
+    for (const f of files) {
+      const { symbols, wasCached } = this.getSymbolsForFile(f.path, f.content);
+      allSymbols.push(...symbols);
+      if (wasCached) {
+        cachedFiles.push(f.path);
+      } else {
+        reIndexedFiles.push(f.path);
+      }
+    }
+
+    return {
+      allSymbols,
+      reIndexedFiles,
+      cachedFiles,
+      totalSymbols: allSymbols.length,
+    };
+  }
+
+  public static clearCache(): void {
+    this.cache.clear();
+  }
+}
+

@@ -316,7 +316,70 @@ export function generateAppFiles(
   }
 
   // Generate full Notes application (or specialized category)
-  return buildNotesApplicationFiles(spec, plan);
+  const files = buildNotesApplicationFiles(spec, plan);
+
+  // Pre-verify code syntax before committing files
+  for (const [filename, content] of Object.entries(files)) {
+    if (filename.endsWith('.js') || filename.endsWith('.json')) {
+      const lang = filename.endsWith('.json') ? 'json' : 'javascript';
+      const check = verifyCodeSyntax(content, lang);
+      if (!check.valid) {
+        console.warn(`[Syntax Pre-verification Warning] in ${filename}: ${check.error}`);
+      }
+    }
+  }
+
+  return files;
+}
+
+export function verifyCodeSyntax(content: string, language: 'javascript' | 'typescript' | 'html' | 'json'): { valid: boolean; error?: string } {
+  if (language === 'json') {
+    try {
+      JSON.parse(content);
+      return { valid: true };
+    } catch (e: unknown) {
+      return { valid: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  if (language === 'javascript' || language === 'typescript') {
+    const stack: string[] = [];
+    const pairs: Record<string, string> = { ')': '(', '}': '{', ']': '[' };
+    let inString: string | null = null;
+    let isEscaped = false;
+
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      if (inString) {
+        if (isEscaped) {
+          isEscaped = false;
+        } else if (char === '\\') {
+          isEscaped = true;
+        } else if (char === inString) {
+          inString = null;
+        }
+        continue;
+      }
+
+      if (char === '"' || char === "'" || char === '`') {
+        inString = char;
+        continue;
+      }
+
+      if (char === '(' || char === '{' || char === '[') {
+        stack.push(char);
+      } else if (char === ')' || char === '}' || char === ']') {
+        const top = stack.pop();
+        if (top !== pairs[char]) {
+          return { valid: false, error: `Unbalanced bracket: expected '${pairs[char]}' but encountered '${char}' at index ${i}` };
+        }
+      }
+    }
+
+    if (stack.length > 0) {
+      return { valid: false, error: `Unclosed syntax tokens: ${stack.join(', ')}` };
+    }
+  }
+  return { valid: true };
 }
 
 function buildNotesApplicationFiles(spec: ExtractedAppSpec, _plan: InternalAppPlan): Record<string, string> {

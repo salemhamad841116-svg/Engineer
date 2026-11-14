@@ -339,6 +339,13 @@ runStep('Universal AI Tool Execution Engine Gate (10 Pillars & 6 Core Tools)', (
   execSync('node server_backend/tests/universalToolEngineSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 25: Core Engine Hardening & Autonomous Repair Benchmark Gate
+// ----------------------------------------------------
+runStep('Core Engine Hardening & Autonomous Repair Benchmark Gate (15 Verification Gates & 5-Stage Benchmark)', () => {
+  execSync('node server_backend/tests/coreEngineHardeningSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

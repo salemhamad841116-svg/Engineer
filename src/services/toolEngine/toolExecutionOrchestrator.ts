@@ -8,6 +8,14 @@ import crypto from 'node:crypto';
 import { Project } from '../../types/platform';
 import { initializeCoreTools } from './tools';
 import { ToolExecutionContext, universalToolRegistry } from './universalToolRegistry';
+import {
+  IntelligentPlanningEngine,
+  RootCauseAutoRepairEngine,
+  ProjectContextMemoryEngine,
+  PreviewDeliveryEngine,
+  TaskDAG,
+  ClassifiedDiagnosis,
+} from '../engineering/hardenedCoreEngines';
 
 export type OrchestratorTaskStatus =
   | 'QUEUED'
@@ -45,6 +53,8 @@ export interface OrchestrationTaskRecord {
   steps: OrchestrationStep[];
   toolsInvoked: string[];
   repairAttempts: number;
+  taskDAG?: TaskDAG;
+  diagnoses?: ClassifiedDiagnosis[];
   initialSnapshotId?: string;
   finalSnapshotId?: string;
   customerMessage: string;
@@ -105,9 +115,17 @@ export class ToolExecutionOrchestrator {
 
     try {
       // -----------------------------------------------------------------------
-      // Step 1: Planning & Safety Snapshot (versions.create_snapshot)
+      // Step 1: Planning & Safety Snapshot (versions.create_snapshot + DAG)
       // -----------------------------------------------------------------------
-      this.transition(task, 'PLANNING', 'جارٍ دراسة متطلبات المشروع وأخذ نقطة استعادة آمنة...');
+      this.transition(task, 'PLANNING', 'جارٍ دراسة متطلبات المشروع وبناء شجرة المهام وأخذ نقطة استعادة آمنة...');
+
+      const taskDAG = IntelligentPlanningEngine.buildTaskDAG({
+        projectId: params.projectId,
+        prompt: params.prompt,
+        existingFiles: params.project.files,
+      });
+      const feasibility = IntelligentPlanningEngine.validatePlanFeasibility(taskDAG);
+      task.taskDAG = taskDAG;
 
       const snapRes = await universalToolRegistry.executeTool(
         'versions.create_snapshot',
@@ -116,14 +134,26 @@ export class ToolExecutionOrchestrator {
       );
       if (snapRes.success && snapRes.result) {
         task.initialSnapshotId = (snapRes.result as any).snapshotId;
+        ProjectContextMemoryEngine.registerStableSnapshot(params.projectId, task.initialSnapshotId!);
       }
+
+      ProjectContextMemoryEngine.appendJournal({
+        projectId: params.projectId,
+        currentPhase: 'PLANNING',
+        lastCompletedTask: 'Task DAG synthesis & feasibility validation',
+        snapshotHash: task.initialSnapshotId || 'init_snap',
+        technicalDecisions: [
+          `Decomposed into ${taskDAG.nodes.length} DAG nodes`,
+          `Feasibility: ${feasibility.feasible ? 'Passed' : 'Issues detected'}`,
+        ],
+      });
 
       this.addStep(task, {
         phase: 'PLANNING',
         toolId: 'versions.create_snapshot',
-        actionDescription: 'Created initial safety snapshot',
+        actionDescription: `Built task DAG (${taskDAG.nodes.length} nodes) and created initial safety snapshot`,
         status: 'success',
-        customerStatusArabic: 'تم إنشاء نقطة استعادة آمنة للمشروع.',
+        customerStatusArabic: 'تم تحليل متطلبات المشروع وبناء خطة العمل وحفظ نقطة استعادة آمنة.',
       });
 
       // -----------------------------------------------------------------------
@@ -174,7 +204,7 @@ export class ToolExecutionOrchestrator {
       }
 
       // -----------------------------------------------------------------------
-      // Step 4: Verification & Automated Browser Testing (browser.launch_test)
+      // Step 4 & 5: Verification & Taxonomy-Driven Auto-Repair Loop
       // -----------------------------------------------------------------------
       this.transition(task, 'VERIFYING', 'جارٍ اختبار الواجهة والتطبيق والتأكد من استمرار البيانات...');
 
@@ -184,29 +214,48 @@ export class ToolExecutionOrchestrator {
         context
       );
 
-      // -----------------------------------------------------------------------
-      // Step 5: Self-Healing & Auto-Repair Loop (if errors detected)
-      // -----------------------------------------------------------------------
-      if (!testRes.success || !(testRes.result as any)?.passed) {
+      const maxAttempts = 3;
+      task.diagnoses = [];
+
+      while ((!testRes.success || !(testRes.result as any)?.passed) && task.repairAttempts < maxAttempts) {
         task.repairAttempts += 1;
+        const rawErr = testRes.error || (testRes.result as any)?.error || 'Verification check failed';
+
+        // 1. Root Cause Diagnosis & Error Taxonomy
+        const diagnosis = RootCauseAutoRepairEngine.classifyAndDiagnose(rawErr, params.project.files);
+        task.diagnoses.push(diagnosis);
+
         this.addStep(task, {
           phase: 'VERIFYING',
           toolId: 'browser.launch_test',
-          actionDescription: 'Initial test detected issues; initiating self-healing auto-repair',
+          actionDescription: `Test attempt #${task.repairAttempts} detected issue: [${diagnosis.category}]`,
           status: 'failed',
-          customerStatusArabic: 'ظهرت مشكلة غير متوقعة، وجارٍ تشخيصها وإصلاحها تلقائياً...',
+          customerStatusArabic: `ظهرت مشكلة (${diagnosis.category})، وجارٍ تشخيصها وإصلاحها تلقائياً (محاولة ${task.repairAttempts}/${maxAttempts})...`,
         });
 
-        // Auto-repair action: patch files to fix any script or layout issue
-        if (params.project.files && params.project.files.length > 0) {
-          const mainHtml = params.project.files.find((f) => f.name.endsWith('.html'));
+        // 2. Surgical Patch Generation
+        const surgicalPatch = RootCauseAutoRepairEngine.generateSurgicalPatch(diagnosis, params.project.files || []);
+        if (surgicalPatch) {
+          await universalToolRegistry.executeTool(
+            'files.patch',
+            {
+              filePath: surgicalPatch.filePath,
+              targetContent: surgicalPatch.targetContent,
+              replacementContent: surgicalPatch.replacementContent,
+              forceOverwriteDirty: true,
+            },
+            context
+          );
+        } else {
+          // Fallback if no surgical patch could be constructed
+          const mainHtml = params.project.files?.find((f) => f.name.endsWith('.html'));
           if (mainHtml) {
             await universalToolRegistry.executeTool(
               'files.patch',
               {
                 filePath: mainHtml.path,
                 targetContent: '</body>',
-                replacementContent: '<script>console.log("Engineer self-healing applied");</script>\n</body>',
+                replacementContent: '<script>console.log("Engineer auto-repair fallback applied");</script>\n</body>',
                 forceOverwriteDirty: true,
               },
               context
@@ -214,7 +263,7 @@ export class ToolExecutionOrchestrator {
           }
         }
 
-        // Re-run verification after repair
+        // 3. Re-run verification after patch
         testRes = await universalToolRegistry.executeTool(
           'browser.launch_test',
           { expectedElements: ['title', 'body'] },
@@ -222,16 +271,40 @@ export class ToolExecutionOrchestrator {
         );
       }
 
+      const verificationPassed = Boolean(testRes.success && (testRes.result as any)?.passed);
+
+      if (!verificationPassed) {
+        // Auto-Rollback triggered via PreviewDeliveryEngine
+        const deliveryResult = PreviewDeliveryEngine.processPreviewAndDelivery({
+          projectId: params.projectId,
+          currentSnapshotId: task.initialSnapshotId || 'snapshot_err',
+          verificationPassed: false,
+          appTitle: params.prompt.slice(0, 30),
+        });
+
+        this.addStep(task, {
+          phase: 'VERIFYING',
+          toolId: 'versions.rollback',
+          actionDescription: 'Verification unrecoverable after max attempts; rolled back to last stable snapshot',
+          status: 'failed',
+          customerStatusArabic: deliveryResult.customerMessageArabic,
+        });
+
+        this.transition(task, 'FAILED', deliveryResult.customerMessageArabic);
+        task.error = `Failed to pass verification after ${task.repairAttempts} attempts. Rollback executed.`;
+        return task;
+      }
+
       this.addStep(task, {
         phase: 'VERIFYING',
         toolId: 'browser.launch_test',
-        actionDescription: 'Browser verification passed with zero console errors',
+        actionDescription: `Verification passed successfully with zero errors (repair attempts: ${task.repairAttempts})`,
         status: 'success',
         customerStatusArabic: 'اجتاز التطبيق اختبارات المتصفح وفحص الأخطاء بنجاح.',
       });
 
       // -----------------------------------------------------------------------
-      // Step 6: Final Rollback Snapshot & Task Completion
+      // Step 6: Safe Preview & Delivery Completion
       // -----------------------------------------------------------------------
       const finalSnap = await universalToolRegistry.executeTool(
         'versions.create_snapshot',
@@ -242,9 +315,15 @@ export class ToolExecutionOrchestrator {
         task.finalSnapshotId = (finalSnap.result as any).snapshotId;
       }
 
-      this.transition(task, 'COMPLETED', 'اكتمل تنفيذ المشروع والمعاينة جاهزة للاستخدام.');
-      task.customerMessage = 'اكتمل بناء التطبيق بنجاح واجتازت الوظائف اختبارات التشغيل والمعاينة متاحة الآن.';
+      const delivery = PreviewDeliveryEngine.processPreviewAndDelivery({
+        projectId: params.projectId,
+        currentSnapshotId: task.finalSnapshotId || task.initialSnapshotId || 'snap_final',
+        verificationPassed: true,
+        appTitle: params.prompt.slice(0, 30),
+      });
 
+      this.transition(task, 'COMPLETED', delivery.customerMessageArabic);
+      task.customerMessage = delivery.customerMessageArabic;
       return task;
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
