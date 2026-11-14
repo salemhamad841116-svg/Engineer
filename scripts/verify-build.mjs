@@ -346,6 +346,13 @@ runStep('Core Engine Hardening & Autonomous Repair Benchmark Gate (15 Verificati
   execSync('node server_backend/tests/coreEngineHardeningSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 26: Interactive Testing & Post-Build Lifecycle Gate (11 Acceptance Tests A-K)
+// ----------------------------------------------------
+runStep('Interactive Testing & Post-Build Lifecycle Gate (11 Acceptance Tests A-K)', () => {
+  execSync('node server_backend/tests/interactiveTestingAndLifecycleSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

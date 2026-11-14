@@ -397,7 +397,7 @@ export class RootCauseAutoRepairEngine {
       confidence = 0.95;
     }
     // 2. DOM Selector Not Found
-    else if (/selector|queryselector|getElementById|element not found|null is not an object|cannot read property of null/i.test(msg) && /element|dom|button|input|#|\./i.test(msg)) {
+    else if (/selector|queryselector|getElementById|not found|null is not an object|cannot read property of null/i.test(msg) && /element|dom|button|input|#|\./i.test(msg)) {
       category = 'DOM_SELECTOR_NOT_FOUND';
       rootCauseAnalysisArabic = 'العنصر المستهدف في واجهة المستخدم (DOM Element) غير موجود أو معرّفه (ID/Class) مختلف عن المستدعى في السكربت.';
       recommendedPatchStrategy = 'تطابق معرّف العنصر في HTML مع المحدد المستدعى في ملف JavaScript، أو إنشاء العنصر الناقص.';

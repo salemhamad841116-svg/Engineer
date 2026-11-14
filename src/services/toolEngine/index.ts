@@ -9,6 +9,8 @@ export * from './toolAuditService';
 export * from './tools/index';
 export * from '../engineering/hardenedCoreEngines';
 export * from '../engineering/codeIntelligenceEngine';
+export * from '../engineering/interactiveTestingEngine';
+export * from '../engineering/postBuildLifecycleEngine';
 
 import { initializeCoreTools } from './tools/index';
 initializeCoreTools();
