@@ -62,6 +62,12 @@ import {
 import {
   synthesizeCodeFromDesign,
 } from './src/services/engineering/designToCodeEngine';
+import { universalToolRegistry } from './src/services/toolEngine/universalToolRegistry';
+import { ToolExecutionOrchestrator } from './src/services/toolEngine/toolExecutionOrchestrator';
+import { ToolAuditService } from './src/services/toolEngine/toolAuditService';
+import { initializeCoreTools } from './src/services/toolEngine/tools';
+
+initializeCoreTools();
 import { createRequire } from 'module';
 
 const serverRequire = createRequire(import.meta.url);
@@ -908,6 +914,90 @@ CRITICAL RULES:
     }
     const synthesized = synthesizeCodeFromDesign(spec);
     res.json({ synthesized, discrepancyReport: synthesized.discrepancyReport });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PHASE 3 — UNIVERSAL AI TOOL EXECUTION ENGINE API ENDPOINTS
+  // ---------------------------------------------------------------------------
+
+  // 23. List Tools Registry
+  app.get('/api/tools/registry', (_req, res) => {
+    const tools = universalToolRegistry.listTools();
+    res.json({ total: tools.length, tools });
+  });
+
+  // 24. Execute Single Tool with Validation & RBAC
+  app.post('/api/tools/execute', async (req, res) => {
+    const { toolId, params, projectId, userRole, approvalToken } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const context = {
+      projectId: project.id,
+      userId: state.settings.userEmail || 'admin@cloudstudio.dev',
+      userRole: (userRole || 'Admin') as 'Owner' | 'Admin' | 'Editor' | 'Viewer',
+      callerModel: req.body?.callerModel || 'universal-engine',
+      approvalToken,
+      project,
+    };
+
+    const outcome = await universalToolRegistry.executeTool(toolId, params || {}, context);
+    if (!outcome.success) {
+      return res.status(400).json(outcome);
+    }
+    project.updatedAt = new Date().toISOString();
+    logActivity(`Executed tool '${toolId}'`, project.name);
+    res.json(outcome);
+  });
+
+  // 25. Tools Dashboard & Metrics (Super Admin)
+  app.get('/api/tools/stats', (_req, res) => {
+    const summary = ToolAuditService.getDashboardSummary();
+    res.json(summary);
+  });
+
+  // 26. Toggle Tool Enablement (Super Admin)
+  app.post('/api/tools/toggle', (req, res) => {
+    const { toolId, enabled } = req.body;
+    const success = ToolAuditService.toggleTool(toolId, Boolean(enabled));
+    if (!success) {
+      return res.status(404).json({ error: `Tool '${toolId}' not found.` });
+    }
+    logActivity(`Toggled tool '${toolId}' to ${enabled ? 'ENABLED' : 'DISABLED'}`, 'Tool Registry');
+    res.json({ success: true, toolId, enabled: Boolean(enabled) });
+  });
+
+  // 27. Autonomous Orchestrator Task Execution
+  app.post('/api/orchestrator/execute-task', async (req, res) => {
+    const { projectId, prompt, provider, model } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const task = await ToolExecutionOrchestrator.executeTask({
+      projectId: project.id,
+      userId: state.settings.userEmail || 'admin@cloudstudio.dev',
+      userRole: 'Admin',
+      prompt: prompt || 'Build application',
+      project,
+      provider: provider || 'gemini',
+      model: model || 'gemini-2.5-pro',
+    });
+
+    logActivity(`Orchestrated task '${task.taskId}': ${task.status}`, project.name);
+    res.json({ task, project });
+  });
+
+  // 28. Get Orchestrator Task Status
+  app.get('/api/orchestrator/task/:taskId', (req, res) => {
+    const task = ToolExecutionOrchestrator.getTask(req.params.taskId);
+    if (!task) {
+      return res.status(404).json({ error: 'Orchestrator task not found' });
+    }
+    res.json({ task });
   });
 
   const httpServer = http.createServer(app);

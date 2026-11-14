@@ -332,6 +332,13 @@ runStep('Phase 2 Advanced Software Engineering & Professional Delivery Gate (15 
   execSync('node server_backend/tests/phase2AdvancedEngineeringSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 24: Universal AI Tool Execution Engine Gate (10 Pillars & 6 Core Tools)
+// ----------------------------------------------------
+runStep('Universal AI Tool Execution Engine Gate (10 Pillars & 6 Core Tools)', () => {
+  execSync('node server_backend/tests/universalToolEngineSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 
