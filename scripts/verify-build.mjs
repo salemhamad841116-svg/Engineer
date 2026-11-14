@@ -317,6 +317,14 @@ runStep('Phase 15 Enterprise Super Admin Control Center Gate (14 Acceptance Crit
   execSync('node server_backend/tests/enterpriseSuperAdminSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 22: Autonomous App Builder & Customer Response System (Scenarios A through F)
+// ----------------------------------------------------
+runStep('Autonomous App Builder & Customer Response Gate (Scenarios A-F & Zero Leaks)', () => {
+  execSync('node server_backend/tests/autonomousAppBuilderSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+  execSync('node server_backend/tests/chatIntentAndWorkspaceSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

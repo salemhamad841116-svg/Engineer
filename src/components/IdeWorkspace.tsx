@@ -1738,7 +1738,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   key={previewRefreshKey}
                   title={`Live Preview — ${project.name}`}
                   srcDoc={compiledPreviewHtml}
-                  sandbox="allow-scripts"
+                  sandbox="allow-scripts allow-forms allow-modals allow-same-origin allow-downloads"
                   className="w-full h-full border-0"
                 />
               </div>

@@ -15,10 +15,17 @@ import {
   buildDeployment17Steps,
 } from './src/utils/platformEngine';
 import { getInitialButtonRegistry, runAutomatedRegistryVerification } from './src/utils/buttonRegistry';
-import { AIAgentProfile, ButtonRegistryEntry, Project } from './src/types/platform';
+import { AIAgentProfile, ButtonRegistryEntry, Project, ProjectFile } from './src/types/platform';
 import { attachBackendAndDatabase } from './src/backendBridge';
 import { detectIntent, PromptMode } from './src/utils/intentRouter';
 import { formatUserFacingResponse } from './src/utils/responseFormatter';
+import {
+  analyzeAppRequest,
+  generateInternalPlan,
+  generateAppFiles,
+  verifyGeneratedApp,
+  formatCustomerLifecycleResponse,
+} from './src/utils/autonomousAppBuilder';
 import { createRequire } from 'module';
 
 const serverRequire = createRequire(import.meta.url);
@@ -401,70 +408,81 @@ CRITICAL RULES:
     }
 
     // -------------------------------------------------------------
-    // BUILD MODE: Code generation, file editing, and live preview updates
+    // BUILD MODE: Autonomous App Builder & Real Application Synthesis
     // -------------------------------------------------------------
-    if (ai) {
-      try {
-        const config: { systemInstruction: string; thinkingConfig?: { thinkingLevel: ThinkingLevel } } = {
-          systemInstruction: `You are the AI Engineer inside Engineer Studio.
-The user is requesting to build or modify the project "${project.name}" (${project.techStack}).
-Respond with a clear, concise, user-facing summary of the changes implemented and what feature was added.
-CRITICAL RULES:
-- DO NOT mention "Chief Architect", "المدير الرئيسي", or any internal agent names.
-- DO NOT output internal scratchpad notes or template dumps like "1. تحليل الطلب والتخطيط: تمت قراءة بنية المشروع".
-- Provide an authentic, professional engineering summary of the outcome for the user.`,
-        };
-        if (activeModel === 'gemini-3.8-flash') {
-          config.thinkingConfig = {
-            thinkingLevel: thinkingMode === 'deep' || thinkingMode === 'plan' ? ThinkingLevel.HIGH : ThinkingLevel.LOW,
-          };
-        }
+    const spec = analyzeAppRequest(cleanPrompt, project);
+    const plan = generateInternalPlan(spec, project);
+    const generatedFiles = generateAppFiles(spec, plan, project.files);
 
-        const response = await ai.models.generateContent({
-          model: activeModel,
-          contents: cleanPrompt,
-          config,
-        });
-        aiReplyText = response.text || '';
-      } catch (err: unknown) {
-        console.warn('Gemini Build API fallback triggered:', err instanceof Error ? err.message : String(err));
+    // Apply real files to project
+    const modifiedFilePaths: string[] = [];
+    for (const [fileName, fileContent] of Object.entries(generatedFiles)) {
+      const existingFile = project.files.find((f) => f.name === fileName || f.path === '/' + fileName);
+      if (existingFile) {
+        existingFile.previousContent = existingFile.content;
+        existingFile.content = fileContent;
+        existingFile.size = fileContent.length;
+        existingFile.updatedAt = now;
+        modifiedFilePaths.push(existingFile.path);
+      } else {
+        const newFile: ProjectFile = {
+          id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: fileName,
+          path: '/' + fileName,
+          folder: 'root',
+          content: fileContent,
+          language: fileName.endsWith('.html') ? 'html' : fileName.endsWith('.css') ? 'css' : 'javascript',
+          size: fileContent.length,
+          updatedAt: now,
+        };
+        project.files.push(newFile);
+        modifiedFilePaths.push(newFile.path);
       }
     }
 
-    if (!aiReplyText) {
-      aiReplyText = isAr
-        ? `تم بنجاح تنفيذ وتطبيق التعديل المطلوب: "${cleanPrompt}" في ملفات المشروع وتحديث المعاينة المباشرة.`
-        : `Successfully implemented and applied your requested changes: "${cleanPrompt}" to the project files and refreshed live preview.`;
+    const indexFile = project.files.find((f) => f.name === 'index.html');
+    if (indexFile) {
+      project.activeFileId = indexFile.id;
+    }
+
+    // Run automated verification on generated files
+    const verification = verifyGeneratedApp(generatedFiles, plan);
+    project.tests = verification.testResults;
+    project.status = verification.allPassed ? 'ready' : 'building';
+
+    // Format customer-facing response based on build outcome
+    if (spec.intent === 'fix_bug') {
+      aiReplyText = formatCustomerLifecycleResponse('bug_repaired', {
+        spec,
+        testsCount: verification.testResults.length,
+        passedTestsCount: verification.testResults.filter((t) => t.status === 'passed').length,
+      });
+    } else if (verification.allPassed) {
+      aiReplyText = formatCustomerLifecycleResponse('completed', {
+        spec,
+        testsCount: verification.testResults.length,
+        passedTestsCount: verification.testResults.filter((t) => t.status === 'passed').length,
+      });
+    } else {
+      aiReplyText = formatCustomerLifecycleResponse('failed', {
+        spec,
+        failedFeatures: verification.testResults.filter((t) => t.status !== 'passed').map((t) => t.name),
+      });
     }
 
     aiReplyText = formatUserFacingResponse(aiReplyText);
-
-    // Apply real code/file modification in Build Mode
-    const appFile = project.files.find((f) => f.name === 'App.tsx') || project.files[0];
-    if (appFile) {
-      appFile.previousContent = appFile.content;
-      const generatedComponentSnippet = `\n// AI Feature Added (${now}): ${cleanPrompt.slice(0, 80)}\n`;
-      if (/أزرق|ازرق|blue/i.test(cleanPrompt)) {
-        appFile.content = appFile.content.replace(/bg-blue-\d+|bg-\w+-\d+/g, 'bg-blue-600') + generatedComponentSnippet;
-      } else if (!appFile.content.includes(cleanPrompt.slice(0, 30))) {
-        appFile.content = appFile.content.replace(
-          /<p className="text-sm text-slate-400">([^<]*)<\/p>/,
-          `<p className="text-sm text-slate-400">${cleanPrompt.replace(/["<>]/g, '')}</p>`
-        ) + generatedComponentSnippet;
-      }
-      appFile.updatedAt = now;
-      appFile.size = appFile.content.length;
-    }
 
     // Keep internal agent operations in background logs (Dev Mode & Admin view)
     selectedAgent.status = 'completed';
     selectedAgent.operationsLog.unshift({
       time: now,
       action: `Executed build prompt: "${cleanPrompt.slice(0, 50)}"`,
-      result: `Modified ${appFile?.path || '/src/App.tsx'} & verified build`,
+      result: `Generated ${modifiedFilePaths.length} files & verified build`,
     });
-    if (appFile && !selectedAgent.modifiedFiles.includes(appFile.path)) {
-      selectedAgent.modifiedFiles.unshift(appFile.path);
+    for (const p of modifiedFilePaths) {
+      if (!selectedAgent.modifiedFiles.includes(p)) {
+        selectedAgent.modifiedFiles.unshift(p);
+      }
     }
 
     state.settings.aiTokensUsed += 640;
@@ -472,7 +490,7 @@ CRITICAL RULES:
     project.serverLogs.unshift({
       time: now,
       level: 'success',
-      message: `[Engineer] Completed execution & updated ${appFile?.path || '/src/App.tsx'}`,
+      message: `[Engineer] Completed execution & updated ${modifiedFilePaths.join(', ')}`,
     });
 
     logActivity(`AI Engineer built feature on ${project.name}`, cleanPrompt.slice(0, 48), 'Engineer');
@@ -510,7 +528,7 @@ CRITICAL RULES:
       agent: selectedAgent,
       intent: 'build',
       subIntent: intentResult.subIntent,
-      filesModified: appFile ? [appFile.path] : [],
+      filesModified: modifiedFilePaths,
       tokensUsed: state.settings.aiTokensUsed,
     });
   });
