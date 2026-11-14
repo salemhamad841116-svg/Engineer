@@ -325,6 +325,13 @@ runStep('Autonomous App Builder & Customer Response Gate (Scenarios A-F & Zero L
   execSync('node server_backend/tests/chatIntentAndWorkspaceSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 23: Phase 2 Advanced Software Engineering & Professional Delivery Gate (15 Domains)
+// ----------------------------------------------------
+runStep('Phase 2 Advanced Software Engineering & Professional Delivery Gate (15 Domains & Lifecycle)', () => {
+  execSync('node server_backend/tests/phase2AdvancedEngineeringSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

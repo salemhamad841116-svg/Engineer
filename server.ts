@@ -26,6 +26,42 @@ import {
   verifyGeneratedApp,
   formatCustomerLifecycleResponse,
 } from './src/utils/autonomousAppBuilder';
+import {
+  calculateSymbolImpact,
+  buildProjectDependencyGraph,
+} from './src/services/engineering/codeIntelligenceEngine';
+import {
+  createRollbackSnapshot,
+  restoreRollbackSnapshot,
+  createModificationPlan,
+  applyModificationPlan,
+} from './src/services/engineering/safeModificationEngine';
+import {
+  unpackProjectZip,
+  createProjectFromImport,
+} from './src/services/engineering/projectImportModernizer';
+import {
+  generateMigration,
+  executeSafeMigration,
+  rollbackToDbBackup,
+} from './src/services/engineering/databaseArchitect';
+import {
+  generateSbomAndAuditDependencies,
+  auditProjectSecurity,
+  createHumanApprovalRequest,
+  resolveHumanApproval,
+  verifyHumanApprovalToken,
+} from './src/services/engineering/dependencySecurityAudit';
+import {
+  auditProjectPerformance,
+  auditProjectAccessibility,
+} from './src/services/engineering/performanceA11yAuditor';
+import {
+  exportStandaloneProjectZip,
+} from './src/services/engineering/projectExportEngine';
+import {
+  synthesizeCodeFromDesign,
+} from './src/services/engineering/designToCodeEngine';
 import { createRequire } from 'module';
 
 const serverRequire = createRequire(import.meta.url);
@@ -671,6 +707,207 @@ CRITICAL RULES:
     state.buttonRegistry = result.updatedEntries;
     logActivity('Executed automated E2E Button & Workflow Registry verification', result.summaryReport);
     res.json(result);
+  });
+
+  // ---------------------------------------------------------------------------
+  // PHASE 2 — ADVANCED SOFTWARE ENGINEERING API ENDPOINTS
+  // ---------------------------------------------------------------------------
+
+  // 12. Code Intelligence: Symbol Impact Analysis
+  app.post('/api/engineering/code-intelligence/impact', (req, res) => {
+    const { projectId, targetSymbol, modifiedFile } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const impact = calculateSymbolImpact(targetSymbol || '', modifiedFile || '', project.files);
+    res.json({ impact });
+  });
+
+  // 13. Code Intelligence: Dependency Graph
+  app.post('/api/engineering/code-intelligence/graph', (req, res) => {
+    const { projectId } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const graph = buildProjectDependencyGraph(project.files);
+    res.json({ graph });
+  });
+
+  // 14. Safe Code Modification & Surgical Diffs
+  app.post('/api/engineering/modify/safe', (req, res) => {
+    const { projectId, prompt, proposedChanges, forceOverwriteDirty } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const snapshot = createRollbackSnapshot(project, `Pre-modification checkpoint: ${prompt || 'Code Update'}`);
+    const firstChangedFile = proposedChanges ? Object.keys(proposedChanges)[0] || '' : '';
+    const impact = calculateSymbolImpact('', firstChangedFile, project.files);
+    const plan = createModificationPlan(prompt || 'Update Code', project, impact, proposedChanges || {});
+    
+    if (plan.requiresUserApproval && !forceOverwriteDirty) {
+      return res.status(409).json({
+        error: 'Requires user approval before proceeding',
+        plan,
+        snapshotId: snapshot.id,
+      });
+    }
+
+    const result = applyModificationPlan(plan, project, forceOverwriteDirty);
+    project.updatedAt = new Date().toISOString();
+    logActivity('Applied safe surgical modification plan', project.name);
+    res.json({ success: result.success, plan, snapshotId: snapshot.id, result });
+  });
+
+  // 15. Safe Code Modification: 1-Click Rollback
+  app.post('/api/engineering/modify/rollback', (req, res) => {
+    const { projectId, snapshotId } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const restoreResult = restoreRollbackSnapshot(project, snapshotId);
+    if (!restoreResult.success) {
+      return res.status(404).json({ error: restoreResult.message });
+    }
+    project.updatedAt = new Date().toISOString();
+    logActivity('Restored project from rollback checkpoint', snapshotId);
+    res.json({ success: true, restoreResult, project });
+  });
+
+  // 16. Existing Project Import (ZIP Base64)
+  app.post('/api/engineering/import/zip', async (req, res) => {
+    try {
+      const { projectName, zipBase64 } = req.body;
+      if (!zipBase64) {
+        return res.status(400).json({ error: 'Missing zipBase64 in request body' });
+      }
+      const zipBuffer = Buffer.from(zipBase64, 'base64');
+      const { files, report } = await unpackProjectZip(zipBuffer, projectName || 'imported-project');
+      const newProj = createProjectFromImport(projectName || 'imported-project', files, report);
+      state.projects.unshift(newProj);
+      logActivity('Imported external project via ZIP with health report', newProj.name);
+      res.status(201).json({ project: newProj, report });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // 17. Safe Database Migration with Pre-Backup & Human Gate
+  app.post('/api/engineering/database/migrate', (req, res) => {
+    const { projectId, name, upSql, downSql, humanApproved, approvalToken } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const migration = generateMigration(name || 'Schema Migration', upSql || '', downSql || '', project.dbTables);
+
+    if (migration.isDangerous && approvalToken) {
+      const tokenVerification = verifyHumanApprovalToken(approvalToken.requestId, approvalToken.token);
+      if (!tokenVerification.valid) {
+        return res.status(403).json({ error: tokenVerification.reason });
+      }
+    }
+
+    const result = executeSafeMigration(migration, project, humanApproved || false);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    project.updatedAt = new Date().toISOString();
+    logActivity('Executed safe database migration with pre-backup', migration.name);
+    res.json(result);
+  });
+
+  // 18. Database Rollback
+  app.post('/api/engineering/database/rollback', (req, res) => {
+    const { projectId, backupId } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const success = rollbackToDbBackup(project, backupId);
+    if (!success) {
+      return res.status(404).json({ error: 'Database backup snapshot not found' });
+    }
+    logActivity('Rolled back database to snapshot', backupId);
+    res.json({ success: true, project });
+  });
+
+  // 19. Comprehensive Project Audit (Security, SBOM, Performance, a11y)
+  app.post('/api/engineering/audit', (req, res) => {
+    const { projectId, simulatedUsers } = req.body;
+    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const sbomReport = generateSbomAndAuditDependencies(project.name, project.files);
+    const securityReport = auditProjectSecurity(project.files);
+    const performanceReport = auditProjectPerformance(project.files, Number(simulatedUsers) || 100);
+    const a11yReport = auditProjectAccessibility(project.files);
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      projectId: project.id,
+      projectName: project.name,
+      sbomReport,
+      securityReport,
+      performanceReport,
+      a11yReport,
+    });
+  });
+
+  // 20. Professional Standalone Project Export
+  app.post('/api/engineering/export', async (req, res) => {
+    try {
+      const { projectId } = req.body;
+      const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const exportResult = await exportStandaloneProjectZip(project);
+      logActivity('Exported clean standalone project ZIP archive', project.name);
+      res.json({
+        base64Zip: exportResult.base64Zip,
+        manifest: exportResult.manifest,
+        sha256: exportResult.sha256,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // 21. Human Safety Gates: Request & Resolve
+  app.post('/api/engineering/approvals/request', (req, res) => {
+    const { actionType, description, requester } = req.body;
+    const request = createHumanApprovalRequest(actionType, description, requester);
+    logActivity(`Created human safety gate approval request: ${actionType}`, request.id);
+    res.status(201).json({ request });
+  });
+
+  app.post('/api/engineering/approvals/respond', (req, res) => {
+    const { requestId, decision, resolverName, reason } = req.body;
+    const updated = resolveHumanApproval(requestId, decision, resolverName, reason);
+    if (!updated) {
+      return res.status(404).json({ error: 'Approval request not found' });
+    }
+    logActivity(`Human safety gate decision: ${decision}`, requestId);
+    res.json({ request: updated });
+  });
+
+  // 22. Visual Design-to-Code Synthesis & Discrepancy Report
+  app.post('/api/engineering/design-to-code', (req, res) => {
+    const { spec } = req.body;
+    if (!spec) {
+      return res.status(400).json({ error: 'Missing design spec in request body' });
+    }
+    const synthesized = synthesizeCodeFromDesign(spec);
+    res.json({ synthesized, discrepancyReport: synthesized.discrepancyReport });
   });
 
   const httpServer = http.createServer(app);
