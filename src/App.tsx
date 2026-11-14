@@ -693,13 +693,18 @@ export default function App() {
                   type="button"
                   onClick={item.onClick}
                   title={isAr ? item.labelAr : item.labelEn}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                  className={`w-full flex items-center gap-3 rounded-xl text-xs font-medium transition-all duration-200 relative cursor-pointer ${
+                    sidebarOpen ? 'px-3 py-2.5' : 'p-0 justify-center w-10 h-10 mx-auto'
+                  } ${
                     item.active
-                      ? 'bg-blue-600/20 text-blue-300 font-semibold border border-blue-500/30'
-                      : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04]'
+                      ? 'bg-blue-600/20 text-blue-400 font-semibold border border-blue-500/30 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]'
+                      : 'text-slate-400 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
+                  {item.active && (
+                    <span className="absolute start-0 top-1.5 bottom-1.5 w-1 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+                  )}
+                  <Icon className="w-4 h-4 shrink-0 stroke-[2]" />
                   {sidebarOpen && <span className="truncate">{isAr ? item.labelAr : item.labelEn}</span>}
                 </button>
               );
@@ -711,9 +716,12 @@ export default function App() {
             <button
               type="button"
               onClick={() => setInfoDrawer(infoDrawer === 'help' ? null : 'help')}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] cursor-pointer"
+              title={isAr ? 'مركز المساعدة والدليل' : 'Help & Docs'}
+              className={`w-full flex items-center gap-3 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer ${
+                sidebarOpen ? 'px-3 py-2' : 'p-0 justify-center w-10 h-10 mx-auto'
+              }`}
             >
-              <BookOpen className="w-4 h-4 shrink-0 text-sky-400" />
+              <BookOpen className="w-4 h-4 shrink-0 text-sky-400 stroke-[2]" />
               {sidebarOpen && <span>{isAr ? 'مركز المساعدة والدليل' : 'Help & Docs'}</span>}
             </button>
           </div>
@@ -730,9 +738,11 @@ export default function App() {
               })
             }
             title={language === 'ar' ? 'Switch to English (LTR)' : 'التبديل إلى العربية (RTL)'}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer border border-white/5"
+            className={`w-full flex items-center gap-3 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer border border-white/5 ${
+              sidebarOpen ? 'px-3 py-2.5' : 'p-0 justify-center w-10 h-10 mx-auto'
+            }`}
           >
-            <Globe2 className="w-4 h-4 shrink-0 text-sky-400" />
+            <Globe2 className="w-4 h-4 shrink-0 text-sky-400 stroke-[2]" />
             {sidebarOpen && (
               <div className="flex items-center justify-between w-full">
                 <span>{language === 'ar' ? 'اللغة: العربية' : 'Language: English'}</span>
@@ -753,9 +763,11 @@ export default function App() {
               setUserProfileModalOpen(true);
             }}
             title={isAr ? 'الإعدادات والحساب' : 'Settings'}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer border border-white/5"
+            className={`w-full flex items-center gap-3 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer border border-white/5 ${
+              sidebarOpen ? 'px-3 py-2.5' : 'p-0 justify-center w-10 h-10 mx-auto'
+            }`}
           >
-            <SettingsIcon className="w-4 h-4 shrink-0 text-blue-400" />
+            <SettingsIcon className="w-4 h-4 shrink-0 text-blue-400 stroke-[2]" />
             {sidebarOpen && <span>{isAr ? 'الإعدادات والحساب' : 'Settings'}</span>}
           </button>
         </div>

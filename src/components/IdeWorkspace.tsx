@@ -43,7 +43,6 @@ import {
   FileText,
   Folder,
   MessageSquarePlus,
-  Shield,
 } from 'lucide-react';
 import {
   AIAgentProfile,
@@ -585,16 +584,16 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#0a0c12] text-zinc-100">
       {/* Top Clean Header */}
       <header className="h-12 px-4 bg-[#0e111a] border-b border-white/8 flex items-center justify-between gap-3 shrink-0">
-        {/* Project Selector & Name */}
+        {/* Project Selector & Name Badge as elegant interactive card */}
         <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
             onClick={() => onOpenModal('open-project')}
             title={isAr ? 'فتح أو تبديل المشروع' : 'Open or switch project'}
-            className="btn btn-secondary btn-sm"
+            className="inline-flex items-center gap-2 bg-white/[0.05] border border-white/10 rounded-xl px-3.5 py-1.5 text-slate-100 font-medium text-xs hover:bg-white/[0.09] hover:border-white/20 transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
           >
-            <Folder className="w-3.5 h-3.5 text-blue-400" />
-            <span className="max-w-[160px] truncate font-medium">{project.name}</span>
+            <Folder className="w-3.5 h-3.5 text-blue-400 stroke-[2]" />
+            <span className="max-w-[200px] truncate">{project.name}</span>
           </button>
         </div>
 
@@ -604,7 +603,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           <span>{isAr ? 'منصة Engineer · مساحة العمل الذكية' : 'Engineer Platform · Smart Workspace'}</span>
         </div>
 
-        {/* Actions: Developer Mode Toggle, Admin Portal, Deploy CTA */}
+        {/* Actions: Developer Mode Toggle & Deploy CTA (Admin portal isolated to admin domain) */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
@@ -612,30 +611,23 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             data-testid="toggle-edit-mode-btn"
             onClick={() => setIsEditMode(!isEditMode)}
             title={isAr ? 'الوضع المتقدم / محرر الأكواد والملفات' : 'Developer Mode (Code Editor & Files)'}
-            className={`btn btn-sm ${isEditMode ? 'btn-primary' : 'btn-secondary'}`}
+            className={`h-9 px-3.5 rounded-xl border inline-flex items-center gap-2 text-xs font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] ${
+              isEditMode
+                ? 'bg-indigo-500/20 border-indigo-400/40 text-indigo-200 hover:bg-indigo-500/30'
+                : 'bg-slate-800/75 hover:bg-slate-700/85 text-slate-100 border-white/15 hover:border-blue-400/50'
+            }`}
           >
-            <Code2 className="w-3.5 h-3.5" />
+            <Code2 className="w-3.5 h-3.5 stroke-[2]" />
             <span>{isEditMode ? (isAr ? 'عرض المعاينة' : 'Show Preview') : (isAr ? 'الوضع المتقدم' : 'Developer Mode')}</span>
           </button>
-
-          <a
-            href="/admin"
-            target="_blank"
-            rel="noopener noreferrer"
-            title={isAr ? 'لوحة تحكم الإدارة الفائقة' : 'Enterprise Admin Portal'}
-            className="btn btn-ghost btn-sm text-zinc-400 hover:text-white"
-          >
-            <Shield className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">{isAr ? 'لوحة الإدارة' : 'Admin'}</span>
-          </a>
 
           <button
             type="button"
             onClick={() => onOpenModal('deploy')}
             title={isAr ? 'نشر التطبيق' : 'Deploy Application'}
-            className="btn btn-primary btn-sm"
+            className="h-9 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_0_20px_-4px_rgba(79,70,229,0.6)] text-white font-semibold text-sm inline-flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
-            <Rocket className="w-3.5 h-3.5" />
+            <Rocket className="w-3.5 h-3.5 stroke-[2]" />
             <span>{isAr ? 'نشر' : 'Deploy'}</span>
           </button>
         </div>
@@ -712,10 +704,10 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 .map((msg) => (
                   <div
                     key={msg.id}
-                    className={`rounded-2xl p-3.5 text-xs leading-relaxed border transition-all ${
+                    className={`text-xs leading-relaxed transition-all ${
                       msg.role === 'user'
-                        ? 'bg-blue-600/12 border-blue-500/25 text-zinc-100 ms-3 rounded-tr-sm shadow-sm'
-                        : 'bg-[#121622] border-white/8 text-zinc-200 me-2 rounded-tl-sm shadow-sm'
+                        ? 'bg-blue-600/20 border border-blue-500/30 text-white rounded-2xl rounded-tl-sm px-4 py-2.5 max-w-[85%] self-end ms-auto shadow-sm group relative'
+                        : 'bg-slate-900/80 border border-white/10 text-slate-200 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[95%] shadow-sm group relative'
                     }`}
                   >
                     <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5 pb-1 border-b border-white/5">
@@ -726,12 +718,13 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                           </span>
                         ) : (
                           <div className="flex items-center gap-1.5 font-semibold text-white">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
                             <span>Engineer</span>
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      {/* Decluttered Actions: visible smoothly on hover only */}
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-slate-900/90 border border-white/10 rounded-lg p-0.5 shadow-md">
                         {msg.role === 'user' && (
                           <button
                             type="button"
@@ -742,7 +735,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                             title={isAr ? 'تعديل الرسالة' : 'Edit message'}
                             className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
                           >
-                            <Edit3 className="w-3 h-3" />
+                            <Edit3 className="w-3 h-3 stroke-[2]" />
                           </button>
                         )}
                         <button
@@ -754,7 +747,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                           title={isAr ? 'نسخ النص' : 'Copy text'}
                           className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
                         >
-                          <Copy className="w-3 h-3" />
+                          <Copy className="w-3 h-3 stroke-[2]" />
                         </button>
                         {msg.role === 'assistant' && (
                           <button
@@ -768,7 +761,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                             title={isAr ? 'إعادة التوليد' : 'Retry generation'}
                             className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
                           >
-                            <RotateCcw className="w-3 h-3" />
+                            <RotateCcw className="w-3 h-3 stroke-[2]" />
                           </button>
                         )}
                       </div>
@@ -793,62 +786,63 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     onClick={onStopGeneration}
                     className="btn btn-danger btn-sm text-[11px]"
                   >
-                    <StopCircle className="w-3 h-3" />
+                    <StopCircle className="w-3 h-3 stroke-[2]" />
                     <span>{isAr ? 'إيقاف' : 'Stop'}</span>
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Clean, Modern Chat Composer */}
-            <form onSubmit={handleSendChatMessage} className="p-3 border-t border-white/8 bg-[#10131c]/90 backdrop-blur space-y-2">
-              {/* Mode Selector: Auto / Chat / Build */}
-              <div className="flex items-center justify-between pb-1 text-[11px]">
-                <div className="flex items-center gap-1 bg-[#0b0e17] p-0.5 rounded-lg border border-white/8">
-                  <button
-                    type="button"
-                    onClick={() => setPromptMode('auto')}
-                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
-                      promptMode === 'auto'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    {isAr ? 'تلقائي' : 'Auto'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPromptMode('chat')}
-                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
-                      promptMode === 'chat'
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    {isAr ? 'محادثة' : 'Chat'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPromptMode('build')}
-                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
-                      promptMode === 'build'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    {isAr ? 'بناء' : 'Build'}
-                  </button>
+            {/* Unified Floating Prompt Composer */}
+            <form onSubmit={handleSendChatMessage} className="p-3 bg-transparent shrink-0">
+              <div className="rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-white/15 focus-within:border-blue-500/70 focus-within:shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)] p-3 transition-all space-y-2.5">
+                {/* Segmented Pill Mode Selector: Auto / Chat / Build */}
+                <div className="flex items-center justify-between text-[11px]">
+                  <div className="bg-slate-950/90 p-1 rounded-xl border border-white/10 inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPromptMode('auto')}
+                      className={`rounded-lg px-3 py-1 font-medium transition-all cursor-pointer ${
+                        promptMode === 'auto'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-100'
+                      }`}
+                    >
+                      {isAr ? 'تلقائي' : 'Auto'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromptMode('chat')}
+                      className={`rounded-lg px-3 py-1 font-medium transition-all cursor-pointer ${
+                        promptMode === 'chat'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-100'
+                      }`}
+                    >
+                      {isAr ? 'محادثة' : 'Chat'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromptMode('build')}
+                      className={`rounded-lg px-3 py-1 font-medium transition-all cursor-pointer ${
+                        promptMode === 'build'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-100'
+                      }`}
+                    >
+                      {isAr ? 'بناء' : 'Build'}
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {promptMode === 'chat'
+                      ? (isAr ? 'محادثة وشرح فقط' : 'Chat & Q&A only')
+                      : promptMode === 'build'
+                      ? (isAr ? 'بناء وتعديل الكود' : 'Build & edit code')
+                      : (isAr ? 'توجيه ذكي تلقائي' : 'Smart auto-routing')}
+                  </span>
                 </div>
-                <span className="text-[10px] text-zinc-400 font-mono">
-                  {promptMode === 'chat'
-                    ? (isAr ? 'محادثة وشرح فقط' : 'Chat & Q&A only')
-                    : promptMode === 'build'
-                    ? (isAr ? 'بناء وتعديل الكود' : 'Build & edit code')
-                    : (isAr ? 'توجيه ذكي تلقائي' : 'Smart auto-routing')}
-                </span>
-              </div>
 
-              <div className="relative">
+                {/* Textarea without double-border */}
                 <textarea
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
@@ -868,30 +862,32 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       ? (isAr ? 'صف ما تريد بناءه أو تعديله في المشروع...' : 'Describe what to build or modify in the project...')
                       : (isAr ? 'اسأل سؤالاً أو اطلب بناء وتعديل المشروع...' : 'Ask a question or request to build/modify...')
                   }
-                  className="w-full input-modern p-3 text-xs leading-relaxed resize-none focus:outline-none"
+                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs leading-relaxed resize-none focus:outline-none"
                 />
-                <div className="flex items-center justify-between pt-1.5">
-                  <span className="text-[10px] text-zinc-500 font-mono">
+
+                {/* Bottom Action Row with glowing CTA button inside composer */}
+                <div className="flex items-center justify-between pt-1 border-t border-white/5">
+                  <span className="text-[10px] text-slate-500 font-mono">
                     {isAr ? 'Enter للإرسال · Shift+Enter لسطر جديد' : 'Enter to send · Shift+Enter for newline'}
                   </span>
                   {isGenerating ? (
                     <button
                       type="button"
                       onClick={onStopGeneration}
-                      className="btn btn-danger btn-sm"
+                      className="btn btn-danger btn-sm h-8 px-3 rounded-xl text-xs font-semibold"
                       title={isAr ? 'إيقاف التوليد' : 'Stop Generation'}
                     >
-                      <StopCircle className="w-3.5 h-3.5" />
+                      <StopCircle className="w-3.5 h-3.5 stroke-[2]" />
                       <span>{isAr ? 'إيقاف' : 'Stop'}</span>
                     </button>
                   ) : (
                     <button
                       type="submit"
                       disabled={!chatInput.trim()}
-                      className="btn btn-primary btn-sm"
+                      className="h-8 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_0_20px_-4px_rgba(79,70,229,0.6)] text-white font-semibold text-xs inline-flex items-center gap-1.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                       title={isAr ? 'إرسال الطلب' : 'Send Request'}
                     >
-                      <Send className="w-3.5 h-3.5" />
+                      <Send className="w-3.5 h-3.5 stroke-[2]" />
                       <span>{isAr ? 'إرسال' : 'Send'}</span>
                     </button>
                   )}
@@ -899,6 +895,14 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
               </div>
             </form>
           </aside>
+        )}
+
+        {/* Slim Modern Split Divider between Chat and Center/Preview */}
+        {!isFullscreenPreview && (
+          <div
+            className="w-[1px] bg-white/10 hover:w-1 hover:bg-blue-500 transition-all cursor-col-resize shrink-0 z-10"
+            title={isAr ? 'سحب لتعديل العرض' : 'Drag to resize'}
+          />
         )}
 
         {/* CENTER PANE: Professional Code Editor & Cloud File Manager (Shown on-demand via Edit Mode) */}
@@ -1590,20 +1594,20 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           <div className="px-3.5 py-2 bg-[#0f121b] border-b border-white/8 flex items-center justify-between gap-3 text-xs shrink-0">
             {/* Controls: Status Badge + Run/Restart + Refresh + Open in New Tab */}
             <div className="flex items-center gap-2">
-              {/* Preview Status Pill */}
+              {/* Preview Status Pill: Glowing emerald live capsule with pulsing dot */}
               {isGenerating ? (
                 <span className="status-pill status-pill-building">
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <Loader2 className="w-3 h-3 animate-spin stroke-[2]" />
                   <span>{isAr ? 'جاري البناء...' : 'Building...'}</span>
                 </span>
               ) : runtimeState === 'running' ? (
-                <span className="status-pill status-pill-running">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1.5 shadow-[0_0_12px_-2px_rgba(16,185,129,0.3)]">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]" />
                   <span>{isAr ? 'يعمل' : 'Live'}</span>
                 </span>
               ) : (
-                <span className="status-pill status-pill-stopped">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                <span className="bg-rose-500/15 border border-rose-500/30 text-rose-300 rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-rose-400" />
                   <span>{isAr ? 'متوقف' : 'Stopped'}</span>
                 </span>
               )}
@@ -1614,9 +1618,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 onClick={() => handleRuntimeControl(runtimeState === 'running' ? 'restart' : 'run')}
                 disabled={runtimeState === 'restarting'}
                 title={runtimeState === 'running' ? (isAr ? 'إعادة تشغيل التطبيق' : 'Restart Application') : (isAr ? 'تشغيل التطبيق' : 'Run Application')}
-                className="btn btn-secondary btn-sm"
+                className="h-8 px-3 rounded-xl bg-slate-800/75 hover:bg-slate-700/85 text-slate-100 border border-white/15 hover:border-blue-400/50 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] inline-flex items-center gap-2 text-xs font-medium transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
               >
-                {runtimeState === 'running' ? <RotateCcw className="w-3 h-3" /> : <Play className="w-3 h-3 fill-current" />}
+                {runtimeState === 'running' ? <RotateCcw className="w-3.5 h-3.5 stroke-[2]" /> : <Play className="w-3.5 h-3.5 fill-current" />}
                 <span>{runtimeState === 'running' ? (isAr ? 'إعادة تشغيل' : 'Restart') : (isAr ? 'تشغيل' : 'Run')}</span>
               </button>
 
@@ -1625,9 +1629,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 type="button"
                 onClick={() => setPreviewRefreshKey((k) => k + 1)}
                 title={isAr ? 'تحديث المعاينة' : 'Refresh Preview'}
-                className="btn btn-ghost btn-sm p-1.5"
+                className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 text-slate-200 flex items-center justify-center transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className="w-4 h-4 stroke-[2]" />
               </button>
 
               {/* Open in New Tab Button */}
@@ -1644,42 +1648,42 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   onNotify('success', isAr ? 'تم فتح رابط المعاينة المستقلة' : 'Opened live preview in standalone tab');
                 }}
                 title={isAr ? 'فتح في نافذة جديدة' : 'Open in New Tab'}
-                className="btn btn-ghost btn-sm p-1.5"
+                className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 text-slate-200 flex items-center justify-center transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
+                <ExternalLink className="w-4 h-4 stroke-[2]" />
               </button>
             </div>
 
             {/* Viewports Switcher + Fullscreen + On-Demand Edit Button */}
             <div className="flex items-center gap-2">
-              {/* Responsive Viewport Switcher */}
-              <div className="flex items-center gap-0.5 bg-[#0b0e17] border border-white/10 rounded-lg p-0.5">
+              {/* Responsive Viewport Switcher as Segmented Pill */}
+              <div className="bg-slate-950/90 p-1 rounded-xl border border-white/10 inline-flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setPreviewDevice('desktop')}
                   aria-label="Desktop Preview"
                   title={isAr ? 'معاينة سطح المكتب' : 'Desktop Viewport'}
-                  className={`p-1 rounded-md transition-colors ${previewDevice === 'desktop' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${previewDevice === 'desktop' ? 'bg-blue-600 text-white shadow-sm font-medium' : 'text-slate-400 hover:text-slate-100'}`}
                 >
-                  <Monitor className="w-3.5 h-3.5" />
+                  <Monitor className="w-3.5 h-3.5 stroke-[2]" />
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewDevice('tablet')}
                   aria-label="Tablet Preview"
                   title={isAr ? 'معاينة التابلت' : 'Tablet Viewport (768px)'}
-                  className={`p-1 rounded-md transition-colors ${previewDevice === 'tablet' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${previewDevice === 'tablet' ? 'bg-blue-600 text-white shadow-sm font-medium' : 'text-slate-400 hover:text-slate-100'}`}
                 >
-                  <Tablet className="w-3.5 h-3.5" />
+                  <Tablet className="w-3.5 h-3.5 stroke-[2]" />
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewDevice('mobile')}
                   aria-label="Mobile Preview"
                   title={isAr ? 'معاينة الهاتف' : 'Mobile Viewport (390px)'}
-                  className={`p-1 rounded-md transition-colors ${previewDevice === 'mobile' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${previewDevice === 'mobile' ? 'bg-blue-600 text-white shadow-sm font-medium' : 'text-slate-400 hover:text-slate-100'}`}
                 >
-                  <Smartphone className="w-3.5 h-3.5" />
+                  <Smartphone className="w-3.5 h-3.5 stroke-[2]" />
                 </button>
               </div>
 
@@ -1688,21 +1692,21 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 type="button"
                 onClick={() => setIsFullscreenPreview(!isFullscreenPreview)}
                 title={isAr ? 'ملء الشاشة' : 'Toggle Fullscreen'}
-                className="btn btn-ghost btn-sm p-1.5"
+                className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 text-slate-200 flex items-center justify-center transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
               >
-                {isFullscreenPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                {isFullscreenPreview ? <Minimize2 className="w-4 h-4 stroke-[2]" /> : <Maximize2 className="w-4 h-4 stroke-[2]" />}
               </button>
 
-              {/* On-Demand Edit Button (Preserves id="toggle-edit-mode-btn") */}
+              {/* On-Demand Edit Button (Preserves id="toggle-edit-mode-btn") with prominent indigo style */}
               <button
                 type="button"
                 id="toggle-edit-mode-btn"
                 data-testid="toggle-edit-mode-btn"
                 onClick={() => setIsEditMode(true)}
                 title={isAr ? 'تحرير الكود والملفات' : 'Edit Code & Files'}
-                className="btn btn-secondary btn-sm"
+                className="h-8 px-3 rounded-xl bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 hover:bg-indigo-500/30 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] inline-flex items-center gap-2 text-xs font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
               >
-                <Code2 className="w-3.5 h-3.5 text-blue-400" />
+                <Code2 className="w-3.5 h-3.5 stroke-[2] text-indigo-300" />
                 <span className="hidden sm:inline">{isAr ? 'تحرير' : 'Edit Code'}</span>
               </button>
             </div>

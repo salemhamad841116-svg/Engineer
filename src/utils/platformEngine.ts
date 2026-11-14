@@ -562,9 +562,47 @@ export function compileProjectToPreviewHtml(project: Project): string {
     .hero h1 { font-size: 24px; font-weight: 800; margin-bottom: 8px; color: #ffffff; }
     .hero p { font-size: 14px; color: #cbd5e1; margin-bottom: 16px; }
     .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
-    button { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.15s; }
-    button:hover { background: #1d4ed8; }
-    button.secondary { background: rgba(255,255,255,0.08); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.12); }
+    button {
+      background: linear-gradient(135deg, #2563eb, #4f46e5, #7c3aed);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.3), 0 0 20px -4px rgba(79, 70, 229, 0.6);
+      border-radius: 12px;
+      height: 38px;
+      padding: 0 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    button:hover {
+      background: linear-gradient(135deg, #3b82f6, #6366f1, #8b5cf6);
+      transform: scale(1.02);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.4), 0 0 25px -2px rgba(99, 102, 241, 0.7);
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    button.secondary {
+      background: rgba(30, 41, 59, 0.75);
+      color: #f1f5f9;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      height: 38px;
+      padding: 0 18px;
+      font-weight: 500;
+    }
+    button.secondary:hover {
+      background: rgba(51, 65, 85, 0.85);
+      border-color: rgba(96, 165, 250, 0.5);
+      color: #ffffff;
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.2), 0 0 16px -4px rgba(59, 130, 246, 0.3);
+    }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px; }
     .card { background: #111827; border: 1px solid rgba(148,163,184,0.14); border-radius: 10px; padding: 16px; }
     .card-label { font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
