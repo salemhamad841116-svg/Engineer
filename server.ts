@@ -361,11 +361,16 @@ async function startServer() {
 You are conversing directly with the user.
 Respond concisely, naturally, and helpfully in the same language as the user's prompt (${isAr ? 'Arabic' : 'English'}).
 CRITICAL RULES:
-- For greetings (e.g. "هلا", "مرحبا", "hello"), greet them warmly and ask how you can help them develop or build their project today.
-- For technical or educational questions (e.g. "اشرح لي React", "what is SQL"), give a clear, direct, and well-structured answer with concise code examples if helpful.
+- For greetings and casual conversation (e.g. "هلا", "مرحبا", "hello"), respond warmly, concisely, and naturally. Do NOT force lists or numbered steps on greetings.
+- For technical explanations, guides, architectural advice, or multi-step questions (e.g. "اشرح لي React", "what is SQL"):
+  * Start with a clear bold headline or overview.
+  * Structure core concepts or sequential steps with numbered items (1., 2., 3.) with bold titles.
+  * Place bullet points (•) directly under each numbered step for specific sub-details.
+  * Provide concise, practical code snippets inside markdown fenced code blocks (\`\`\`language ... \`\`\`) with explicit language identifiers whenever helpful.
+  * Ensure clean, readable Markdown typography on both mobile and desktop screens.
 - NEVER mention internal role names like "Chief Architect" or "المدير الرئيسي".
 - NEVER output internal pipeline steps like "1. تحليل الطلب والتخطيط", "2. تحديث الأكواد والملفات".
-- NEVER claim that you modified any files, built bundles, or passed tests, because this is an educational/conversational reply.`,
+- NEVER claim that you modified any files, built bundles, or passed tests in chat mode, because this is an educational/conversational reply.`,
           };
           if (activeModel === 'gemini-3.8-flash') {
             config.thinkingConfig = {
@@ -393,12 +398,12 @@ CRITICAL RULES:
         } else if (intentResult.subIntent === 'qa') {
           if (/react/i.test(cleanPrompt)) {
             aiReplyText = isAr
-              ? 'React هي مكتبة JavaScript مفتوحة المصدر طورتها Meta لبناء واجهات المستخدم التفاعلية عبر مكونات (Components) قابلة لإعادة الاستخدام. تعتمد على Virtual DOM لتحديث الشاشة بكفاءة عالية، وتوفر Hooks مثل useState و useEffect لإدارة الحالة ودورة حياة المكون.'
-              : 'React is an open-source JavaScript library developed by Meta for building interactive user interfaces using reusable components. It uses a Virtual DOM for optimal rendering performance and provides Hooks like useState and useEffect for state management.';
+              ? `**مكتبة React: بناء واجهات المستخدم الحديثة**\n\nReact هي مكتبة JavaScript مفتوحة المصدر طورتها Meta لبناء واجهات مستخدم تفاعلية وسريعة.\n\n1. **معمارية المكونات (Component-Based)**\n   • تقسيم الواجهة إلى مكونات مستقلة قابلة لإعادة الاستخدام.\n   • سهولة الصيانة والاختبار في المشاريع الكبيرة.\n\n2. **شجرة العناصر الافتراضية (Virtual DOM)**\n   • مقارنة التغييرات في الذاكرة أولاً قبل تحديث المتصفح.\n   • سرعة فائقة في تحديث الشاشة وتوفير موارد الجهاز.\n\n3. **خطافات التفاعل (React Hooks)**\n   • استخدام \`useState\` لإدارة الحالة وتخزين المتغيرات.\n   • استخدام \`useEffect\` لإدارة التأثيرات الجانبية والاتصال بالخادم.\n\n\`\`\`tsx\nimport React, { useState } from 'react';\n\nexport function Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <button onClick={() => setCount(count + 1)}>\n      العدد: {count}\n    </button>\n  );\n}\n\`\`\``
+              : `**React Library: Modern UI Engineering**\n\nReact is an open-source JavaScript library developed by Meta for building interactive user interfaces.\n\n1. **Component-Based Architecture**\n   • Break UI into independent, reusable components.\n   • Modular structure simplifies testing and large-scale maintenance.\n\n2. **Virtual DOM Engine**\n   • Computes efficient diffs in memory before DOM mutations.\n   • Delivers fast screen updates and optimal rendering performance.\n\n3. **Modern React Hooks**\n   • \`useState\` for intuitive local state management.\n   • \`useEffect\` for side effects and data synchronization.\n\n\`\`\`tsx\nimport React, { useState } from 'react';\n\nexport function Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <button onClick={() => setCount(count + 1)}>\n      Count: {count}\n    </button>\n  );\n}\n\`\`\``;
           } else {
             aiReplyText = isAr
-              ? `أهلاً بك! بخصوص استفسارك حول "${cleanPrompt}": أنا هنا للإجابة على تساؤلاتك ومساعدتك في توضيح وتطوير هذا المفهوم كودياً عند رغبتك.`
-              : `Hello! Regarding your inquiry about "${cleanPrompt}": I am here to answer your questions and assist with your development whenever you are ready.`;
+              ? `**بخصوص استفسارك حول ${cleanPrompt}**\n\nأهلاً بك! أنا هنا للإجابة على تساؤلاتك وتوضيح المفاهيم الهندسية خطوة بخطوة وتطبيقها عملياً في مشروعك عند رغبتك.`
+              : `**Regarding: ${cleanPrompt}**\n\nHello! I am here to answer your questions, explain technical concepts step-by-step, and implement them directly in your project whenever you are ready.`;
           }
         } else {
           aiReplyText = isAr

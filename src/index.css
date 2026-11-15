@@ -244,3 +244,13 @@
   font-weight: 600;
 }
 
+/* Smart Markdown & Response Typography */
+.smart-response-container {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+.smart-response-container pre code {
+  tab-size: 2;
+  -moz-tab-size: 2;
+}
+

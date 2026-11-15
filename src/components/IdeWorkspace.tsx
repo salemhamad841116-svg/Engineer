@@ -63,6 +63,7 @@ import {
 } from '../utils/platformEngine';
 import { PromptMode } from '../utils/intentRouter';
 import { formatUserFacingResponse } from '../utils/responseFormatter';
+import { SmartResponseRenderer } from './SmartResponseRenderer';
 
 interface IdeWorkspaceProps {
   language: Language;
@@ -784,9 +785,18 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                         )}
                       </div>
                     </div>
-                    <div className="whitespace-pre-wrap leading-relaxed">
-                      {msg.role === 'assistant' ? formatUserFacingResponse(msg.content) : msg.content}
-                    </div>
+                    {msg.role === 'assistant' ? (
+                      <SmartResponseRenderer
+                        content={formatUserFacingResponse(msg.content)}
+                        isStreaming={isGenerating && msg.id === activeChatThread.messages[activeChatThread.messages.length - 1]?.id}
+                        isAr={isAr}
+                        onNotify={onNotify}
+                      />
+                    ) : (
+                      <div className="whitespace-pre-wrap leading-relaxed select-text">
+                        {msg.content}
+                      </div>
+                    )}
                   </div>
                 ))}
 
