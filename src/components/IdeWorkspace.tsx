@@ -1,14 +1,9 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import JSZip from 'jszip';
 import {
-  Play,
-  Square,
   RotateCcw,
   Eye,
   RefreshCw,
-  ExternalLink,
-  Maximize2,
-  Minimize2,
   Smartphone,
   Tablet,
   Monitor,
@@ -44,6 +39,7 @@ import {
   FileText,
   Folder,
   MessageSquarePlus,
+  MousePointerClick,
 } from 'lucide-react';
 import {
   AIAgentProfile,
@@ -142,11 +138,15 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   // Right Pane state: Preview & Runtime
   const [runtimeState, setRuntimeState] = useState<'running' | 'stopped' | 'restarting'>('running');
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-  const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
+  const [isFullscreenPreview, _setIsFullscreenPreview] = useState(false);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [showServerConsole, setShowServerConsole] = useState(false);
   const [mobileActiveView, setMobileActiveView] = useState<'preview' | 'chat'>('preview');
+  const [isAppServerRunning, setIsAppServerRunning] = useState<boolean>(false);
+  const [isInspectorActive, setIsInspectorActive] = useState<boolean>(false);
+  const [projectSnapshots, setProjectSnapshots] = useState<{ files: ProjectFile[]; timestamp: string }[]>([]);
+  const lastFilesRef = useRef<ProjectFile[]>(project.files);
 
   const activeFile = useMemo(
     () => project.files.find((f) => f.id === project.activeFileId) || project.files[0],
@@ -195,6 +195,96 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
       chatTextareaRef.current.style.height = `${Math.min(chatTextareaRef.current.scrollHeight, 180)}px`;
     }
   }, [chatInput]);
+
+  // Capture snapshots for Instant Snapshot Undo
+  useEffect(() => {
+    if (lastFilesRef.current !== project.files && lastFilesRef.current.length > 0) {
+      setProjectSnapshots((prev) => [
+        ...prev.slice(-9),
+        { files: lastFilesRef.current, timestamp: new Date().toISOString() },
+      ]);
+    }
+    lastFilesRef.current = project.files;
+  }, [project.files]);
+
+  // Activate isAppServerRunning when app files are generated/ready
+  useEffect(() => {
+    const hasBuiltApp = project.files.some(
+      (f) =>
+        (f.path === 'index.html' &&
+          (f.content.includes('metric-risk-amount') ||
+            f.content.includes('data-live-app') ||
+            f.content.includes('trading-calculator'))) ||
+        (f.path === 'app.js' &&
+          (f.content.includes('calculateRisk') || f.content.includes('initLiveApp')))
+    );
+    if (hasBuiltApp && !isGenerating) {
+      setIsAppServerRunning(true);
+    }
+  }, [project.files, isGenerating]);
+
+  // Visual Click-to-Edit Inspector message listener from iframe
+  useEffect(() => {
+    const handleElementSelected = (event: MessageEvent) => {
+      if (event.data?.type === 'ENGINEER_ELEMENT_SELECTED') {
+        setIsInspectorActive(false);
+        const { text, selector, tag } = event.data;
+        const targetLabel = text ? `"${text}"` : (selector || tag);
+        const promptDraft = isAr
+          ? `عدل هذا العنصر (${targetLabel}) واجعله `
+          : `Modify this element (${targetLabel}) and make it `;
+        setChatInput(promptDraft);
+        setTimeout(() => {
+          chatTextareaRef.current?.focus();
+        }, 50);
+        onNotify('info', isAr ? `تم تحديد العنصر: ${targetLabel}` : `Selected element: ${targetLabel}`);
+      }
+    };
+    window.addEventListener('message', handleElementSelected);
+    return () => window.removeEventListener('message', handleElementSelected);
+  }, [isAr, onNotify]);
+
+  const handleToggleInspector = () => {
+    const next = !isInspectorActive;
+    setIsInspectorActive(next);
+    const iframe = document.getElementById('live-app-preview-frame') as HTMLIFrameElement;
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'ENGINEER_TOGGLE_INSPECTOR', active: next }, '*');
+    }
+  };
+
+  const handleUndoSnapshot = () => {
+    if (projectSnapshots.length === 0) {
+      onNotify('info', isAr ? 'لا توجد لقطات سابقة للتراجع عنها' : 'No previous snapshots available');
+      return;
+    }
+    const previousSnapshot = projectSnapshots[projectSnapshots.length - 1];
+    setProjectSnapshots((prev) => prev.slice(0, -1));
+    lastFilesRef.current = previousSnapshot.files;
+    onUpdateProject(
+      { ...project, files: previousSnapshot.files },
+      isAr ? 'تم استرجاع النسخة السابقة بنجاح' : 'Restored previous snapshot'
+    );
+    setPreviewRefreshKey((k) => k + 1);
+  };
+
+  const handleExecuteSuggestion = async (promptText: string) => {
+    if (isGenerating) return;
+    setChatInput('');
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.style.height = 'auto';
+    }
+    setEditingMsgId(null);
+    const result = await onExecutePrompt(promptText, {
+      model: selectedModel,
+      thinkingMode: 'standard',
+      mode: 'build',
+    });
+    if (result && (result as { intent?: string }).intent === 'build') {
+      setIsAppServerRunning(true);
+      setPreviewRefreshKey((k) => k + 1);
+    }
+  };
 
   // --- Editor Handlers ---
   const updateActiveFileContent = (newContent: string, markDirty = true) => {
@@ -490,10 +580,11 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   };
 
   // --- Runtime & Preview Controls ---
-  const handleRuntimeControl = (action: 'run' | 'stop' | 'restart') => {
+  const _handleRuntimeControl = (action: 'run' | 'stop' | 'restart') => {
     const now = new Date().toISOString();
     if (action === 'stop') {
       setRuntimeState('stopped');
+      setIsAppServerRunning(false);
       onUpdateProject(
         {
           ...project,
@@ -511,6 +602,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     setRuntimeState('restarting');
     setTimeout(() => {
       setRuntimeState('running');
+      setIsAppServerRunning(true);
       setPreviewRefreshKey((k) => k + 1);
       onUpdateProject(
         {
@@ -552,6 +644,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
       mode: promptMode,
     });
     if (result && (result as { intent?: string }).intent === 'build') {
+      setIsAppServerRunning(true);
       setPreviewRefreshKey((k) => k + 1);
     }
   };
@@ -705,7 +798,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
         {!isFullscreenPreview && (
           <aside
             dir={isAr ? 'rtl' : 'ltr'}
-            className={`w-full lg:w-[32%] lg:min-w-[340px] lg:max-w-[440px] shrink-0 border-e border-white/10 glass-panel flex flex-col min-h-0 h-full overflow-hidden ${
+            className={`w-[390px] min-w-[360px] lg:w-[32%] lg:max-w-[440px] shrink-0 border-e border-white/10 glass-panel flex flex-col min-h-0 h-full overflow-hidden ${
               mobileActiveView === 'chat' ? 'flex' : 'hidden lg:flex'
             }`}
           >
@@ -835,12 +928,76 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       </div>
                     </div>
                     {msg.role === 'assistant' ? (
-                      <SmartResponseRenderer
-                        content={formatUserFacingResponse(msg.content)}
-                        isStreaming={isGenerating && msg.id === activeChatThread.messages[activeChatThread.messages.length - 1]?.id}
-                        isAr={isAr}
-                        onNotify={onNotify}
-                      />
+                      <div className="space-y-3">
+                        <SmartResponseRenderer
+                          content={formatUserFacingResponse(msg.content)}
+                          isStreaming={isGenerating && msg.id === activeChatThread.messages[activeChatThread.messages.length - 1]?.id}
+                          isAr={isAr}
+                          onNotify={onNotify}
+                        />
+                        {/* 4 Interactive Clickable Quick Suggestions */}
+                        {(msg.suggestions ||
+                          msg.content.includes('أبشر! يسعدني بناء تطبيقك بالكامل') ||
+                          msg.content.includes('أي نوع من التطبيقات تود أن أصمم لك اليوم')) && (
+                          <div className="pt-2 flex flex-col gap-2 border-t border-white/5">
+                            <p className="text-[12px] font-semibold text-slate-300">
+                              {isAr ? 'اختر أحد المقترحات الجاهزة للبدء فوراً:' : 'Select a suggested application to start immediately:'}
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {[
+                                {
+                                  id: 'trading',
+                                  title: isAr ? 'منصة تداول وتحليل مالي' : 'Trading Risk Platform',
+                                  desc: isAr ? 'حاسبة نسبة المخاطرة والعقود' : 'Risk & Position Sizing Calc',
+                                  prompt: 'اصنع لي تطبيق حاسبة نسبة المخاطرة في التداول',
+                                  action: 'execute' as const,
+                                },
+                                {
+                                  id: 'store',
+                                  title: isAr ? 'متجر إلكتروني متكامل' : 'Full E-Commerce Store',
+                                  desc: isAr ? 'منتجات رقمية وسداد وسلة' : 'Digital goods, cart & checkout',
+                                  prompt: 'اصنع لي متجر إلكتروني متكامل للمنتجات الرقمية مع سلة وسداد',
+                                  action: 'execute' as const,
+                                },
+                                {
+                                  id: 'crm',
+                                  title: isAr ? 'نظام إدارة ومبيعات' : 'Sales & CRM System',
+                                  desc: isAr ? 'فواتير وتقارير ولوحة تحكم' : 'Invoices, reports & dashboard',
+                                  prompt: 'اصنع لي نظام إدارة مبيعات وفواتير متكامل',
+                                  action: 'execute' as const,
+                                },
+                                {
+                                  id: 'custom',
+                                  title: isAr ? 'تطبيق مخصص بفكرتي' : 'Custom App Idea',
+                                  desc: isAr ? 'اكتب مواصفات فكرتك' : 'Type your custom requirements',
+                                  prompt: isAr ? 'اصنع لي تطبيق ' : 'Build me an app ',
+                                  action: 'input' as const,
+                                },
+                              ].map((sug) => (
+                                <button
+                                  key={sug.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (sug.action === 'execute') {
+                                      handleExecuteSuggestion(sug.prompt);
+                                    } else {
+                                      setChatInput(sug.prompt);
+                                      setTimeout(() => chatTextareaRef.current?.focus(), 50);
+                                    }
+                                  }}
+                                  className="text-start p-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-blue-600/20 hover:border-blue-500/40 transition-all group cursor-pointer"
+                                >
+                                  <div className="text-xs font-bold text-white group-hover:text-blue-300 flex items-center justify-between">
+                                    <span>{sug.title}</span>
+                                    <span className="text-[11px] text-blue-400 group-hover:translate-x-[-2px] transition-transform">←</span>
+                                  </div>
+                                  <div className="text-[11px] text-zinc-400 mt-0.5">{sug.desc}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <div className="whitespace-pre-wrap leading-relaxed select-text">
                         {msg.content}
@@ -1662,188 +1819,156 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             mobileActiveView === 'preview' ? 'flex' : 'hidden lg:flex'
           }`}
         >
-          {/* Glass Preview Toolbar: All Controls in Top Bar */}
-          <div className="px-4 py-2.5 glass-toolbar flex items-center justify-between gap-3 text-xs shrink-0 z-20">
-            {/* Controls: Status Badge + Run Preview / Stop / Restart + Refresh + Open in New Tab */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Preview Status Pill: Glowing live capsule with soft neon lighting */}
-              {isGenerating ? (
-                <span className="status-pill status-pill-building">
-                  <Loader2 className="w-3 h-3 animate-spin stroke-[2]" />
-                  <span>{isAr ? 'جاري البناء...' : 'Building...'}</span>
-                </span>
-              ) : runtimeState === 'running' ? (
-                <span className="status-pill status-pill-running">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]" />
-                  <span>{isAr ? 'يعمل' : 'Live'}</span>
-                </span>
-              ) : (
-                <span className="status-pill status-pill-stopped">
-                  <span className="w-2 h-2 rounded-full bg-slate-400" />
-                  <span>{isAr ? 'متوقف' : 'Stopped'}</span>
-                </span>
-              )}
+          {!isAppServerRunning ? (
+            /* Blank-Until-Live Specification: Deep black #09090B with ZERO buttons, ZERO words, ZERO toolbars */
+            <div data-testid="blank-preview-canvas" className="w-full h-full bg-[#09090B]" />
+          ) : (
+            <div className="w-full h-full flex flex-col min-h-0 animate-fadeIn duration-300">
+              {/* Single Slim Toolbar (h-11 px-3 flex items-center justify-between flex-nowrap overflow-hidden) */}
+              <div className="h-11 px-3 glass-toolbar flex items-center justify-between flex-nowrap overflow-hidden text-xs shrink-0 z-20">
+                {/* Left Side: Status pill + Visual Click-to-Edit Inspector + Instant Snapshot Undo */}
+                <div className="flex items-center gap-2 flex-nowrap shrink-0">
+                  {/* Status Pill */}
+                  {isGenerating ? (
+                    <span className="status-pill status-pill-building flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 shrink-0">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span className="hidden sm:inline">{isAr ? 'جاري البناء...' : 'Building...'}</span>
+                    </span>
+                  ) : (
+                    <span className="status-pill status-pill-running flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 shrink-0">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
+                      <span>Live</span>
+                    </span>
+                  )}
 
-              {/* Primary Runtime Action: Run Preview (when stopped) vs Stop & Restart (when running) */}
-              {runtimeState === 'stopped' ? (
-                <button
-                  type="button"
-                  onClick={() => handleRuntimeControl('run')}
-                  title={isAr ? 'تشغيل المعاينة' : 'Run Preview'}
-                  className="btn btn-primary btn-sm"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>{isAr ? 'تشغيل المعاينة' : 'Run Preview'}</span>
-                </button>
-              ) : (
-                <>
+                  {/* Visual Click-to-Edit Inspector */}
                   <button
                     type="button"
-                    onClick={() => handleRuntimeControl('stop')}
-                    title={isAr ? 'إيقاف المعاينة' : 'Stop Preview'}
-                    className="btn btn-danger btn-sm"
+                    onClick={handleToggleInspector}
+                    title={isInspectorActive ? (isAr ? 'إلغاء وضع فحص وتعديل العناصر' : 'Cancel Inspector') : (isAr ? 'فحص وتعديل العنصر مرئياً' : 'Visual Click-to-Edit Inspector')}
+                    className={`btn btn-sm shrink-0 flex items-center gap-1.5 ${
+                      isInspectorActive
+                        ? 'btn-primary shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+                        : 'btn-secondary text-slate-200'
+                    }`}
                   >
-                    <Square className="w-3 h-3 fill-current" />
-                    <span>{isAr ? 'إيقاف' : 'Stop'}</span>
+                    <MousePointerClick className="w-3.5 h-3.5 stroke-[2]" />
+                    <span className="hidden sm:inline">{isInspectorActive ? (isAr ? 'إلغاء الفحص' : 'Cancel') : (isAr ? 'تعديل العنصر' : 'Inspector')}</span>
                   </button>
+
+                  {/* Instant Snapshot Undo */}
                   <button
                     type="button"
-                    onClick={() => handleRuntimeControl('restart')}
-                    disabled={runtimeState === 'restarting'}
-                    title={isAr ? 'إعادة تشغيل التطبيق' : 'Restart Application'}
-                    className="btn btn-secondary btn-sm"
+                    onClick={handleUndoSnapshot}
+                    disabled={projectSnapshots.length === 0}
+                    title={isAr ? 'التراجع اللحظي إلى النسخة السابقة' : 'Instant Snapshot Undo'}
+                    className="btn btn-secondary btn-sm shrink-0 flex items-center gap-1.5 disabled:opacity-40"
                   >
                     <RotateCcw className="w-3.5 h-3.5 stroke-[2]" />
-                    <span>{isAr ? 'إعادة تشغيل' : 'Restart'}</span>
+                    <span className="hidden sm:inline">{isAr ? 'تراجع' : 'Undo'}</span>
                   </button>
-                </>
-              )}
+                </div>
 
-              {/* Refresh Button */}
-              <button
-                type="button"
-                onClick={() => setPreviewRefreshKey((k) => k + 1)}
-                title={isAr ? 'تحديث المعاينة' : 'Refresh Preview'}
-                className="btn btn-secondary btn-sm !px-2.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5 stroke-[2]" />
-                <span className="hidden sm:inline">{isAr ? 'تحديث' : 'Refresh'}</span>
-              </button>
+                {/* Right Side: Viewports (icon-only) + Refresh + </> Edit Code + Glowing Deploy */}
+                <div className="flex items-center gap-2 flex-nowrap shrink-0">
+                  {/* Viewport Switcher (Icon-only) */}
+                  <div className="segmented-pill-container shrink-0 flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDevice('desktop')}
+                      aria-label="Desktop Preview"
+                      title={isAr ? 'معاينة سطح المكتب' : 'Desktop Viewport'}
+                      className={`segmented-pill-btn !p-1.5 ${
+                        previewDevice === 'desktop' ? 'segmented-pill-btn-active' : ''
+                      }`}
+                    >
+                      <Monitor className="w-3.5 h-3.5 stroke-[2]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDevice('tablet')}
+                      aria-label="Tablet Preview"
+                      title={isAr ? 'معاينة التابلت' : 'Tablet Viewport (768px)'}
+                      className={`segmented-pill-btn !p-1.5 ${
+                        previewDevice === 'tablet' ? 'segmented-pill-btn-active' : ''
+                      }`}
+                    >
+                      <Tablet className="w-3.5 h-3.5 stroke-[2]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDevice('mobile')}
+                      aria-label="Mobile Preview"
+                      title={isAr ? 'معاينة الهاتف' : 'Mobile Viewport (390px)'}
+                      className={`segmented-pill-btn !p-1.5 ${
+                        previewDevice === 'mobile' ? 'segmented-pill-btn-active' : ''
+                      }`}
+                    >
+                      <Smartphone className="w-3.5 h-3.5 stroke-[2]" />
+                    </button>
+                  </div>
 
-              {/* Open in New Tab Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  const blob = new Blob([compiledPreviewHtml], { type: 'text/html' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.target = '_blank';
-                  a.rel = 'noopener noreferrer';
-                  a.click();
-                  onNotify('success', isAr ? 'تم فتح رابط المعاينة المستقلة' : 'Opened live preview in standalone tab');
-                }}
-                title={isAr ? 'فتح في نافذة جديدة' : 'Open in New Tab'}
-                className="btn btn-secondary btn-sm !px-2.5"
-              >
-                <ExternalLink className="w-3.5 h-3.5 stroke-[2]" />
-                <span className="hidden sm:inline">{isAr ? 'نافذة جديدة' : 'New Tab'}</span>
-              </button>
-            </div>
+                  {/* Refresh Button */}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewRefreshKey((k) => k + 1)}
+                    title={isAr ? 'تحديث المعاينة' : 'Refresh Preview'}
+                    className="btn btn-secondary btn-sm !p-1.5 shrink-0"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 stroke-[2]" />
+                  </button>
 
-            {/* Viewports Switcher + Fullscreen + On-Demand Edit Button */}
-            <div className="flex items-center gap-2">
-              {/* Responsive Viewport Switcher as Segmented Pill */}
-              <div className="segmented-pill-container">
-                <button
-                  type="button"
-                  onClick={() => setPreviewDevice('desktop')}
-                  aria-label="Desktop Preview"
-                  title={isAr ? 'معاينة سطح المكتب' : 'Desktop Viewport'}
-                  className={`segmented-pill-btn flex items-center gap-1.5 ${
-                    previewDevice === 'desktop' ? 'segmented-pill-btn-active' : ''
-                  }`}
-                >
-                  <Monitor className="w-3.5 h-3.5 stroke-[2]" />
-                  <span className="hidden md:inline">{isAr ? 'سطح المكتب' : 'Desktop'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewDevice('tablet')}
-                  aria-label="Tablet Preview"
-                  title={isAr ? 'معاينة التابلت' : 'Tablet Viewport (768px)'}
-                  className={`segmented-pill-btn flex items-center gap-1.5 ${
-                    previewDevice === 'tablet' ? 'segmented-pill-btn-active' : ''
-                  }`}
-                >
-                  <Tablet className="w-3.5 h-3.5 stroke-[2]" />
-                  <span className="hidden md:inline">{isAr ? 'تابلت' : 'Tablet'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewDevice('mobile')}
-                  aria-label="Mobile Preview"
-                  title={isAr ? 'معاينة الهاتف' : 'Mobile Viewport (390px)'}
-                  className={`segmented-pill-btn flex items-center gap-1.5 ${
-                    previewDevice === 'mobile' ? 'segmented-pill-btn-active' : ''
-                  }`}
-                >
-                  <Smartphone className="w-3.5 h-3.5 stroke-[2]" />
-                  <span className="hidden md:inline">{isAr ? 'هاتف' : 'Mobile'}</span>
-                </button>
+                  {/* High-Contrast Code Edit Button (Preserves id="toggle-edit-mode-btn") */}
+                  <button
+                    type="button"
+                    id="toggle-edit-mode-btn"
+                    data-testid="toggle-edit-mode-btn"
+                    onClick={() => setIsEditMode(true)}
+                    title={isAr ? 'تحرير الكود والملفات' : 'Edit Code & Files'}
+                    className="btn btn-secondary btn-sm border-blue-500/40 text-blue-200 hover:border-blue-400 shrink-0 font-semibold flex items-center gap-1.5"
+                  >
+                    <Code2 className="w-3.5 h-3.5 stroke-[2] text-blue-400" />
+                    <span>{isAr ? '</> تحرير' : '</> Edit'}</span>
+                  </button>
+
+                  {/* Glowing Deploy CTA Button */}
+                  <button
+                    type="button"
+                    id="preview-deploy-btn"
+                    data-testid="preview-deploy-btn"
+                    onClick={() => onOpenModal('deploy')}
+                    title={isAr ? 'نشر التطبيق' : 'Deploy Application'}
+                    className="btn btn-primary btn-sm shrink-0 font-bold shadow-[0_0_15px_rgba(59,130,246,0.5)] flex items-center gap-1.5"
+                  >
+                    <Rocket className="w-3.5 h-3.5 stroke-[2]" />
+                    <span>{isAr ? 'نشر' : 'Deploy'}</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Fullscreen Toggle */}
-              <button
-                type="button"
-                onClick={() => setIsFullscreenPreview(!isFullscreenPreview)}
-                title={isAr ? 'ملء الشاشة' : 'Toggle Fullscreen'}
-                className="btn btn-secondary btn-sm !px-2.5"
-              >
-                {isFullscreenPreview ? <Minimize2 className="w-3.5 h-3.5 stroke-[2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2]" />}
-              </button>
-
-              {/* On-Demand Edit Button (Preserves id="toggle-edit-mode-btn") with prominent indigo style */}
-              <button
-                type="button"
-                id="toggle-edit-mode-btn"
-                data-testid="toggle-edit-mode-btn"
-                onClick={() => setIsEditMode(true)}
-                title={isAr ? 'تحرير الكود والملفات' : 'Edit Code & Files'}
-                className="btn btn-secondary btn-sm border-indigo-500/40 text-indigo-200 hover:border-indigo-400"
-              >
-                <Code2 className="w-3.5 h-3.5 stroke-[2] text-indigo-400" />
-                <span className="hidden sm:inline">{isAr ? 'تحرير' : 'Edit Code'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Clean Application Preview Canvas (100% Empty When Stopped/Idle) */}
-          <div className="flex-1 bg-[#090D18] flex items-center justify-center p-2 sm:p-4 overflow-hidden relative">
-            {runtimeState === 'stopped' ? (
-              /* Completely Clean Canvas when Stopped/Idle: No welcome messages, no instructional text, no buttons */
-              <div className="w-full h-full bg-[#090D18]" />
-            ) : (
-              <div
-                className={`h-full transition-all duration-300 rounded-2xl overflow-hidden glass-card shadow-2xl bg-[#090D18] ${
-                  previewDevice === 'mobile'
-                    ? 'w-[390px] max-w-full'
-                    : previewDevice === 'tablet'
-                    ? 'w-[768px] max-w-full'
-                    : 'w-full'
-                }`}
-              >
-                <iframe
-                  key={previewRefreshKey}
-                  id="live-app-preview-frame"
-                  title={`Live Preview — ${project.name}`}
-                  srcDoc={compiledPreviewHtml}
-                  sandbox="allow-scripts allow-forms allow-modals allow-same-origin allow-downloads"
-                  className="w-full h-full border-0"
-                />
+              {/* Live Application Preview Canvas */}
+              <div className="flex-1 bg-[#090D18] flex items-center justify-center p-2 sm:p-4 overflow-hidden relative">
+                <div
+                  className={`h-full transition-all duration-300 rounded-2xl overflow-hidden glass-card shadow-2xl bg-[#090D18] ${
+                    previewDevice === 'mobile'
+                      ? 'w-[390px] max-w-full'
+                      : previewDevice === 'tablet'
+                      ? 'w-[768px] max-w-full'
+                      : 'w-full'
+                  }`}
+                >
+                  <iframe
+                    key={previewRefreshKey}
+                    id="live-app-preview-frame"
+                    title={`Live Preview — ${project.name}`}
+                    srcDoc={compiledPreviewHtml}
+                    sandbox="allow-scripts allow-forms allow-modals allow-same-origin allow-downloads"
+                    className="w-full h-full border-0"
+                  />
+                </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </section>
       </div>
     </div>

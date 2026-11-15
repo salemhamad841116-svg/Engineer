@@ -52,10 +52,10 @@ export function attachBackendAndDatabase(app: Express) {
         `);
         const sampleProjects = [
           {
-            id: 'proj-fintrack-erp',
-            name: 'FinTrack Cloud ERP',
-            desc: 'منصة إدارة مالية ومحاسبية سحابية للشركات مع تقارير فورية وربط بنكي ذكي.',
-            slug: 'fintrack-erp',
+            id: 'proj-smart-app',
+            name: 'منصة التطبيقات الذكية',
+            desc: 'مساحة عمل برمجية لتطوير التطبيقات والأنظمة السحابية الذكية.',
+            slug: 'smart-app',
           },
           {
             id: 'proj-aura-medclinic',

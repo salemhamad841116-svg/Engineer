@@ -157,6 +157,7 @@ export interface ChatMessage {
   attachments?: { name: string; type: string; size: number }[];
   pipelineStages?: ExecutionPipelineStage[];
   modifiedFiles?: string[];
+  suggestions?: string[];
 }
 
 export interface ChatThread {

@@ -17,7 +17,7 @@ import {
 import { getInitialButtonRegistry, runAutomatedRegistryVerification } from './src/utils/buttonRegistry';
 import { AIAgentProfile, ButtonRegistryEntry, Project, ProjectFile } from './src/types/platform';
 import { attachBackendAndDatabase } from './src/backendBridge';
-import { detectIntent, PromptMode } from './src/utils/intentRouter';
+import { detectIntent, isGenericAppRequest, PromptMode } from './src/utils/intentRouter';
 import { formatUserFacingResponse } from './src/utils/responseFormatter';
 import {
   analyzeAppRequest,
@@ -346,15 +346,34 @@ async function startServer() {
 
     // 1. Run Intent Router to strictly distinguish Chat Mode vs Build Mode
     const intentResult = detectIntent(cleanPrompt, (mode as PromptMode) || 'auto');
+    const isGeneric = isGenericAppRequest(cleanPrompt);
     const ai = getGeminiClient();
     let aiReplyText = '';
+
+    const quickSuggestions = isAr
+      ? [
+          'منصة تداول وتحليل مالي',
+          'متجر إلكتروني متكامل',
+          'نظام إدارة ومبيعات',
+          'تطبيق مخصص بفكرتي',
+        ]
+      : [
+          'Trading & Financial Analytics Platform',
+          'Full-Featured E-Commerce Store',
+          'Sales & Management ERP System',
+          'Custom App with My Own Idea',
+        ];
 
     if (intentResult.intent === 'chat') {
       // -------------------------------------------------------------
       // CHAT MODE: Pure conversation, explanations & technical Q&A
       // GUARANTEE: Never touches files, never modifies preview, never leaks Chief Architect
       // -------------------------------------------------------------
-      if (ai) {
+      if (isGeneric || (intentResult.subIntent === 'clarification' && /(تطبيق|موقع|برنامج|منصة|app|website)/i.test(cleanPrompt))) {
+        aiReplyText = isAr
+          ? 'أبشر! يسعدني بناء تطبيقك بالكامل. أي نوع من التطبيقات تود أن أصمم لك اليوم، وما أهم المميزات التي تريدها فيه؟'
+          : 'Certainly! I would be delighted to build your complete application. What type of application would you like me to build today, and what are its core features?';
+      } else if (ai) {
         try {
           const config: { systemInstruction: string; thinkingConfig?: { thinkingLevel: ThinkingLevel } } = {
             systemInstruction: `You are Engineer, a helpful, polite, and senior AI software engineering companion.
@@ -437,6 +456,7 @@ CRITICAL RULES:
         timestamp: new Date().toISOString(),
         model: activeModel,
         thinkingMode,
+        suggestions: (isGeneric || intentResult.subIntent === 'clarification') ? quickSuggestions : undefined,
       });
       thread.updatedAt = new Date().toISOString();
 
@@ -448,6 +468,7 @@ CRITICAL RULES:
         agent: selectedAgent,
         intent: 'chat',
         subIntent: intentResult.subIntent,
+        suggestions: (isGeneric || intentResult.subIntent === 'clarification') ? quickSuggestions : undefined,
         filesModified: [],
         tokensUsed: state.settings.aiTokensUsed,
       });
@@ -458,6 +479,9 @@ CRITICAL RULES:
     // BUILD MODE: Autonomous App Builder & Real Application Synthesis
     // -------------------------------------------------------------
     const spec = analyzeAppRequest(cleanPrompt, project);
+    if (spec.appTitle && spec.appTitle !== 'تطبيق ذكي' && spec.appTitle !== 'Smart Application') {
+      project.name = spec.appTitle;
+    }
     const plan = generateInternalPlan(spec, project);
     const generatedFiles = generateAppFiles(spec, plan, project.files);
 

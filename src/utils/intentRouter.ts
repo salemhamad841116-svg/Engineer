@@ -23,6 +23,38 @@ const BUILD_ACTION_REGEX = /(?:^|[^\p{L}\p{N}_])(أنشئ|انشئ|ابن|ابن
 const MODIFY_ACTION_REGEX = /(?:^|[^\p{L}\p{N}_])(عدل|غير|حدث|أضف|اضف|احذف|صلح|لون|زر|خط|حجم|شاش|modify|update|change|fix|style|color|button|text|background)(?:$|[^\p{L}\p{N}_])/iu;
 
 /**
+ * Detects generic / underspecified requests for an app or website without details
+ * Examples: «محتاج تطبيق»، «محتاج بنا تطبيق»، «اعمل لي موقع»، «أريد برنامج»، «أريد تطبيق»
+ */
+export function isGenericAppRequest(rawPrompt: string): boolean {
+  const p = (rawPrompt || '').trim().toLowerCase();
+  if (!p) return false;
+
+  const genericPatterns = [
+    /^(محتاج|أريد|اريد|ابي|ابغى|ودّي|ودي)\s+(بنا[ء]?\s+)?(تطبيق|موقع|برنامج|صفحة|منصة|سستم|سيستم)[\s!.,؟?]*$/i,
+    /^(اعمل|سوي|صمم|برمج|ابن[ي]?|أنشئ|انشئ|جهز)\s+(لي\s+)?(تطبيق|موقع|برنامج|صفحة|منصة)[\s!.,؟?]*$/i,
+    /^(تطبيق|موقع|برنامج|منصة)[\s!.,؟?]*$/i,
+    /^(i need|i want|build me|make me|create)\s+(an?|a)?\s+(app|application|website|site|program|platform)[\s!.,؟?]*$/i,
+  ];
+
+  if (genericPatterns.some((rgx) => rgx.test(p))) return true;
+
+  // Short prompts (<= 5 words) asking generally for app without specific domain features
+  const words = p.split(/\s+/).filter(Boolean);
+  if (words.length <= 5) {
+    const hasAppWord = /(تطبيق|موقع|برنامج|منصة|app|website|system)/i.test(p);
+    const hasNeedOrAction = /(محتاج|اريد|أريد|ابغى|ابي|سوي|اعمل|صمم|بناء|بنا|ابن|أنشئ|انشئ|need|want|build|make)/i.test(p);
+    const hasSpecificDomain = /(تداول|مخاطر|حاسب|أسهم|فوركس|متجر|سلة|مبيعات|إدار|فواتير|محاسب|عقار|مطعم|طبي|مستشفى|مدرسة|حجز|طيران|chat|store|calc|trade|shop|portfolio|todo|task)/i.test(p);
+
+    if (hasAppWord && hasNeedOrAction && !hasSpecificDomain) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Classifies a user prompt into 'chat' or 'build' intent.
  * Guarantees that greetings and Q&A never trigger file modifications or build pipelines.
  */
@@ -52,6 +84,16 @@ export function detectIntent(
       subIntent: MODIFY_ACTION_REGEX.test(prompt) ? 'modify_code' : 'build_new',
       confidence: 1.0,
       reason: 'Forced by user mode selector (Build Mode)',
+    };
+  }
+
+  // 1.5. Clarify-Before-Build Rule: Generic unspecified app requests require clarification
+  if (isGenericAppRequest(prompt)) {
+    return {
+      intent: 'chat',
+      subIntent: 'clarification',
+      confidence: 0.99,
+      reason: 'Generic app request requiring clarification before building',
     };
   }
 

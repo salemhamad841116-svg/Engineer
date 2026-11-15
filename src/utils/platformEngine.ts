@@ -526,6 +526,70 @@ export function compileProjectToPreviewHtml(project: Project): string {
       }
     }
 
+    const inspectorScript = `<script id="engineer-inspector-runtime">
+(function() {
+  let isInspectorActive = false;
+  let hoveredEl = null;
+
+  window.addEventListener('message', function(event) {
+    if (!event.data || typeof event.data !== 'object') return;
+    if (event.data.type === 'ENGINEER_TOGGLE_INSPECTOR') {
+      isInspectorActive = !!event.data.active;
+      if (!isInspectorActive && hoveredEl) {
+        hoveredEl.style.outline = '';
+        hoveredEl = null;
+      }
+    }
+  });
+
+  document.addEventListener('mouseover', function(e) {
+    if (!isInspectorActive) return;
+    if (hoveredEl && hoveredEl !== e.target) {
+      hoveredEl.style.outline = '';
+    }
+    hoveredEl = e.target;
+    hoveredEl.style.outline = '2px solid #38bdf8';
+    hoveredEl.style.cursor = 'crosshair';
+  }, true);
+
+  document.addEventListener('mouseout', function(e) {
+    if (!isInspectorActive) return;
+    if (e.target && e.target.style) {
+      e.target.style.outline = '';
+    }
+  }, true);
+
+  document.addEventListener('click', function(e) {
+    if (!isInspectorActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.target;
+    if (target.style) target.style.outline = '';
+    isInspectorActive = false;
+
+    const tag = target.tagName;
+    const id = target.id ? '#' + target.id : '';
+    const text = (target.innerText || target.textContent || '').trim().slice(0, 40);
+    const className = target.className && typeof target.className === 'string' ? '.' + target.className.split(' ')[0] : '';
+    const selector = tag.toLowerCase() + id + className;
+
+    window.parent.postMessage({
+      type: 'ENGINEER_ELEMENT_SELECTED',
+      tag: tag,
+      id: id,
+      text: text,
+      selector: selector
+    }, '*');
+  }, true);
+})();
+</script>`;
+
+    if (doc.includes('</body>')) {
+      doc = doc.replace('</body>', `${inspectorScript}\n</body>`);
+    } else {
+      doc = `${doc}\n${inspectorScript}`;
+    }
+
     return doc;
   }
 
@@ -1347,8 +1411,8 @@ CREATE INDEX idx_project_records_status ON project_records(status);
 
 export function createSeedProjects(): Project[] {
   const p1 = createNewProjectFromSpec({
-    name: 'FinTrack Cloud ERP',
-    description: 'منصة إدارة مالية ومحاسبية سحابية للشركات مع تقارير فورية وربط بنكي ذكي.',
+    name: 'منصة التطبيقات الذكية',
+    description: 'مساحة عمل برمجية لتطوير التطبيقات والأنظمة السحابية الذكية.',
     category: 'app',
     appType: 'Enterprise SaaS Dashboard',
     techStack: 'react-ts-vite',
@@ -1358,7 +1422,7 @@ export function createSeedProjects(): Project[] {
     databaseEngine: 'postgresql',
     deployTarget: 'cloud-run-eu',
   });
-  p1.id = 'proj-fintrack-erp';
+  p1.id = 'proj-smart-app';
 
   const p2 = createNewProjectFromSpec({
     name: 'Aura MedClinic Portal',
