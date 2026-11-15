@@ -1634,6 +1634,57 @@ CREATE INDEX IF NOT EXISTS idx_evaluations_created ON engineering_evaluations(cr
       `);
     },
   },
+  {
+    id: 26,
+    name: 'phase17_dynamic_ui_agent_engine',
+    up: (handle) => {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS custom_screens (
+  id TEXT PRIMARY KEY,
+  project_id TEXT,
+  user_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  view_type TEXT NOT NULL DEFAULT 'FORM',
+  ui_schema_json TEXT NOT NULL DEFAULT '{}',
+  mock_records_json TEXT NOT NULL DEFAULT '[]',
+  version INTEGER NOT NULL DEFAULT 1,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_custom_screens_project ON custom_screens(project_id);
+CREATE INDEX IF NOT EXISTS idx_custom_screens_user ON custom_screens(user_id);
+CREATE INDEX IF NOT EXISTS idx_custom_screens_view ON custom_screens(view_type);
+
+CREATE TABLE IF NOT EXISTS dynamic_records (
+  id TEXT PRIMARY KEY,
+  screen_id TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dynamic_records_screen ON dynamic_records(screen_id);
+CREATE INDEX IF NOT EXISTS idx_dynamic_records_created ON dynamic_records(created_at);
+
+CREATE TABLE IF NOT EXISTS ai_feedback (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  user_role TEXT NOT NULL DEFAULT 'business_owner',
+  prompt TEXT NOT NULL,
+  response_json TEXT NOT NULL,
+  rating INTEGER NOT NULL,
+  notes TEXT,
+  is_few_shot_candidate INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_feedback_rating ON ai_feedback(rating);
+CREATE INDEX IF NOT EXISTS idx_ai_feedback_role ON ai_feedback(user_role);
+CREATE INDEX IF NOT EXISTS idx_ai_feedback_few_shot ON ai_feedback(is_few_shot_candidate);
+      `);
+    },
+  },
 ];
 
 function openDb() {

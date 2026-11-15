@@ -47,6 +47,8 @@ import { LegalModal } from './components/LegalModal';
 import { OnboardingTour } from './components/OnboardingTour';
 import { AdminPortalView } from './components/AdminPortalView';
 
+import { DynamicAgentWorkspace } from './components/dynamic-agent/DynamicAgentWorkspace';
+
 export default function App() {
   // Primary State
   const [projects, setProjects] = useState<Project[]>(() => createSeedProjects());
@@ -80,7 +82,7 @@ export default function App() {
   });
 
   // Navigation & UI State
-  const [activeView, setActiveView] = useState<'home' | 'ide' | 'published' | 'registry' | 'servers'>('home');
+  const [activeView, setActiveView] = useState<'home' | 'ide' | 'published' | 'registry' | 'servers' | 'dynamic-agent'>('home');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [modalPayload, setModalPayload] = useState<unknown>(null);
@@ -647,6 +649,17 @@ export default function App() {
                 },
               },
               {
+                id: 'dynamic-agent',
+                labelEn: 'Executive AI Agent & UI',
+                labelAr: 'المساعد التنفيذي والواجهات',
+                icon: Sparkles,
+                active: activeView === 'dynamic-agent',
+                onClick: () => {
+                  setActiveView('dynamic-agent');
+                  setInfoDrawer(null);
+                },
+              },
+              {
                 id: 'projects',
                 labelEn: 'Projects',
                 labelAr: 'المشاريع',
@@ -959,6 +972,10 @@ export default function App() {
           onVerifyAll={handleVerifyAllRegistry}
           onTriggerWorkflow={handleTriggerRegistryWorkflow}
         />
+      )}
+
+      {activeView === 'dynamic-agent' && (
+        <DynamicAgentWorkspace />
       )}
 
       {/* Modals Hub */}

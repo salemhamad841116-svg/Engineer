@@ -83,6 +83,7 @@ function createApp() {
   app.use('/api/admin/builder', builderRoutes.adminRouter);
   app.use('/api/external/books', require('./routes/externalBookRoutes'));
   app.use('/api/external/tokens', require('./routes/externalTokenRoutes'));
+  app.use('/api/agent', require('./routes/agentRoutes'));
   // Real-time document / settings events (Server-Sent Events). Same-origin cookie auth.
   app.get('/api/events', requireAuth(), require('./services/eventBus').sseHandler);
   app.use('/api', notFoundApi);

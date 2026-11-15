@@ -361,6 +361,14 @@ runStep('Phase 16 / Gate 22 18-Feature Autonomous Engineering Core & UI Gate', (
   execSync('node scripts/verify-strict-spec.mjs', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 28: Phase 17 AI Executive Assistant & Dynamic UI Generation Gate (15-Scenario Eval & Integration)
+// ----------------------------------------------------
+runStep('Phase 17 AI Executive Assistant & Dynamic UI Generation Gate (15-Scenario Eval & Integration)', () => {
+  execSync('node server_backend/tests/promptEvaluationSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+  execSync('node server_backend/tests/agentDynamicUiSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

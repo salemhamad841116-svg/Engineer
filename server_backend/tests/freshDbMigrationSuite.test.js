@@ -113,7 +113,10 @@ try {
     'workspace_branches',
     'project_code_graphs',
     'project_build_versions',
-    'engineering_evaluations'
+    'engineering_evaluations',
+    'custom_screens',
+    'dynamic_records',
+    'ai_feedback'
   ];
 
   for (const t of requiredTables) {
