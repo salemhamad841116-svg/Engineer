@@ -127,6 +127,127 @@ const AI_MODELS = [
   },
 ];
 
+interface GoldenBlueprint {
+  id: string;
+  category: 'website' | 'slides' | 'app' | 'prototype';
+  titleAr: string;
+  titleEn: string;
+  descAr: string;
+  descEn: string;
+  badgeAr: string;
+  badgeEn: string;
+  promptAr: string;
+  promptEn: string;
+  tag: string;
+}
+
+const GOLDEN_BLUEPRINTS: GoldenBlueprint[] = [
+  {
+    id: 'trading_quant_terminal',
+    category: 'app',
+    titleAr: 'منصة التداول والتحليل المالي الكمي',
+    titleEn: 'Trading & Quant Financial Terminal',
+    descAr: 'رسوم بيانية حية، دفاتر أوامر السوق، وإدارة دقيقة للمخاطر وحجم الصفقات.',
+    descEn: 'Live candlestick charting, real-time order book, and risk sizing metrics.',
+    badgeAr: 'تداول كمي',
+    badgeEn: 'Quant Trading',
+    promptAr: 'ابنِ منصة تداول كمي وتحليل مالي فوري مع دفاتر أوامر حية وحاسبة مخاطر الصفقات',
+    promptEn: 'Build a quantitative financial trading terminal with real-time orderbook and position sizing',
+    tag: 'Trading'
+  },
+  {
+    id: 'live_auction_marketplace',
+    category: 'prototype',
+    titleAr: 'منصة المزادات والأسواق الحية',
+    titleEn: 'Live Auction Marketplace',
+    descAr: 'عد تنازلي لحظي، مزايدات تفاعلية متزامنة، ومعاينة المعروضات الفاخرة.',
+    descEn: 'Dynamic countdown timer, live bidding increments, and luxury item lots.',
+    badgeAr: 'مزادات فورية',
+    badgeEn: 'Live Bidding',
+    promptAr: 'ابنِ منصة مزادات حية مع عد تنازلي فوري ونظام مزايدات تفاعلي متزامن',
+    promptEn: 'Build a live auction marketplace with real-time bidding countdown and lot showcase',
+    tag: 'Marketplace'
+  },
+  {
+    id: 'ecommerce_pos_store',
+    category: 'app',
+    titleAr: 'المتجر ونقاط البيع السحابية (POS ضريبة 5%)',
+    titleEn: 'E-Commerce Store & Cloud POS (5% VAT)',
+    descAr: 'كاشير متكامل مع باركود وسلة مشتريات وضريبة 5% معتمدة وطباعة الفاتورة.',
+    descEn: 'Complete cashier POS with catalog, shopping cart, UAE 5% VAT, and receipt printer.',
+    badgeAr: 'ضريبة 5% معتمدة',
+    badgeEn: 'UAE 5% VAT',
+    promptAr: 'ابنِ متجر ونقاط بيع سحابية POS مع احتساب ضريبة القيمة المضافة 5% وإصدار الفاتورة الضريبية',
+    promptEn: 'Build an e-commerce cloud POS store with UAE 5% VAT calculation and printable tax invoice',
+    tag: 'Retail'
+  },
+  {
+    id: 'enterprise_erp_crm',
+    category: 'app',
+    titleAr: 'منظومة إدارة الأعمال والمبيعات (ERP & CRM)',
+    titleEn: 'Enterprise ERP, Sales Pipeline & Invoicing',
+    descAr: 'إدارة دورة المبيعات الكاملة، العملاء، ومتابعة الفواتير المحصلة والمعلقة.',
+    descEn: 'Full sales pipeline kanban, client leads, revenue tracking, and invoice management.',
+    badgeAr: 'إدارة مؤسسية',
+    badgeEn: 'Enterprise ERP',
+    promptAr: 'ابنِ منظومة إدارة أعمال ومبيعات وفواتير ERP & CRM مع تتبع خط الصفقات',
+    promptEn: 'Build an enterprise ERP and CRM sales pipeline with lead tracking and revenue analytics',
+    tag: 'Enterprise'
+  },
+  {
+    id: 'booking_appointments_system',
+    category: 'prototype',
+    titleAr: 'منظومة الحجوزات والمواعيد الذكية',
+    titleEn: 'Smart Appointments & Booking Scheduler',
+    descAr: 'جدولة مواعيد للعيادات والاستشارات مع اختيار الخدمات والأوقات المتاحة والتأكيد الفوري.',
+    descEn: 'Interactive calendar scheduler for clinics, service selections, and instant confirmations.',
+    badgeAr: 'حجوزات عيادات',
+    badgeEn: 'Scheduler',
+    promptAr: 'ابنِ منظومة حجوزات ومواعيد ذكية مع جدول زمني لاختيار الأوقات وتأكيد الحجز',
+    promptEn: 'Build a smart appointments and booking scheduler with live time slots and service picker',
+    tag: 'Booking'
+  },
+  {
+    id: 'smart_library_knowledge',
+    category: 'website',
+    titleAr: 'المكتبة الذكية وإدارة المعرفة والأرشفة',
+    titleEn: 'Smart Library & Knowledge Archive',
+    descAr: 'أرشفة الكتب والوثائق والأبحاث مع محرك بحث فوري وتصنيف متعدد الوسوم.',
+    descEn: 'Document indexing, book archiving, instant full-text search, and tag filters.',
+    badgeAr: 'أرشفة ذكية',
+    badgeEn: 'Knowledge',
+    promptAr: 'ابنِ مكتبة ذكية وإدارة معرفة وأرشفة مع محرك بحث فوري وتصنيف بالوسوم',
+    promptEn: 'Build a smart library and knowledge archive with instant search and category tags',
+    tag: 'Knowledge'
+  },
+  {
+    id: 'ai_saas_dashboard',
+    category: 'slides',
+    titleAr: 'لوحة الذكاء الاصطناعي وإدارة الاشتراكات (AI SaaS)',
+    titleEn: 'AI SaaS Dashboard & Token Analytics',
+    descAr: 'متابعة استهلاك التوكنز والنماذج، إدارة المفاتيح API، ومختبر تجربة الأوامر.',
+    descEn: 'Monitor token usage, manage API keys, subscription tiers, and prompt playground.',
+    badgeAr: 'ذكاء اصطناعي SaaS',
+    badgeEn: 'AI SaaS',
+    promptAr: 'ابنِ لوحة تحكم ذكاء اصطناعي AI SaaS مع متابعة التوكنز ومختبر النماذج السريع',
+    promptEn: 'Build an AI SaaS dashboard with token consumption metrics and interactive prompt playground',
+    tag: 'AI SaaS'
+  },
+  {
+    id: 'luxury_landing_portfolio',
+    category: 'website',
+    titleAr: 'المواقع التعريفية والعروض التقديمية الفاخرة',
+    titleEn: 'Luxury Landing & Executive Presentation',
+    descAr: 'تصميم زجاجي داكن فاخر مع مؤثرات إضاءة متقدمة، عرض إنجازات، واستمارة تواصل.',
+    descEn: 'Ultra-modern dark glassmorphism showcase, feature cards, and high-impact pitch deck.',
+    badgeAr: 'عرض فاخر',
+    badgeEn: 'Luxury Landing',
+    promptAr: 'ابنِ موقعاً تعريفياً وعرضاً تقديمياً فاخراً بتصميم زجاجي داكن ومؤثرات حديثة',
+    promptEn: 'Build a luxury dark glassmorphism landing page and executive presentation showcase',
+    tag: 'Showcase'
+  }
+];
+
 export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
   language,
   sidebarOpen: _sidebarOpen,
@@ -213,6 +334,9 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
     );
   };
 
+  const [isBlueprintsModalOpen, setIsBlueprintsModalOpen] = useState(false);
+  const [blueprintCategoryFilter, setBlueprintCategoryFilter] = useState<'all' | 'website' | 'slides' | 'app' | 'prototype'>('all');
+
   const handleQuickCategorySelect = (
     cat: ProjectCategory,
     samplePromptEn: string,
@@ -220,6 +344,21 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
   ) => {
     setSelectedCategory(cat);
     setPrompt(isAr ? samplePromptAr : samplePromptEn);
+    setBlueprintCategoryFilter(cat as 'all' | 'website' | 'slides' | 'app' | 'prototype');
+    setIsBlueprintsModalOpen(true);
+  };
+
+  const handleLaunchBlueprint = (bp: GoldenBlueprint) => {
+    setIsBlueprintsModalOpen(false);
+    const p = isAr ? bp.promptAr : bp.promptEn;
+    setPrompt(p);
+    setSelectedCategory(bp.category);
+    onExecutePrompt(p, {
+      model: selectedModel,
+      thinkingMode: effectiveThinkingMode,
+      category: bp.category,
+      mode: 'build'
+    });
   };
 
   const toggleVoiceRecording = () => {
@@ -1038,7 +1177,10 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => onOpenModal('new-project', { template: 'team-enterprise' })}
+            onClick={() => {
+              setBlueprintCategoryFilter('all');
+              setIsBlueprintsModalOpen(true);
+            }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#151720] hover:bg-[#1e212d] border border-white/10 text-zinc-200 font-medium transition-colors cursor-pointer"
           >
             <Users className="w-3.5 h-3.5 text-sky-400" />
@@ -1251,6 +1393,110 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
           </div>
         </div>
       </section>
+
+      {/* 8 Golden Blueprints Modal */}
+      {isBlueprintsModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+          role="dialog"
+          aria-modal="true"
+          aria-label={isAr ? 'القوالب الذهبية الثمانية' : '8 Golden Blueprints'}
+        >
+          <div className="relative w-full max-w-4xl max-h-[90vh] bg-[#0E131F] border border-white/15 rounded-2xl p-6 shadow-2xl flex flex-col overflow-hidden text-white">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    {isAr ? 'القوالب الذهبية الثمانية المعمارية' : '8 Golden Architectural Blueprints'}
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                      {isAr ? 'جاهزة للتشغيل الفوري' : 'Ready to Run'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    {isAr
+                      ? 'اختر أحد النماذج الهندسية الثمانية لبنائها وتشغيلها مباشرة بكامل ميزاتها وقاعدة بياناتها'
+                      : 'Select any of the 8 production blueprints to synthesize and launch with live preview and database'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBlueprintsModalOpen(false)}
+                aria-label={isAr ? 'إغلاق' : 'Close'}
+                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Category Filter Tabs */}
+            <div className="flex items-center gap-2 py-3 overflow-x-auto shrink-0 border-b border-white/5">
+              {[
+                { id: 'all', labelAr: 'جميع القوالب (8)', labelEn: 'All Blueprints (8)' },
+                { id: 'app', labelAr: 'التطبيقات المتكاملة (3)', labelEn: 'Full Apps (3)' },
+                { id: 'prototype', labelAr: 'النماذج والمزادات (2)', labelEn: 'Prototypes (2)' },
+                { id: 'website', labelAr: 'المواقع والأرشيف (2)', labelEn: 'Websites & Archive (2)' },
+                { id: 'slides', labelAr: 'الذكاء الاصطناعي وSaaS (1)', labelEn: 'AI & SaaS (1)' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setBlueprintCategoryFilter(tab.id as typeof blueprintCategoryFilter)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                    blueprintCategoryFilter === tab.id
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  {isAr ? tab.labelAr : tab.labelEn}
+                </button>
+              ))}
+            </div>
+
+            {/* Blueprints Cards Grid */}
+            <div className="flex-1 overflow-y-auto py-4 grid grid-cols-1 md:grid-cols-2 gap-3.5 pr-1">
+              {GOLDEN_BLUEPRINTS.filter(
+                (bp) => blueprintCategoryFilter === 'all' || bp.category === blueprintCategoryFilter
+              ).map((bp) => (
+                <div
+                  key={bp.id}
+                  className="p-4 rounded-xl bg-[#131826] border border-white/10 hover:border-blue-500/50 transition-all flex flex-col justify-between group"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/20">
+                        {isAr ? bp.badgeAr : bp.badgeEn}
+                      </span>
+                      <span className="text-[10px] text-zinc-500 font-mono uppercase">{bp.tag}</span>
+                    </div>
+                    <h4 className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">
+                      {isAr ? bp.titleAr : bp.titleEn}
+                    </h4>
+                    <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
+                      {isAr ? bp.descAr : bp.descEn}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchBlueprint(bp)}
+                      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{isAr ? 'تشغيل هذا القالب فوراً' : 'Launch Blueprint Now'}</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

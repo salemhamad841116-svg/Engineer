@@ -353,6 +353,13 @@ runStep('Interactive Testing & Post-Build Lifecycle Gate (11 Acceptance Tests A-
   execSync('node server_backend/tests/interactiveTestingAndLifecycleSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 27: Phase 16 / Gate 22 High-Contrast Modern UI & Freestyle Full-Stack Generator Gate
+// ----------------------------------------------------
+runStep('Phase 16 / Gate 22 High-Contrast Modern UI & Freestyle Full-Stack Generator Gate', () => {
+  execSync('node scripts/verify-strict-spec.mjs', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

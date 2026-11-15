@@ -137,6 +137,122 @@ const lifecycleResponse = autonomousAppBuilder.formatCustomerLifecycleResponse('
 assert(lifecycleResponse.includes('شريط إحصائيات حي لخمسة مؤشرات مخاطرة رئيسية'), 'Completed response must describe trading features');
 console.log('   ✅ Autonomous trading risk calculator engine strictly verified.');
 
+// 7. Autonomous Zakat & Gold Calculator Builder
+console.log('▶️ 7. Verifying Autonomous Zakat & Gold Calculator Engine...');
+assert(typeof autonomousAppBuilder.buildZakatCalculatorFiles === 'function', 'buildZakatCalculatorFiles must exist');
+const zakatFiles = autonomousAppBuilder.buildZakatCalculatorFiles('حاسبة زكاة المال والذهب');
+assert(zakatFiles['index.html'].includes('cash-amount'), 'Zakat calculator must have cash-amount input');
+assert(zakatFiles['index.html'].includes('gold-24k'), 'Zakat calculator must have gold-24k input');
+assert(zakatFiles['index.html'].includes('gold-21k'), 'Zakat calculator must have gold-21k input');
+assert(zakatFiles['index.html'].includes('gold-18k'), 'Zakat calculator must have gold-18k input');
+assert(zakatFiles['index.html'].includes('silver-grams'), 'Zakat calculator must have silver-grams input');
+assert(zakatFiles['index.html'].includes('btn-calculate'), 'Zakat calculator must have btn-calculate');
+assert(zakatFiles['index.html'].includes('nisab-banner'), 'Zakat calculator must have nisab-banner');
+assert(zakatFiles['index.html'].includes('breakdown-table'), 'Zakat calculator must have breakdown-table');
+assert(zakatFiles['app.js'].includes('calculateZakat'), 'Zakat calculator app.js must calculate zakat');
+assert(zakatFiles['app.js'].includes('localStorage'), 'Zakat calculator app.js must persist to localStorage');
+
+const zakatPlan = {
+  id: 'plan-zakat-1',
+  version: 1,
+  title: 'حاسبة زكاة المال والذهب',
+  description: 'حاسبة إسلامية شاملة لزكاة الأموال والذهب والفضة مع احتساب النصاب الشرعي',
+  architecture: 'vanilla-spa',
+  techStack: { framework: 'vanilla-js', styling: 'tailwind-cdn', storage: 'localstorage', multimedia: [] },
+  uiComponents: ['nisab-banner', 'gold-calculator', 'zakat-summary', 'breakdown-table'],
+  dbSchema: { tables: [] },
+  fileStructure: ['index.html', 'app.js', 'style.css'],
+};
+
+const zakatVerification = autonomousAppBuilder.verifyGeneratedApp(zakatFiles, zakatPlan);
+assert(zakatVerification.allPassed === true, 'All automated tests for zakat calculator must pass');
+assert(zakatVerification.testResults.length === 5, 'Must run all 5 test criteria for zakat');
+
+const zakatLifecycle = autonomousAppBuilder.formatCustomerLifecycleResponse('completed', {
+  spec: {
+    appTitle: 'حاسبة زكاة المال والذهب',
+    appCategory: 'zakat_calc',
+    features: [],
+    constraints: { language: 'ar', designTheme: 'dark' },
+  },
+  testsCount: 5,
+  passedTestsCount: 5,
+});
+assert(zakatLifecycle.includes('85 جرام ذهب عيار 24') && zakatLifecycle.includes('زكاة'), 'Lifecycle must describe zakat features');
+console.log('   ✅ Autonomous zakat calculator engine strictly verified.');
+
+// 8. 8 Golden Blueprints Repository & Frontend Integration
+console.log('▶️ 8. Verifying 8 Golden Blueprints & HomeLaunchpad Modal...');
+const blueprintRepo = require(path.join(root, 'server_backend/services/codegen/blueprintRepository.js'));
+const allBlueprints = blueprintRepo.getAllBlueprints();
+assert(Array.isArray(allBlueprints), 'getAllBlueprints must return an array');
+assert(allBlueprints.length === 8, 'There must be exactly 8 Golden Blueprints');
+
+const expectedBlueprintIds = [
+  'trading_quant_terminal',
+  'live_auction_marketplace',
+  'ecommerce_pos_store',
+  'enterprise_erp_crm',
+  'booking_appointments_system',
+  'smart_library_knowledge',
+  'ai_saas_dashboard',
+  'luxury_landing_portfolio'
+];
+for (const id of expectedBlueprintIds) {
+  const bp = blueprintRepo.getBlueprintById(id);
+  assert(bp, `Blueprint ${id} must exist in repository`);
+  assert(bp.titleAr && bp.titleEn, `Blueprint ${id} must have Arabic and English titles`);
+  const bpFiles = bp.generateFiles();
+  assert(bpFiles['index.html'] && (bpFiles['style.css'] || bpFiles['styles.css']) && (bpFiles['app.js'] || bpFiles['script.js']), `Blueprint ${id} must generate index.html, style.css, app.js`);
+}
+
+const homeLaunchpadTsx = fs.readFileSync(path.join(root, 'src/components/HomeLaunchpad.tsx'), 'utf8');
+assert(homeLaunchpadTsx.includes('GOLDEN_BLUEPRINTS'), 'HomeLaunchpad must define GOLDEN_BLUEPRINTS');
+assert(homeLaunchpadTsx.includes('isBlueprintsModalOpen'), 'HomeLaunchpad must manage isBlueprintsModalOpen state');
+assert(homeLaunchpadTsx.includes('القوالب الذهبية الثمانية'), 'HomeLaunchpad must display 8 Golden Blueprints title');
+assert(homeLaunchpadTsx.includes('handleLaunchBlueprint'), 'HomeLaunchpad must implement handleLaunchBlueprint');
+console.log('   ✅ 8 Golden Blueprints repository and frontend modal strictly verified.');
+
+// 9. Advanced Codegen Suite (Freestyle, AST Surgical Editor, Vision, Auto-Package, Auto-DB, Cloner)
+console.log('▶️ 9. Verifying Advanced Codegen Suite...');
+const codegen = require(path.join(root, 'server_backend/services/codegen/index.js'));
+assert(codegen.blueprintRepository, 'codegen must expose blueprintRepository');
+assert(codegen.freestyleGenerator, 'codegen must expose freestyleGenerator');
+assert(codegen.surgicalEditor, 'codegen must expose surgicalEditor');
+assert(codegen.visionToCode, 'codegen must expose visionToCode');
+assert(codegen.autoPackageInstaller, 'codegen must expose autoPackageInstaller');
+assert(codegen.autoDatabaseWiring, 'codegen must expose autoDatabaseWiring');
+assert(codegen.urlCloner, 'codegen must expose urlCloner');
+
+// Test Freestyle generator with arbitrary prompt
+const freestyleGen = codegen.freestyleGenerator.generateFreestyleApp({
+  prompt: 'منصة مسابقات تفاعلية مع أسئلة ولوحة صدارة',
+  category: 'custom'
+});
+const freestyleFiles = freestyleGen.files || freestyleGen;
+assert(freestyleFiles['index.html'] && freestyleFiles['app.js'], 'Freestyle generator must produce working files');
+
+// Test Surgical AST editor
+const sampleHtml = '<html><body><div id="target">Old</div></body></html>';
+const surgicalResult = codegen.surgicalEditor.applySurgicalEdit(sampleHtml, {
+  selector: '#target',
+  action: 'replaceContent',
+  newContent: 'New Content'
+});
+assert(surgicalResult.includes('New Content'), 'Surgical AST editor must modify target element');
+
+// Test Auto Package Installer
+const htmlWithoutChart = '<html><head></head><body><canvas id="myChart"></canvas><script>new Chart()</script></body></html>';
+const htmlWithChart = codegen.autoPackageInstaller.detectAndInjectPackages(htmlWithoutChart);
+assert(htmlWithChart.includes('chart.js'), 'AutoPackageInstaller must inject Chart.js CDN when Chart is referenced');
+
+// Test Auto Database Wiring
+const formsHtml = '<html><body><form id="contact-form"><input name="email" /><button type="submit">Send</button></form></body></html>';
+const wiredJs = codegen.autoDatabaseWiring.generateWiringScript(formsHtml);
+assert(wiredJs.includes('localStorage') || wiredJs.includes('addEventListener'), 'AutoDatabaseWiring must wire forms');
+
+console.log('   ✅ Advanced Codegen Suite strictly verified.');
+
 console.log('\n================================================================');
-console.log('🎉 ALL 6 STRICT SPECIFICATION SUITES PASSED (100% COMPLIANT)');
+console.log('🎉 ALL 9 STRICT SPECIFICATION SUITES PASSED (100% COMPLIANT)');
 console.log('================================================================\n');
