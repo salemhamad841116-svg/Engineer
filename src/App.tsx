@@ -515,13 +515,13 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#08090d] text-zinc-100 overflow-hidden">
-      {/* Bolt.new Collapsible Left Sidebar */}
+    <div className="min-h-screen flex bg-[#090D18] text-zinc-100 overflow-hidden">
+      {/* Collapsible Left Sidebar with Premium Glass Styling */}
       <aside
         aria-label="Workspace Sidebar Navigation"
         className={`${
           sidebarOpen ? 'w-60' : 'w-14'
-        } shrink-0 bg-[#0d0e12] border-e border-white/10 flex flex-col justify-between transition-all duration-200 z-30 select-none`}
+        } shrink-0 bg-[#0c101d]/90 backdrop-blur-xl border-e border-white/10 flex flex-col justify-between transition-all duration-200 z-30 select-none`}
       >
         {/* Top Brand, Search ⌘K, Collapse Toggle & User Profile */}
         <div className="p-3 space-y-3">
@@ -582,7 +582,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* User Profile Selector Pill matching Bolt.new screenshot */}
+          {/* User Profile Selector Pill */}
           {sidebarOpen && (
             <button
               type="button"
@@ -592,7 +592,7 @@ export default function App() {
                 setUserProfileInitialTab('profile');
                 setUserProfileModalOpen(true);
               }}
-              className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl bg-[#161820] hover:bg-[#1c1f2a] border border-white/10 transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl glass-card transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-6 h-6 rounded-md bg-sky-600 text-white font-bold text-xs flex items-center justify-center shrink-0">

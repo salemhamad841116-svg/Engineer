@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import JSZip from 'jszip';
 import {
   Play,
+  Square,
   RotateCcw,
   Eye,
   RefreshCw,
@@ -145,6 +146,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [showServerConsole, setShowServerConsole] = useState(false);
+  const [mobileActiveView, setMobileActiveView] = useState<'preview' | 'chat'>('preview');
 
   const activeFile = useMemo(
     () => project.files.find((f) => f.id === project.activeFileId) || project.files[0],
@@ -600,16 +602,16 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#0a0c12] text-zinc-100">
+    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#090D18] text-zinc-100">
       {/* Top Clean Header */}
-      <header className="h-12 px-4 bg-[#0e111a] border-b border-white/8 flex items-center justify-between gap-3 shrink-0">
+      <header className="h-12 px-4 glass-toolbar flex items-center justify-between gap-3 shrink-0">
         {/* Project Selector & Name Badge as elegant interactive card */}
         <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
             onClick={() => onOpenModal('open-project')}
             title={isAr ? 'فتح أو تبديل المشروع' : 'Open or switch project'}
-            className="inline-flex items-center gap-2 bg-white/[0.05] border border-white/10 rounded-xl px-3.5 py-1.5 text-slate-100 font-medium text-xs hover:bg-white/[0.09] hover:border-white/20 transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+            className="btn btn-secondary btn-sm"
           >
             <Folder className="w-3.5 h-3.5 text-blue-400 stroke-[2]" />
             <span className="max-w-[200px] truncate">{project.name}</span>
@@ -618,11 +620,11 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
 
         {/* Center: Clean Workspace Indicator */}
         <div className="hidden md:flex items-center gap-2 text-xs text-zinc-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-          <span>{isAr ? 'منصة Engineer · مساحة العمل الذكية' : 'Engineer Platform · Smart Workspace'}</span>
+          <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_#60a5fa]" />
+          <span className="font-medium">{isAr ? 'منصة Engineer · مساحة العمل الذكية' : 'Engineer Platform · Smart Workspace'}</span>
         </div>
 
-        {/* Actions: Developer Mode Toggle & Deploy CTA (Admin portal isolated to admin domain) */}
+        {/* Actions: Developer Mode Toggle & Deploy CTA */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
@@ -630,10 +632,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             data-testid="toggle-edit-mode-btn"
             onClick={() => setIsEditMode(!isEditMode)}
             title={isAr ? 'الوضع المتقدم / محرر الأكواد والملفات' : 'Developer Mode (Code Editor & Files)'}
-            className={`h-9 px-3.5 rounded-xl border inline-flex items-center gap-2 text-xs font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] ${
-              isEditMode
-                ? 'bg-indigo-500/20 border-indigo-400/40 text-indigo-200 hover:bg-indigo-500/30'
-                : 'bg-slate-800/75 hover:bg-slate-700/85 text-slate-100 border-white/15 hover:border-blue-400/50'
+            className={`btn btn-sm ${
+              isEditMode ? 'btn-primary' : 'btn-secondary'
             }`}
           >
             <Code2 className="w-3.5 h-3.5 stroke-[2]" />
@@ -644,7 +644,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             type="button"
             onClick={() => onOpenModal('deploy')}
             title={isAr ? 'نشر التطبيق' : 'Deploy Application'}
-            className="h-9 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_0_20px_-4px_rgba(79,70,229,0.6)] text-white font-semibold text-sm inline-flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="btn btn-primary btn-sm"
           >
             <Rocket className="w-3.5 h-3.5 stroke-[2]" />
             <span>{isAr ? 'نشر' : 'Deploy'}</span>
@@ -652,13 +652,62 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
         </div>
       </header>
 
-      {/* Main Clean 2-Panel Split Body: Chat on Right (in RTL) + Preview on Left (in RTL) */}
-      <div className="flex-1 flex flex-row min-h-0 overflow-hidden" dir={isAr ? 'rtl' : 'ltr'}>
+      {/* Mobile / Tablet Responsive Tab Switcher */}
+      <div className="lg:hidden px-3 py-1.5 glass-panel border-b border-white/10 flex items-center justify-center shrink-0">
+        <div className="segmented-pill-container w-full max-w-sm justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              setMobileActiveView('preview');
+              setIsEditMode(false);
+            }}
+            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${
+              mobileActiveView === 'preview' && !isEditMode ? 'segmented-pill-btn-active' : ''
+            }`}
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>{isAr ? 'المعاينة' : 'Preview'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileActiveView('chat');
+            }}
+            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${
+              mobileActiveView === 'chat' ? 'segmented-pill-btn-active' : ''
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{isAr ? 'المحادثة' : 'Chat'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileActiveView('preview');
+              setIsEditMode(true);
+            }}
+            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${
+              isEditMode ? 'segmented-pill-btn-active' : ''
+            }`}
+          >
+            <Code2 className="w-3.5 h-3.5" />
+            <span>{isAr ? 'الكود' : 'Code'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Clean 2-Panel Split Body: Chat on Right + Preview on Left */}
+      <div
+        className={`flex-1 flex ${isAr ? 'flex-row' : 'flex-row-reverse'} min-h-0 overflow-hidden`}
+        dir={isAr ? 'rtl' : 'ltr'}
+      >
         {/* CHAT PANE (32% width): Clean Q&A (User + Engineer) */}
         {!isFullscreenPreview && (
           <aside
             dir={isAr ? 'rtl' : 'ltr'}
-            className="w-[32%] min-w-[340px] max-w-[440px] shrink-0 border-e border-white/8 bg-[#0c0e15] flex flex-col min-h-0 h-full overflow-hidden"
+            className={`w-full lg:w-[32%] lg:min-w-[340px] lg:max-w-[440px] shrink-0 border-e border-white/10 glass-panel flex flex-col min-h-0 h-full overflow-hidden ${
+              mobileActiveView === 'chat' ? 'flex' : 'hidden lg:flex'
+            }`}
           >
             {/* Clean Chat Header */}
             <div className="px-3.5 py-2.5 border-b border-white/8 bg-[#10131c] flex items-center justify-between gap-2 shrink-0">
@@ -725,8 +774,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     key={msg.id}
                     className={`text-xs leading-relaxed transition-all ${
                       msg.role === 'user'
-                        ? 'bg-blue-600/20 border border-blue-500/30 text-white rounded-2xl rounded-tl-sm px-4 py-2.5 max-w-[85%] self-end ms-auto shadow-sm group relative'
-                        : 'bg-slate-900/80 border border-white/10 text-slate-200 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[95%] shadow-sm group relative'
+                        ? 'glass-chat-user text-white rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] self-end ms-auto shadow-sm group relative'
+                        : 'glass-chat-assistant text-slate-200 rounded-2xl rounded-tr-sm px-4 py-3.5 max-w-[95%] shadow-sm group relative'
                     }`}
                   >
                     <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5 pb-1 border-b border-white/5">
@@ -800,9 +849,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   </div>
                 ))}
 
-              {/* Minimal, Elegant Generating Status Pill (Replaces the 9-stage bulky box) */}
+              {/* Minimal, Elegant Generating Status Pill */}
               {isGenerating && (
-                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-950/25 border border-blue-500/25 text-xs text-blue-300 shadow-sm animate-pulse">
+                <div className="glass-card p-3 flex items-center gap-2.5 text-xs text-blue-300 shadow-sm animate-pulse">
                   <Loader2 className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
                   <span className="flex-1 font-medium">
                     {promptMode === 'chat'
@@ -824,8 +873,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             </div>
 
             {/* Unified Floating Prompt Composer */}
-            <form onSubmit={handleSendChatMessage} className="p-3 bg-[#0c0e15] border-t border-white/5 shrink-0 z-10">
-              <div className="rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-white/15 focus-within:border-blue-500/70 focus-within:shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)] p-3 transition-all space-y-2">
+            <form onSubmit={handleSendChatMessage} className="p-3 bg-gradient-to-t from-[#090D18] via-[#090D18]/90 to-transparent border-t border-white/5 shrink-0 z-10">
+              <div className="glass-card p-3 transition-all space-y-2 focus-within:border-indigo-400/60 focus-within:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25),0_0_24px_-4px_rgba(116,107,255,0.4)]">
                 {/* Auto-expanding Textarea on Top (Clear, Spacious, and Responsive) */}
                 <textarea
                   ref={chatTextareaRef}
@@ -853,15 +902,13 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 {/* Bottom Action Row: Mode Pill Selector (Auto/Chat/Build) beside newly styled Send CTA */}
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5">
                   {/* Segmented Pill Mode Selector: Auto / Chat / Build moved to bottom toolbar */}
-                  <div className="bg-slate-950/90 p-0.5 rounded-xl border border-white/10 inline-flex items-center gap-0.5 shrink-0">
+                  <div className="segmented-pill-container shrink-0">
                     <button
                       type="button"
                       onClick={() => setPromptMode('auto')}
                       title={isAr ? 'توجيه ذكي تلقائي' : 'Smart auto-routing'}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
-                        promptMode === 'auto'
-                          ? 'bg-blue-600 text-white shadow-sm font-semibold'
-                          : 'text-slate-400 hover:text-slate-200'
+                      className={`segmented-pill-btn ${
+                        promptMode === 'auto' ? 'segmented-pill-btn-active' : ''
                       }`}
                     >
                       {isAr ? 'تلقائي' : 'Auto'}
@@ -870,10 +917,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       type="button"
                       onClick={() => setPromptMode('chat')}
                       title={isAr ? 'محادثة وشرح فقط' : 'Chat & Q&A only'}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
-                        promptMode === 'chat'
-                          ? 'bg-blue-600 text-white shadow-sm font-semibold'
-                          : 'text-slate-400 hover:text-slate-200'
+                      className={`segmented-pill-btn ${
+                        promptMode === 'chat' ? 'segmented-pill-btn-active' : ''
                       }`}
                     >
                       {isAr ? 'محادثة' : 'Chat'}
@@ -882,10 +927,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       type="button"
                       onClick={() => setPromptMode('build')}
                       title={isAr ? 'بناء وتعديل الكود' : 'Build & edit code'}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
-                        promptMode === 'build'
-                          ? 'bg-blue-600 text-white shadow-sm font-semibold'
-                          : 'text-slate-400 hover:text-slate-200'
+                      className={`segmented-pill-btn ${
+                        promptMode === 'build' ? 'segmented-pill-btn-active' : ''
                       }`}
                     >
                       {isAr ? 'بناء' : 'Build'}
@@ -898,7 +941,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       <button
                         type="button"
                         onClick={onStopGeneration}
-                        className="h-8 px-3 rounded-xl bg-rose-600/90 hover:bg-rose-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.3),0_0_15px_-3px_rgba(225,29,72,0.6)] text-white font-semibold text-xs inline-flex items-center gap-1.5 transition-all duration-200 cursor-pointer"
+                        className="btn btn-danger btn-sm"
                         title={isAr ? 'إيقاف التوليد' : 'Stop Generation'}
                       >
                         <StopCircle className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -908,11 +951,11 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       <button
                         type="submit"
                         disabled={!chatInput.trim()}
-                        className="h-8.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:via-indigo-500 hover:to-violet-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35),0_0_20px_-3px_rgba(79,70,229,0.7)] text-white font-semibold text-xs inline-flex items-center gap-2 transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] disabled:opacity-30 disabled:hover:scale-100 disabled:shadow-none cursor-pointer group"
+                        className="btn btn-primary btn-sm group"
                         title={isAr ? 'إرسال الطلب (Enter)' : 'Send Request (Enter)'}
                       >
                         <span>{isAr ? 'إرسال' : 'Send'}</span>
-                        <div className="w-4 h-4 rounded-md bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 rtl:group-hover:-translate-x-0.5">
+                        <div className="w-3.5 h-3.5 rounded bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 rtl:group-hover:-translate-x-0.5">
                           <Send className="w-2.5 h-2.5 text-white stroke-[2.4]" />
                         </div>
                       </button>
@@ -1615,50 +1658,76 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           dir={isAr ? 'rtl' : 'ltr'}
           className={`${
             isFullscreenPreview ? 'w-full' : isEditMode ? 'hidden' : 'flex-1'
-          } min-w-0 bg-[#07090e] flex flex-col min-h-0`}
+          } min-w-0 bg-[#090D18] flex flex-col min-h-0 ${
+            mobileActiveView === 'preview' ? 'flex' : 'hidden lg:flex'
+          }`}
         >
-          {/* Streamlined Modern Preview Toolbar */}
-          <div className="px-3.5 py-2 bg-[#0f121b] border-b border-white/8 flex items-center justify-between gap-3 text-xs shrink-0">
-            {/* Controls: Status Badge + Run/Restart + Refresh + Open in New Tab */}
-            <div className="flex items-center gap-2">
-              {/* Preview Status Pill: Glowing emerald live capsule with pulsing dot */}
+          {/* Glass Preview Toolbar: All Controls in Top Bar */}
+          <div className="px-4 py-2.5 glass-toolbar flex items-center justify-between gap-3 text-xs shrink-0 z-20">
+            {/* Controls: Status Badge + Run Preview / Stop / Restart + Refresh + Open in New Tab */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Preview Status Pill: Glowing live capsule with soft neon lighting */}
               {isGenerating ? (
                 <span className="status-pill status-pill-building">
                   <Loader2 className="w-3 h-3 animate-spin stroke-[2]" />
                   <span>{isAr ? 'جاري البناء...' : 'Building...'}</span>
                 </span>
               ) : runtimeState === 'running' ? (
-                <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1.5 shadow-[0_0_12px_-2px_rgba(16,185,129,0.3)]">
+                <span className="status-pill status-pill-running">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]" />
                   <span>{isAr ? 'يعمل' : 'Live'}</span>
                 </span>
               ) : (
-                <span className="bg-rose-500/15 border border-rose-500/30 text-rose-300 rounded-full px-3 py-1 text-xs font-semibold flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-400" />
+                <span className="status-pill status-pill-stopped">
+                  <span className="w-2 h-2 rounded-full bg-slate-400" />
                   <span>{isAr ? 'متوقف' : 'Stopped'}</span>
                 </span>
               )}
 
-              {/* Run / Restart Button */}
-              <button
-                type="button"
-                onClick={() => handleRuntimeControl(runtimeState === 'running' ? 'restart' : 'run')}
-                disabled={runtimeState === 'restarting'}
-                title={runtimeState === 'running' ? (isAr ? 'إعادة تشغيل التطبيق' : 'Restart Application') : (isAr ? 'تشغيل التطبيق' : 'Run Application')}
-                className="h-8 px-3 rounded-xl bg-slate-800/75 hover:bg-slate-700/85 text-slate-100 border border-white/15 hover:border-blue-400/50 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] inline-flex items-center gap-2 text-xs font-medium transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-              >
-                {runtimeState === 'running' ? <RotateCcw className="w-3.5 h-3.5 stroke-[2]" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                <span>{runtimeState === 'running' ? (isAr ? 'إعادة تشغيل' : 'Restart') : (isAr ? 'تشغيل' : 'Run')}</span>
-              </button>
+              {/* Primary Runtime Action: Run Preview (when stopped) vs Stop & Restart (when running) */}
+              {runtimeState === 'stopped' ? (
+                <button
+                  type="button"
+                  onClick={() => handleRuntimeControl('run')}
+                  title={isAr ? 'تشغيل المعاينة' : 'Run Preview'}
+                  className="btn btn-primary btn-sm"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>{isAr ? 'تشغيل المعاينة' : 'Run Preview'}</span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleRuntimeControl('stop')}
+                    title={isAr ? 'إيقاف المعاينة' : 'Stop Preview'}
+                    className="btn btn-danger btn-sm"
+                  >
+                    <Square className="w-3 h-3 fill-current" />
+                    <span>{isAr ? 'إيقاف' : 'Stop'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRuntimeControl('restart')}
+                    disabled={runtimeState === 'restarting'}
+                    title={isAr ? 'إعادة تشغيل التطبيق' : 'Restart Application'}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 stroke-[2]" />
+                    <span>{isAr ? 'إعادة تشغيل' : 'Restart'}</span>
+                  </button>
+                </>
+              )}
 
               {/* Refresh Button */}
               <button
                 type="button"
                 onClick={() => setPreviewRefreshKey((k) => k + 1)}
                 title={isAr ? 'تحديث المعاينة' : 'Refresh Preview'}
-                className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 text-slate-200 flex items-center justify-center transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                className="btn btn-secondary btn-sm !px-2.5"
               >
-                <RefreshCw className="w-4 h-4 stroke-[2]" />
+                <RefreshCw className="w-3.5 h-3.5 stroke-[2]" />
+                <span className="hidden sm:inline">{isAr ? 'تحديث' : 'Refresh'}</span>
               </button>
 
               {/* Open in New Tab Button */}
@@ -1675,42 +1744,52 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   onNotify('success', isAr ? 'تم فتح رابط المعاينة المستقلة' : 'Opened live preview in standalone tab');
                 }}
                 title={isAr ? 'فتح في نافذة جديدة' : 'Open in New Tab'}
-                className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 text-slate-200 flex items-center justify-center transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                className="btn btn-secondary btn-sm !px-2.5"
               >
-                <ExternalLink className="w-4 h-4 stroke-[2]" />
+                <ExternalLink className="w-3.5 h-3.5 stroke-[2]" />
+                <span className="hidden sm:inline">{isAr ? 'نافذة جديدة' : 'New Tab'}</span>
               </button>
             </div>
 
             {/* Viewports Switcher + Fullscreen + On-Demand Edit Button */}
             <div className="flex items-center gap-2">
               {/* Responsive Viewport Switcher as Segmented Pill */}
-              <div className="bg-slate-950/90 p-1 rounded-xl border border-white/10 inline-flex items-center gap-1">
+              <div className="segmented-pill-container">
                 <button
                   type="button"
                   onClick={() => setPreviewDevice('desktop')}
                   aria-label="Desktop Preview"
                   title={isAr ? 'معاينة سطح المكتب' : 'Desktop Viewport'}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${previewDevice === 'desktop' ? 'bg-blue-600 text-white shadow-sm font-medium' : 'text-slate-400 hover:text-slate-100'}`}
+                  className={`segmented-pill-btn flex items-center gap-1.5 ${
+                    previewDevice === 'desktop' ? 'segmented-pill-btn-active' : ''
+                  }`}
                 >
                   <Monitor className="w-3.5 h-3.5 stroke-[2]" />
+                  <span className="hidden md:inline">{isAr ? 'سطح المكتب' : 'Desktop'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewDevice('tablet')}
                   aria-label="Tablet Preview"
                   title={isAr ? 'معاينة التابلت' : 'Tablet Viewport (768px)'}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${previewDevice === 'tablet' ? 'bg-blue-600 text-white shadow-sm font-medium' : 'text-slate-400 hover:text-slate-100'}`}
+                  className={`segmented-pill-btn flex items-center gap-1.5 ${
+                    previewDevice === 'tablet' ? 'segmented-pill-btn-active' : ''
+                  }`}
                 >
                   <Tablet className="w-3.5 h-3.5 stroke-[2]" />
+                  <span className="hidden md:inline">{isAr ? 'تابلت' : 'Tablet'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewDevice('mobile')}
                   aria-label="Mobile Preview"
                   title={isAr ? 'معاينة الهاتف' : 'Mobile Viewport (390px)'}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${previewDevice === 'mobile' ? 'bg-blue-600 text-white shadow-sm font-medium' : 'text-slate-400 hover:text-slate-100'}`}
+                  className={`segmented-pill-btn flex items-center gap-1.5 ${
+                    previewDevice === 'mobile' ? 'segmented-pill-btn-active' : ''
+                  }`}
                 >
                   <Smartphone className="w-3.5 h-3.5 stroke-[2]" />
+                  <span className="hidden md:inline">{isAr ? 'هاتف' : 'Mobile'}</span>
                 </button>
               </div>
 
@@ -1719,9 +1798,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 type="button"
                 onClick={() => setIsFullscreenPreview(!isFullscreenPreview)}
                 title={isAr ? 'ملء الشاشة' : 'Toggle Fullscreen'}
-                className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 text-slate-200 flex items-center justify-center transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                className="btn btn-secondary btn-sm !px-2.5"
               >
-                {isFullscreenPreview ? <Minimize2 className="w-4 h-4 stroke-[2]" /> : <Maximize2 className="w-4 h-4 stroke-[2]" />}
+                {isFullscreenPreview ? <Minimize2 className="w-3.5 h-3.5 stroke-[2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2]" />}
               </button>
 
               {/* On-Demand Edit Button (Preserves id="toggle-edit-mode-btn") with prominent indigo style */}
@@ -1731,42 +1810,32 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 data-testid="toggle-edit-mode-btn"
                 onClick={() => setIsEditMode(true)}
                 title={isAr ? 'تحرير الكود والملفات' : 'Edit Code & Files'}
-                className="h-8 px-3 rounded-xl bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 hover:bg-indigo-500/30 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] inline-flex items-center gap-2 text-xs font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                className="btn btn-secondary btn-sm border-indigo-500/40 text-indigo-200 hover:border-indigo-400"
               >
-                <Code2 className="w-3.5 h-3.5 stroke-[2] text-indigo-300" />
+                <Code2 className="w-3.5 h-3.5 stroke-[2] text-indigo-400" />
                 <span className="hidden sm:inline">{isAr ? 'تحرير' : 'Edit Code'}</span>
               </button>
             </div>
           </div>
 
-          {/* Live Sandbox Viewport */}
-          <div className="flex-1 bg-[#06070b] flex items-center justify-center p-2 overflow-hidden">
+          {/* Clean Application Preview Canvas (100% Empty When Stopped/Idle) */}
+          <div className="flex-1 bg-[#090D18] flex items-center justify-center p-2 sm:p-4 overflow-hidden relative">
             {runtimeState === 'stopped' ? (
-              <div className="text-center space-y-3 p-6">
-                <p className="text-xs text-zinc-400">
-                  {isAr ? 'تم إيقاف خادم التشغيل حالياً.' : 'Application runtime server is currently stopped.'}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => handleRuntimeControl('run')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>{isAr ? 'إعادة تشغيل التطبيق الآن' : 'Start Application Runtime'}</span>
-                </button>
-              </div>
+              /* Completely Clean Canvas when Stopped/Idle: No welcome messages, no instructional text, no buttons */
+              <div className="w-full h-full bg-[#090D18]" />
             ) : (
               <div
-                className={`h-full transition-all duration-200 rounded-xl overflow-hidden border border-white/12 shadow-2xl bg-[#090d16] ${
+                className={`h-full transition-all duration-300 rounded-2xl overflow-hidden glass-card shadow-2xl bg-[#090D18] ${
                   previewDevice === 'mobile'
-                    ? 'w-[375px]'
+                    ? 'w-[390px] max-w-full'
                     : previewDevice === 'tablet'
-                    ? 'w-[720px]'
+                    ? 'w-[768px] max-w-full'
                     : 'w-full'
                 }`}
               >
                 <iframe
                   key={previewRefreshKey}
+                  id="live-app-preview-frame"
                   title={`Live Preview — ${project.name}`}
                   srcDoc={compiledPreviewHtml}
                   sandbox="allow-scripts allow-forms allow-modals allow-same-origin allow-downloads"
