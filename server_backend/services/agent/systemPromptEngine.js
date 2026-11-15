@@ -7,6 +7,8 @@
  * context, and establishes safety guardrails for the 8B open-source model.
  */
 
+const { MASTER_SYSTEM_PROMPT_V1, classifyMasterIntent } = require('../ai/engineerMasterPrompt');
+
 const ROLE_PROFILES = {
   business_owner: {
     title: 'صاحب شركة ومستثمر (Business Owner)',
@@ -40,6 +42,24 @@ const ROLE_PROFILES = {
   }
 };
 
+const PRIVILEGE_ESCALATION_PATTERNS = [
+  /ترقية\s+(حساب|حسابي|الصلاحيات|المستخدم)/i,
+  /تغيير\s+الصلاحي(ة|ات)\s+إلى\s+(مدير|أدمن|مسؤول|root)/i,
+  /صلاحي(ة|ات)\s+(الأدمن|المدير|الروت|admin|root|superuser)/i,
+  /منح\s+(صلاحيات\s+المدير|وصول\s+مطلق|admin)/i,
+  /grant\s+admin/i,
+  /escalate\s+privilege/i,
+  /become\s+(admin|root|superuser)/i,
+  /make\s+me\s+admin/i
+];
+
+const GUARDRAIL_BYPASS_PATTERNS = [
+  /تجاوز\s+(التأكيد|الحماية|بوابة\s+الأمان|التحقق)/i,
+  /بدون\s+(تأكيد|موافقة)/i,
+  /bypass\s+(guardrail|confirmation|approval)/i,
+  /skip\s+confirmation/i
+];
+
 const SENSITIVE_PATTERNS = [
   /حذف\s+(كافة|جميع|كل|بيانات|سجلات|قاعدة)/i,
   /مسح\s+(كافة|جميع|كل|بيانات|سجلات)/i,
@@ -49,7 +69,9 @@ const SENSITIVE_PATTERNS = [
   /drop\s+table/i,
   /delete\s+from/i,
   /truncate/i,
-  /إرسال\s+إشعار\s+(جماعي|لكافة\s+المستخدمين|عام)/i
+  /إرسال\s+إشعار\s+(جماعي|لكافة\s+المستخدمين|عام)/i,
+  ...PRIVILEGE_ESCALATION_PATTERNS,
+  ...GUARDRAIL_BYPASS_PATTERNS
 ];
 
 /**
@@ -57,6 +79,20 @@ const SENSITIVE_PATTERNS = [
  */
 function isSensitiveOperation(prompt = '') {
   return SENSITIVE_PATTERNS.some((pattern) => pattern.test(prompt));
+}
+
+/**
+ * Checks specifically for privilege escalation attempts.
+ */
+function isPrivilegeEscalationAttempt(prompt = '') {
+  return PRIVILEGE_ESCALATION_PATTERNS.some((pattern) => pattern.test(prompt));
+}
+
+/**
+ * Checks for guardrail bypass attempts.
+ */
+function isGuardrailBypassAttempt(prompt = '') {
+  return GUARDRAIL_BYPASS_PATTERNS.some((pattern) => pattern.test(prompt));
 }
 
 /**
@@ -72,6 +108,10 @@ function buildSystemPrompt({ userRole = 'business_owner', currentScreen = null, 
   }
 
   const promptText = `
+${MASTER_SYSTEM_PROMPT_V1}
+
+---
+
 # دستور المساعد التنفيذي الذكي ومهندس الأنظمة (AI Executive Agent Constitution)
 
 ## 1. الهوية والدور الأساسي
@@ -169,6 +209,10 @@ module.exports = {
   ROLE_PROFILES,
   SENSITIVE_PATTERNS,
   isSensitiveOperation,
+  isPrivilegeEscalationAttempt,
+  isGuardrailBypassAttempt,
+  classifyMasterIntent,
+  MASTER_SYSTEM_PROMPT_V1,
   buildSystemPrompt,
   fetchDynamicFewShots
 };

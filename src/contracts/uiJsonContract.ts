@@ -17,6 +17,7 @@ export interface AssistantMessage {
   confirmation: string;
   highlight: string;
   nextStepSuggestion: string;
+  details?: string;
 }
 
 export interface KpiCard {

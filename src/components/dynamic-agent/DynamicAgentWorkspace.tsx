@@ -38,6 +38,7 @@ import {
   ScreenField,
   RootResponseEnvelope,
   GuardrailPayload,
+  AssistantMessage,
 } from '../../contracts/uiJsonContract';
 import { DynamicUIRenderer } from './DynamicUIRenderer';
 import { GuardrailModal } from './GuardrailModal';
@@ -46,11 +47,7 @@ interface ChatMessage {
   id: string;
   sender: 'user' | 'agent';
   text?: string;
-  assistantMessage?: {
-    confirmation: string;
-    highlight: string;
-    nextStepSuggestion: string;
-  };
+  assistantMessage?: AssistantMessage;
   suggestedActions?: string[];
   timestamp: string;
 }
@@ -438,6 +435,17 @@ export const DynamicAgentWorkspace: React.FC = () => {
                       <div className="p-2 rounded-lg bg-purple-950/30 border border-purple-500/20 text-purple-200 font-medium">
                         <p>{msg.assistantMessage.nextStepSuggestion}</p>
                       </div>
+                      {msg.assistantMessage.details && (
+                        <details className="mt-2 text-xs bg-slate-950/70 border border-slate-800 rounded-lg p-2.5 text-slate-300">
+                          <summary className="cursor-pointer text-slate-400 hover:text-white font-medium select-none flex items-center justify-between">
+                            <span>عرض التفاصيل والتقرير الهندسي الكامل</span>
+                            <span className="text-[10px] text-blue-400 font-mono">انقر للتوسيع</span>
+                          </summary>
+                          <div className="mt-2 pt-2 border-t border-slate-800/80 whitespace-pre-wrap leading-relaxed font-sans text-slate-200">
+                            {msg.assistantMessage.details}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   )}
 

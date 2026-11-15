@@ -99,7 +99,8 @@ const OP_TYPES = ['ADD', 'UPDATE', 'REMOVE'];
 const AssistantMessageSchema = z.object({
   confirmation: z.string(),
   highlight: z.string(),
-  nextStepSuggestion: z.string()
+  nextStepSuggestion: z.string(),
+  details: z.string().optional()
 });
 
 const KpiCardSchema = z.object({

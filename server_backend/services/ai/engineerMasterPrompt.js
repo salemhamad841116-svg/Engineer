@@ -155,7 +155,8 @@ Before responding that a task is done, verify:
  * Classifies an incoming prompt into one of the 11 Master Operating Modes.
  */
 function classifyMasterIntent(prompt = '') {
-  const p = String(prompt || '').trim().toLowerCase();
+  // Strip Arabic tashkeel / diacritics (including shaddah \u0651) for robust classification
+  const p = String(prompt || '').trim().toLowerCase().replace(/[\u064B-\u065F\u0670]/g, '');
 
   // 1. CHAT
   if (/^(هلا|مرحبا|أهلا|السلام عليكم|صباح الخير|مساء الخير|hi|hello|hey|greetings)\b/i.test(p) && p.length < 30) {
@@ -168,7 +169,7 @@ function classifyMasterIntent(prompt = '') {
   }
 
   // 3. AUTOMATE
-  if (/(أتمتة|أتمت|جدولة|مجدول|كل أسبوع|أسبوعياً|يومياً|schedule|cron|automation|webhook)/i.test(p)) {
+  if (/(أتمتة|أتمت|جدولة|مجدول|كل أسبوع|أسبوعي[اًا]?|يومي[اًا]?|تلقائي[اًا]?|schedule|cron|automation|webhook)/i.test(p)) {
     return 'AUTOMATE';
   }
 
@@ -177,24 +178,24 @@ function classifyMasterIntent(prompt = '') {
     return 'REPORT';
   }
 
-  // 5. TEST
+  // 5. DEBUG (Fault diagnosis, errors, bugs, and defects take priority over acceptance testing)
+  if (/(عطل|خطأ|تشخيص|شخص|bug|fix error|إصلاح المشكلة|الخلل|exception|crash)/i.test(p)) {
+    return 'DEBUG';
+  }
+
+  // 6. TEST
   if (/(اختبر|فحص|تأكد من عمل|run test|verify|e2e test|unit test)/i.test(p)) {
     return 'TEST';
   }
 
-  // 6. DEBUG
-  if (/(عطل|خطأ|bug|fix error|إصلاح المشكلة|الخلل|exception|crash)/i.test(p)) {
-    return 'DEBUG';
+  // 7. EXPLAIN (Questions and explanations take precedence over tool executions)
+  if (/(اشرح|كيف يعمل|ما هو|ما هي|ما الفرق|explain|what is|how to)/i.test(p)) {
+    return 'EXPLAIN';
   }
 
-  // 7. DATA
-  if (/(قاعدة بيانات|database|سجلات|جدول|تخزين|استعلام|sql|migration|ربط الحفظ)/i.test(p)) {
+  // 8. DATA
+  if (/(قاعد[ةه]\s*(ال)?بيانات|database|سجلات|جدول|تخزين|استعلام|sql|migration|ربط\s*(الحفظ|البيانات|قاعد|بقاعد)|بيانات)/i.test(p)) {
     return 'DATA';
-  }
-
-  // 8. EDIT
-  if (/(عدل|غير|تغيير|حدث|تحديث|أضف حقل|لون زر|patch|modify|update|edit)/i.test(p)) {
-    return 'EDIT';
   }
 
   // 9. PLAN
@@ -202,9 +203,9 @@ function classifyMasterIntent(prompt = '') {
     return 'PLAN';
   }
 
-  // 10. EXPLAIN
-  if (/(اشرح|كيف يعمل|ما هو|ما هي|ما الفرق|explain|what is|how to)/i.test(p)) {
-    return 'EXPLAIN';
+  // 10. EDIT
+  if (/(عدل|غير|تغيير|حدث|تحديث|أضف حقل|لون زر|patch|modify|update|edit)/i.test(p)) {
+    return 'EDIT';
   }
 
   // 11. BUILD (Default for constructive generative requests)

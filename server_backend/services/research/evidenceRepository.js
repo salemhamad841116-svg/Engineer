@@ -28,7 +28,7 @@ function recordEvidence({
   exactQuote,
   sourceChunkText = '',
 }) {
-  const evidenceId = 'ev_' + crypto.randomUUID().slice(0, 10);
+  const evidenceId = 'ev_' + crypto.randomUUID();
   const now = nowIso();
 
   // Audit against verbatim source text

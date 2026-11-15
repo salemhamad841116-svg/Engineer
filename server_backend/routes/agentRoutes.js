@@ -16,18 +16,40 @@ const router = express.Router();
  * POST /api/agent/dispatch
  * Main interaction endpoint for the AI Executive Agent.
  */
-router.post('/dispatch', (req, res) => {
+router.post('/dispatch', async (req, res) => {
   try {
-    const { prompt, userRole = 'business_owner', currentScreen = null, confirmed = false } = req.body;
+    const {
+      prompt,
+      userRole = 'business_owner',
+      currentScreen = null,
+      confirmed = false,
+      details = false,
+      projectId = 'default',
+      files = {}
+    } = req.body;
+
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ success: false, error: 'Prompt is required' });
     }
 
-    const outcome = agent.dispatchPrompt({
+    // Role validation: prevent forging non-existent or privileged roles from client
+    const safeRole = ['business_owner', 'employee', 'developer'].includes(userRole)
+      ? userRole
+      : 'business_owner';
+
+    const userId = req.user?.id || req.body.userId || 'system_user';
+    const db = getDb();
+
+    const outcome = await agent.dispatchPromptAsync({
       prompt,
-      userRole,
+      userRole: safeRole,
       currentScreen,
-      confirmed: Boolean(confirmed)
+      confirmed: Boolean(confirmed),
+      details: Boolean(details),
+      userId,
+      projectId,
+      files,
+      db
     });
 
     return res.json({

@@ -376,7 +376,15 @@ runStep('Engineer Master System Prompt v1.0 & Tool Registry Gate (Tests T01–T1
   execSync('node server_backend/tests/engineerMasterSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 30: Real 8B Model Fleet, Security Hardening & Production Audit Gate (7 Mandates)
+// ----------------------------------------------------
+runStep('Real 8B Model Fleet, Security Hardening & Production Audit Gate (7 Mandates)', () => {
+  execSync('node server_backend/tests/realModelAndProductionAudit.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
+
 
 
 

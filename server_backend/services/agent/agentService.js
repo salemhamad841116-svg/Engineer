@@ -7,7 +7,16 @@
  * custom screens, dynamic records, and feedback.
  */
 
-const { isSensitiveOperation, buildSystemPrompt, fetchDynamicFewShots } = require('./systemPromptEngine');
+const {
+  isSensitiveOperation,
+  isPrivilegeEscalationAttempt,
+  isGuardrailBypassAttempt,
+  buildSystemPrompt,
+  fetchDynamicFewShots
+} = require('./systemPromptEngine');
+const { classifyMasterIntent } = require('../ai/engineerMasterPrompt');
+const { defaultTruthfulnessEngine } = require('../engineer/truthfulnessEngine');
+const { defaultToolRegistry } = require('../engineer/toolRegistry');
 const { validateUiResponse } = require('../../contracts/uiJsonContract');
 
 // ----------------------------------------------------
@@ -97,8 +106,24 @@ function buildNewScreen(prompt = '', userRole = 'business_owner', options = {}) 
       { id: 'rec_2', key_name: 'staging_analytics', rate_limit: 1000, ip_whitelist: '0.0.0.0/0', environment: 'staging', webhook_url: 'https://staging.client.ae/stream' },
       { id: 'rec_3', key_name: 'dev_local_testing', rate_limit: 200, ip_whitelist: '127.0.0.1', environment: 'development', webhook_url: 'http://localhost:3000/events' }
     ];
-    automations = [
-      { id: 'auto_rate_alert', event: 'rate_limit_exceeded', action: 'throttle_ip', notify: 'security_admin' }
+  } else if (p.includes('مهم') || p.includes('مهام') || p.includes('task') || p.includes('مشروع')) {
+    title = 'نظام إدارة وتتبع المهام والمشاريع';
+    kpis = [
+      { id: 'kpi_tasks_total', label: 'إجمالي المهام', value: 38, change: '+12%', trend: 'up', icon: 'CheckSquare' },
+      { id: 'kpi_completed', label: 'المهام المنجزة', value: 29, change: '+8%', trend: 'up', icon: 'CheckCircle' },
+      { id: 'kpi_urgent', label: 'مهام عاجلة', value: 4, change: '-2', trend: 'down', icon: 'AlertTriangle' }
+    ];
+    fields = [
+      { id: 'f_task_title', name: 'title', label: 'عنوان المهمة', type: 'text', colSpan: 6, icon: 'FileText', required: true, placeholder: 'اكتب اسم المهمة الرئيسية' },
+      { id: 'f_assignee', name: 'assignee', label: 'المسؤول عن التنفيذ', type: 'text', colSpan: 6, icon: 'User', required: true, placeholder: 'اسم الموظف أو الفريق' },
+      { id: 'f_priority', name: 'priority', label: 'مستوى الأولوية', type: 'select', colSpan: 6, icon: 'Tag', options: ['عاجل جداً', 'عالية', 'متوسطة', 'منخفضة'], defaultValue: 'متوسطة' },
+      { id: 'f_due_date', name: 'due_date', label: 'تاريخ الاستحقاق', type: 'date', colSpan: 6, icon: 'Calendar', required: true },
+      { id: 'f_description', name: 'description', label: 'تفاصيل المهمة ومتطلبات الإنجاز', type: 'textarea', colSpan: 12, icon: 'FileText', placeholder: 'خطوات التنفيذ ومعايير القبول...' }
+    ];
+    mockRecords = [
+      { id: 'rec_1', title: 'مراجعة التصاميم الهندسية للواجهة', assignee: 'أحمد المنصوري', priority: 'عالية', due_date: '2026-11-20', description: 'التأكد من التوافق التام مع نظام الشبكة Grid 12' },
+      { id: 'rec_2', title: 'ربط قاعدة بيانات SQLite للمستخدمين', assignee: 'سارة الكعبي', priority: 'عاجل جداً', due_date: '2026-11-18', description: 'تجهيز جداول dynamic_records وتأمين المخطط' },
+      { id: 'rec_3', title: 'إعداد تقرير الأداء الأسبوعي', assignee: 'حمد الظاهري', priority: 'متوسطة', due_date: '2026-11-22', description: 'استخراج مؤشرات الحضور والمبيعات' }
     ];
   } else {
     // Generic robust business solution
@@ -322,13 +347,17 @@ function configureAutomation(currentPayload, automationConfig = {}, userRole = '
  * Dispatches an incoming prompt, applying security guardrails, system prompt constitution,
  * tool invocation, and auto-retry contract validation.
  */
-function dispatchPrompt({ prompt = '', userRole = 'business_owner', currentScreen = null, confirmed = false, db = null } = {}) {
-  // Step 1: Security Guardrail Check
+function dispatchPrompt({ prompt = '', userRole = 'business_owner', currentScreen = null, confirmed = false, db = null, details = false, userId = 'system', projectId = 'default' } = {}) {
+  const p = String(prompt || '').toLowerCase();
+
+  // Step 1: Security Guardrail & Privilege Escalation Check
   if (isSensitiveOperation(prompt)) {
     if (!confirmed) {
+      const isPerm = prompt.includes('صلاحيات') || prompt.includes('admin') || prompt.includes('ترقية') || isPrivilegeEscalationAttempt(prompt);
+      const isDelete = prompt.includes('حذف') || prompt.includes('مسح') || prompt.includes('drop') || prompt.includes('delete');
       const guardrailPayload = {
-        severity: prompt.includes('حذف') || prompt.includes('مسح') || prompt.includes('drop') ? 'critical' : 'high',
-        operation: prompt.includes('صلاحيات') ? 'MODIFY_PERMISSIONS' : (prompt.includes('إشعار جماعي') ? 'BULK_NOTIFICATION' : 'DELETE_DATA'),
+        severity: isDelete ? 'critical' : 'high',
+        operation: isPerm ? 'MODIFY_PERMISSIONS' : (prompt.includes('إشعار جماعي') ? 'BULK_NOTIFICATION' : 'DELETE_DATA'),
         message: 'تحذير أمني: يشتمل طلبك على إجراء عالي الخطورة قد يؤدي لفقدان دائم للبيانات أو تغيير جذري في الصلاحيات. يرجى تأكيد التنفيذ للمتابعة.',
         requiresExplicitPrompt: true
       };
@@ -348,6 +377,29 @@ function dispatchPrompt({ prompt = '', userRole = 'business_owner', currentScree
       };
 
       return validateUiResponse(envelope);
+    } else {
+      // Even if confirmed = true, prevent unauthorized self-privilege escalation
+      if (isPrivilegeEscalationAttempt(prompt)) {
+        const envelope = {
+          actionType: 'CHAT_ONLY',
+          assistantMessage: {
+            confirmation: 'تم رفض طلب ترقية الصلاحيات لأسباب أمنية.',
+            highlight: 'تخضع صلاحيات النظام لسياسات عزل الأدوار الصارمة (Role Isolation) وتمنع الترقية الذاتية منعاً باتاً.',
+            nextStepSuggestion: 'يرجى مراجعة المسؤول المعتمد للنظام إذا كنت بحاجة إلى تعديل صلاحيات حسابك.'
+          },
+          suggestedActions: [
+            'الاستمرار بالصلاحيات الحالية',
+            'طلب مراجعة الصلاحيات من الإدارة'
+          ],
+          guardrail: {
+            severity: 'critical',
+            operation: 'MODIFY_PERMISSIONS',
+            message: 'تم رفض محاولة ترقية الصلاحيات الذاتية بشكل غير مصرح به حتى مع إرسال إشارة التأكيد.',
+            requiresExplicitPrompt: false
+          }
+        };
+        return validateUiResponse(envelope);
+      }
     }
   }
 
@@ -356,7 +408,6 @@ function dispatchPrompt({ prompt = '', userRole = 'business_owner', currentScree
   buildSystemPrompt({ userRole, currentScreen, fewShotExamples: fewShots });
 
   // Step 3: Tool Execution / Response Synthesis
-  const p = String(prompt || '').toLowerCase();
   let rawEnvelope;
 
   if (currentScreen && (p.includes('أضف') || p.includes('عدل') || p.includes('احذف') || p.includes('غير') || p.includes('حدث'))) {
@@ -367,7 +418,17 @@ function dispatchPrompt({ prompt = '', userRole = 'business_owner', currentScree
     rawEnvelope = buildNewScreen(prompt, userRole);
   }
 
-  // Step 4: Validate against strict Zod UI contract with single auto-retry
+  // Step 4: Adaptive Response Length (3 short lines default + rich details on demand)
+  const wantsDetails = Boolean(details) || /اشرح|تفصيل|بالتفصيل|تقرير\s+مفصل|مع\s+الشرح|explain|detailed|details/i.test(prompt);
+  if (wantsDetails && rawEnvelope && rawEnvelope.assistantMessage) {
+    rawEnvelope.assistantMessage.details = `### التقرير الفني والتحليلي المفصل:
+1. **الهيكلة البرمجية المعمارية**: تم اختيار نمط العرض (${rawEnvelope.uiPayload?.meta?.viewType || 'DASHBOARD'}) وتوزيع الحقول بنظام الشبكة (CSS Grid 12) لضمان انسيابية الإدخال وتناسق التخطيط.
+2. **قواعد التحقق والأمان**: تم ربط معايير التحقق الصارم من صحة الحقول (Zod Schema Validation) وتفعيل ضوابط الأمان لمنع العمليات غير المصرح بها مع حظر الترقية الذاتية للصلاحيات.
+3. **مؤشرات الأداء التشغيلية**: تضمين بطاقات إحصائية حية (KPIs) تتيح المتابعة اللحظية للعمليات والقرارات.
+4. **تكامل البيانات والأتمتة**: مهيأة للتكامل التلقائي مع جداول SQLite وسحب وإدخال السجلات عبر Dynamic Records API.`;
+  }
+
+  // Step 5: Validate against strict Zod UI contract with single auto-retry
   return validateUiResponse(rawEnvelope);
 }
 
@@ -461,10 +522,59 @@ function insertDynamicRecord(db, screenId, recordData = {}, createdBy = 'user') 
   return { id: recordId, screenId, data: recordData, createdAt: now };
 }
 
+/**
+ * Sanitizes prompts and responses before storing in ai_feedback to prevent
+ * leaking PII, API tokens, passwords, phone numbers, or private emails.
+ */
+function sanitizeFewShotContent(input) {
+  if (!input) return input;
+  let str = typeof input === 'string' ? input : JSON.stringify(input);
+
+  // Redact API keys & Secrets
+  str = str.replace(/(?:sk-[a-zA-Z0-9_-]{20,}|Bearer\s+[a-zA-Z0-9_\-\.]+|AIza[0-9A-Za-z\-_]{35}|ghp_[a-zA-Z0-9]{36})/gi, '[REDACTED_API_KEY]');
+  str = str.replace(/(?:password|secret|api_key|token)\s*[:=]\s*["']?[^\s,"'}]+["']?/gi, (match) => {
+    const key = match.split(/[:=]/)[0];
+    return `${key}: "[REDACTED]"`;
+  });
+
+  // Redact Emails
+  str = str.replace(/[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, 'user@example.com');
+
+  // Redact Phone numbers
+  str = str.replace(/(?:\+?\d{1,4}[\s-]?)?\(?\d{2,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,4}/g, '[REDACTED_PHONE]');
+
+  if (typeof input !== 'string') {
+    try {
+      return JSON.parse(str);
+    } catch (_) {
+      return input;
+    }
+  }
+  return str;
+}
+
+/**
+ * Enforces quality gate: only mark positive feedback as a few-shot candidate if
+ * it is safe, clean, non-sensitive, and free of injection attempts.
+ */
+function evaluateFewShotCandidateQuality(prompt, rating) {
+  if (rating <= 0) return 0;
+  if (!prompt || typeof prompt !== 'string') return 0;
+  const p = prompt.trim();
+  if (p.length < 5 || p.length > 800) return 0;
+  if (isSensitiveOperation(p)) return 0;
+  if (isPrivilegeEscalationAttempt(p) || isGuardrailBypassAttempt(p)) return 0;
+  return 1;
+}
+
 function saveAiFeedback(db, { userId = 'system', userRole = 'business_owner', prompt, response = {}, rating = 1, notes = '' }) {
   if (!db) throw new Error('Database handle required');
   const feedbackId = 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
   const now = new Date().toISOString();
+
+  const sanitizedPrompt = sanitizeFewShotContent(prompt);
+  const sanitizedResponse = sanitizeFewShotContent(response);
+  const isCandidate = evaluateFewShotCandidateQuality(prompt, rating);
 
   const stmt = db.prepare(`
     INSERT INTO ai_feedback (
@@ -476,15 +586,87 @@ function saveAiFeedback(db, { userId = 'system', userRole = 'business_owner', pr
     feedbackId,
     userId,
     userRole,
-    prompt,
-    JSON.stringify(response),
+    sanitizedPrompt,
+    JSON.stringify(sanitizedResponse),
     rating > 0 ? 1 : -1,
     notes,
-    rating > 0 ? 1 : 0,
+    isCandidate,
     now
   );
 
-  return { id: feedbackId, rating, createdAt: now };
+  return { id: feedbackId, rating, isFewShotCandidate: isCandidate, createdAt: now };
+}
+
+/**
+ * Asynchronously dispatches a prompt, linking the AI Agent to the full 10 Tool Families
+ * via TruthfulnessEngine and ToolRegistry when full engineering orchestration is required.
+ */
+async function dispatchPromptAsync({
+  prompt = '',
+  userRole = 'business_owner',
+  currentScreen = null,
+  confirmed = false,
+  db = null,
+  details = false,
+  userId = 'system',
+  projectId = 'default',
+  files = {}
+} = {}) {
+  // 1. Run sync dispatch for validation, guardrails, and UI payload
+  const syncOutcome = dispatchPrompt({ prompt, userRole, currentScreen, confirmed, db, details, userId, projectId });
+
+  if (!syncOutcome.valid || syncOutcome.data.actionType === 'REQUIRE_CONFIRMATION' || syncOutcome.data.actionType === 'REQUIRES_CONFIRMATION') {
+    return syncOutcome;
+  }
+
+  // 2. Classify intent via Master Prompt v1.0
+  const intent = classifyMasterIntent(prompt);
+
+  const isEngineeringToolCall = ['TEST', 'DEBUG', 'AUTOMATE', 'REPORT', 'DEPLOY', 'DATA'].includes(intent) ||
+    (intent === 'BUILD' && (prompt.includes('مشروع') || prompt.includes('ملف') || prompt.includes('تطبيق كامل') || prompt.includes('run tests'))) ||
+    (intent === 'EDIT' && (prompt.includes('زر الحفظ') || prompt.includes('ملف') || prompt.includes('كود')));
+
+  if (isEngineeringToolCall) {
+    try {
+      const masterRes = await defaultTruthfulnessEngine.processMasterRequest({
+        taskId: 'task_' + Date.now(),
+        projectId,
+        prompt,
+        userId,
+        role: userRole,
+        confirmed,
+        files
+      });
+
+      const updatedEnvelope = {
+        ...syncOutcome.data,
+        masterExecution: {
+          taskId: masterRes.taskId,
+          projectId: masterRes.projectId,
+          intent: masterRes.intent,
+          state: masterRes.state,
+          executedToolsCount: masterRes.executedToolsCount,
+          evidenceRecords: masterRes.evidenceRecords,
+          summary: masterRes.userMessage
+        }
+      };
+
+      if (masterRes.userMessage) {
+        updatedEnvelope.assistantMessage.highlight = masterRes.userMessage.slice(0, 160);
+      }
+
+      return {
+        valid: true,
+        data: updatedEnvelope,
+        errors: [],
+        repaired: false
+      };
+    } catch (_) {
+      return syncOutcome;
+    }
+  }
+
+  return syncOutcome;
 }
 
 module.exports = {
@@ -492,9 +674,12 @@ module.exports = {
   patchExistingScreen,
   configureAutomation,
   dispatchPrompt,
+  dispatchPromptAsync,
   saveCustomScreen,
   listCustomScreens,
   getCustomScreen,
   insertDynamicRecord,
-  saveAiFeedback
+  saveAiFeedback,
+  sanitizeFewShotContent,
+  evaluateFewShotCandidateQuality
 };
