@@ -187,7 +187,8 @@ class ToolRegistry {
         case 'packages.inspect':
         case 'packages.install': {
           outputData = resolveDependencies(params.files || {}, params.currentPackageJson || {});
-          evidenceRef = `lockfile_${outputData.missingPackages.length}_resolved`;
+          const count = (outputData.resolvedPackages || outputData.missingPackages || []).length;
+          evidenceRef = `lockfile_${count}_resolved`;
           break;
         }
 
