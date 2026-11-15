@@ -1551,6 +1551,89 @@ CREATE INDEX IF NOT EXISTS idx_system_notifications_read ON system_notifications
       }
     },
   },
+  {
+    id: 25,
+    name: 'phase16_18_feature_autonomous_engineering_core',
+    up: (handle) => {
+      handle.exec(`
+CREATE TABLE IF NOT EXISTS engineering_jobs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT,
+  user_id TEXT,
+  job_type TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'paused')),
+  progress INTEGER NOT NULL DEFAULT 0,
+  current_step TEXT,
+  checkpoint_data TEXT DEFAULT '{}',
+  logs_snippet TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_engineering_jobs_project ON engineering_jobs(project_id);
+CREATE INDEX IF NOT EXISTS idx_engineering_jobs_user ON engineering_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_engineering_jobs_status ON engineering_jobs(status);
+
+CREATE TABLE IF NOT EXISTS workspace_branches (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  branch_name TEXT NOT NULL,
+  base_branch TEXT NOT NULL DEFAULT 'main',
+  status TEXT NOT NULL CHECK (status IN ('active', 'merged', 'abandoned', 'conflict')),
+  head_commit_hash TEXT,
+  worktree_path TEXT,
+  diff_summary TEXT DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_branches_project ON workspace_branches(project_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_branches_name ON workspace_branches(branch_name);
+
+CREATE TABLE IF NOT EXISTS project_code_graphs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  version_hash TEXT NOT NULL,
+  graph_json TEXT NOT NULL DEFAULT '{}',
+  symbols_count INTEGER NOT NULL DEFAULT 0,
+  dependencies_count INTEGER NOT NULL DEFAULT 0,
+  file_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_code_graphs_project ON project_code_graphs(project_id);
+CREATE INDEX IF NOT EXISTS idx_code_graphs_version ON project_code_graphs(version_hash);
+
+CREATE TABLE IF NOT EXISTS project_build_versions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  version_number INTEGER NOT NULL DEFAULT 1,
+  snapshot_label TEXT NOT NULL,
+  snapshot_files_json TEXT NOT NULL DEFAULT '{}',
+  is_healthy INTEGER NOT NULL DEFAULT 1,
+  rollback_available INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_build_versions_project ON project_build_versions(project_id);
+CREATE INDEX IF NOT EXISTS idx_build_versions_num ON project_build_versions(version_number);
+
+CREATE TABLE IF NOT EXISTS engineering_evaluations (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  build_version_id TEXT,
+  build_time_ms INTEGER NOT NULL DEFAULT 0,
+  test_pass_rate REAL NOT NULL DEFAULT 100.0,
+  bundle_size_bytes INTEGER NOT NULL DEFAULT 0,
+  response_latency_ms INTEGER NOT NULL DEFAULT 0,
+  token_cost_usd REAL NOT NULL DEFAULT 0.0,
+  pre_metrics_json TEXT DEFAULT '{}',
+  post_metrics_json TEXT DEFAULT '{}',
+  improvement_ratio REAL NOT NULL DEFAULT 1.0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_evaluations_project ON engineering_evaluations(project_id);
+CREATE INDEX IF NOT EXISTS idx_evaluations_created ON engineering_evaluations(created_at);
+      `);
+    },
+  },
 ];
 
 function openDb() {

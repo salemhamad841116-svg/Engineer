@@ -108,7 +108,12 @@ try {
     'user_search_events',
     'deployments',
     'test_runs',
-    'system_notifications'
+    'system_notifications',
+    'engineering_jobs',
+    'workspace_branches',
+    'project_code_graphs',
+    'project_build_versions',
+    'engineering_evaluations'
   ];
 
   for (const t of requiredTables) {

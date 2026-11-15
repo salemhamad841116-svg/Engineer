@@ -354,9 +354,10 @@ runStep('Interactive Testing & Post-Build Lifecycle Gate (11 Acceptance Tests A-
 });
 
 // ----------------------------------------------------
-// Step 27: Phase 16 / Gate 22 High-Contrast Modern UI & Freestyle Full-Stack Generator Gate
+// Step 27: Phase 16 / Gate 22 18-Feature Autonomous Engineering Core & UI Gate
 // ----------------------------------------------------
-runStep('Phase 16 / Gate 22 High-Contrast Modern UI & Freestyle Full-Stack Generator Gate', () => {
+runStep('Phase 16 / Gate 22 18-Feature Autonomous Engineering Core & UI Gate', () => {
+  execSync('node server_backend/tests/phase16AutonomousEngineeringGate.test.js', { stdio: 'inherit', cwd: projectRoot });
   execSync('node scripts/verify-strict-spec.mjs', { stdio: 'inherit', cwd: projectRoot });
 });
 
