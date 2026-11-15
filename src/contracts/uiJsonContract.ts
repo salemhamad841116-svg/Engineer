@@ -6,7 +6,7 @@
  * and Dynamic UI rendering engine on the frontend.
  */
 
-export type ActionType = 'CREATE_SCREEN' | 'PATCH_SCREEN' | 'REQUIRE_CONFIRMATION' | 'CHAT_ONLY';
+export type ActionType = 'CREATE_SCREEN' | 'PATCH_SCREEN' | 'REQUIRE_CONFIRMATION' | 'REQUIRES_CONFIRMATION' | 'CHAT_ONLY';
 export type ViewType = 'FORM' | 'TABLE' | 'DASHBOARD';
 export type FieldType = 'text' | 'number' | 'date' | 'select' | 'textarea' | 'checkbox' | 'currency' | 'email' | 'phone';
 export type VisibilityOperator = '==' | '!=' | '>' | '<' | 'contains';

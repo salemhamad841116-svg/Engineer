@@ -7,7 +7,7 @@
  * custom screens, dynamic records, and feedback.
  */
 
-const { isSensitiveOperation, buildSystemPrompt } = require('./systemPromptEngine');
+const { isSensitiveOperation, buildSystemPrompt, fetchDynamicFewShots } = require('./systemPromptEngine');
 const { validateUiResponse } = require('../../contracts/uiJsonContract');
 
 // ----------------------------------------------------
@@ -322,7 +322,7 @@ function configureAutomation(currentPayload, automationConfig = {}, userRole = '
  * Dispatches an incoming prompt, applying security guardrails, system prompt constitution,
  * tool invocation, and auto-retry contract validation.
  */
-function dispatchPrompt({ prompt = '', userRole = 'business_owner', currentScreen = null, confirmed = false } = {}) {
+function dispatchPrompt({ prompt = '', userRole = 'business_owner', currentScreen = null, confirmed = false, db = null } = {}) {
   // Step 1: Security Guardrail Check
   if (isSensitiveOperation(prompt)) {
     if (!confirmed) {
@@ -351,8 +351,9 @@ function dispatchPrompt({ prompt = '', userRole = 'business_owner', currentScree
     }
   }
 
-  // Step 2: Build dynamic system prompt (enforces role adaptation and constitution)
-  buildSystemPrompt({ userRole, currentScreen });
+  // Step 2: Build dynamic system prompt (enforces role adaptation, screen context, and few-shots)
+  const fewShots = db ? fetchDynamicFewShots(db, userRole, 2) : [];
+  buildSystemPrompt({ userRole, currentScreen, fewShotExamples: fewShots });
 
   // Step 3: Tool Execution / Response Synthesis
   const p = String(prompt || '').toLowerCase();

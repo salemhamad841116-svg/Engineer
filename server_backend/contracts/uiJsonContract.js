@@ -90,7 +90,7 @@ const z = {
 // UI JSON Contract Zod Schemas
 // ----------------------------------------------------
 
-const ACTION_TYPES = ['CREATE_SCREEN', 'PATCH_SCREEN', 'REQUIRE_CONFIRMATION', 'CHAT_ONLY'];
+const ACTION_TYPES = ['CREATE_SCREEN', 'PATCH_SCREEN', 'REQUIRE_CONFIRMATION', 'REQUIRES_CONFIRMATION', 'CHAT_ONLY'];
 const VIEW_TYPES = ['FORM', 'TABLE', 'DASHBOARD'];
 const FIELD_TYPES = ['text', 'number', 'date', 'select', 'textarea', 'checkbox', 'currency', 'email', 'phone'];
 const OPERATORS = ['==', '!=', '>', '<', 'contains'];
@@ -296,7 +296,7 @@ function repairRawOutput(data = {}) {
   }
 
   // 6. Repair guardrail for REQUIRE_CONFIRMATION
-  if (repaired.actionType === 'REQUIRE_CONFIRMATION' && !repaired.guardrail) {
+  if ((repaired.actionType === 'REQUIRE_CONFIRMATION' || repaired.actionType === 'REQUIRES_CONFIRMATION') && !repaired.guardrail) {
     repaired.guardrail = {
       severity: 'high',
       operation: 'SENSITIVE_OPERATION',

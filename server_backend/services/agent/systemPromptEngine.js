@@ -62,7 +62,7 @@ function isSensitiveOperation(prompt = '') {
 /**
  * Builds the dynamic system prompt customized for the target userRole and screen context.
  */
-function buildSystemPrompt({ userRole = 'business_owner', currentScreen = null, tools = [] } = {}) {
+function buildSystemPrompt({ userRole = 'business_owner', currentScreen = null, tools = [], fewShotExamples = [] } = {}) {
   const roleConfig = ROLE_PROFILES[userRole] || ROLE_PROFILES.business_owner;
 
   let screenSummary = 'لا توجد شاشة مفتوحة حالياً (شاشة جديدة فارغة).';
@@ -131,17 +131,44 @@ ${userRole === 'developer' ? '- **ملاحظة إلزامية**: وضّح أسم
 \`\`\`
 `.trim();
 
+  let fullPrompt = promptText;
+  if (Array.isArray(fewShotExamples) && fewShotExamples.length > 0) {
+    fullPrompt += `\n\n## 8. أمثلة مرجعية معتمدة من التقييمات الإيجابية (Dynamic Few-Shot Examples)\n`;
+    for (const ex of fewShotExamples) {
+      fullPrompt += `- **طلب المستخدم**: "${ex.prompt}"\n  **الاستجابة المعتمدة**: \`${typeof ex.response === 'string' ? ex.response : JSON.stringify(ex.response)}\`\n`;
+    }
+  }
+
   return {
-    systemPrompt: promptText,
+    systemPrompt: fullPrompt,
     temperature: 0.15,
     userRole,
-    roleTitle: roleConfig.title
+    roleTitle: roleConfig.title,
+    fewShotCount: Array.isArray(fewShotExamples) ? fewShotExamples.length : 0
   };
+}
+
+/**
+ * Fetches approved high-rated few-shot examples from ai_feedback table in SQLite.
+ */
+function fetchDynamicFewShots(db, userRole = 'business_owner', limit = 2) {
+  if (!db) return [];
+  try {
+    const rows = db.prepare(`
+      SELECT prompt, response_json FROM ai_feedback
+      WHERE is_few_shot_candidate = 1 AND rating = 1 AND (user_role = ? OR user_role IS NULL)
+      ORDER BY created_at DESC LIMIT ?
+    `).all(userRole, limit);
+    return rows.map((r) => ({ prompt: r.prompt, response: r.response_json }));
+  } catch (_) {
+    return [];
+  }
 }
 
 module.exports = {
   ROLE_PROFILES,
   SENSITIVE_PATTERNS,
   isSensitiveOperation,
-  buildSystemPrompt
+  buildSystemPrompt,
+  fetchDynamicFewShots
 };
