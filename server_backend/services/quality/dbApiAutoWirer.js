@@ -87,7 +87,35 @@ function verifyRoundTripPersistence(db, tableName = 'app_records', sampleData = 
   };
 }
 
+function autoWireDatabaseAndApi(files = {}, options = {}) {
+  const entities = options.entities || ['tasks'];
+  const tables = entities.map(name => ({
+    name,
+    columns: [
+      { name: 'id', type: 'TEXT', primaryKey: true },
+      { name: 'title', type: 'TEXT', nullable: false },
+      { name: 'status', type: 'TEXT', defaultValue: "'pending'" },
+      { name: 'created_at', type: 'TEXT', nullable: false }
+    ]
+  }));
+
+  const endpoints = entities.flatMap(name => [
+    { method: 'GET', path: `/${name}` },
+    { method: 'POST', path: `/${name}` }
+  ]);
+
+  const wireRes = wireDatabaseAndApi(files, { tables }, endpoints);
+
+  return {
+    ...wireRes,
+    tablesCreated: tables.map(t => t.name),
+    apiRoutesGenerated: endpoints.map(e => `${e.method} ${e.path}`),
+    updatedFiles: wireRes.files
+  };
+}
+
 module.exports = {
   wireDatabaseAndApi,
-  verifyRoundTripPersistence
+  verifyRoundTripPersistence,
+  autoWireDatabaseAndApi
 };

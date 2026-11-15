@@ -83,7 +83,41 @@ function applySurgicalPatch(files = {}, targetSymbol = '', newCode = '', codeGra
   };
 }
 
+function surgicalPatch(originalContent = '', targetChunk = '', replacementChunk = '') {
+  if (!targetChunk) return originalContent;
+  if (originalContent.includes(targetChunk)) {
+    return originalContent.replace(targetChunk, replacementChunk);
+  }
+  return originalContent;
+}
+
+function computePatchDiff(originalContent = '', patchedContent = '') {
+  const origLines = originalContent.split('\n');
+  const patchedLines = patchedContent.split('\n');
+  const changedLines = [];
+
+  const maxLen = Math.max(origLines.length, patchedLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (origLines[i] !== patchedLines[i]) {
+      changedLines.push({
+        line: i + 1,
+        before: origLines[i] || '',
+        after: patchedLines[i] || ''
+      });
+    }
+  }
+
+  return {
+    changedLines,
+    totalChanges: changedLines.length,
+    originalLinesCount: origLines.length,
+    patchedLinesCount: patchedLines.length
+  };
+}
+
 module.exports = {
   findSymbolTarget,
-  applySurgicalPatch
+  applySurgicalPatch,
+  surgicalPatch,
+  computePatchDiff
 };

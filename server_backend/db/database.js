@@ -1779,4 +1779,4 @@ function run(sql, ...params) {
   return getDb().prepare(sql).run(...params);
 }
 
-module.exports = { getDb, closeDb, tx, get, all, run, MIGRATIONS, runMigrations };
+module.exports = { getDb, openDb: getDb, closeDb, tx, get, all, run, MIGRATIONS, runMigrations };

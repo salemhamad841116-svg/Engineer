@@ -113,7 +113,19 @@ class BackgroundJobQueue {
           logs_snippet = ?, updated_at = ?
       WHERE id = ?
     `);
-    stmt.run(errorMessage, now, now, jobId);
+    stmt.run(errorMessage, now, jobId);
+    return true;
+  }
+
+  pauseJob(jobId, reason = 'Paused by user') {
+    if (!this.db) return false;
+    const now = new Date().toISOString();
+    const stmt = this.db.prepare(`
+      UPDATE engineering_jobs
+      SET status = 'paused', logs_snippet = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    stmt.run(reason, now, jobId);
     return true;
   }
 }

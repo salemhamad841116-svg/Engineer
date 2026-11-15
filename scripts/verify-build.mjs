@@ -369,7 +369,15 @@ runStep('Phase 17 AI Executive Assistant & Dynamic UI Generation Gate (15-Scenar
   execSync('node server_backend/tests/agentDynamicUiSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 29: Engineer Master System Prompt v1.0 & Tool Registry Gate (Tests T01–T12)
+// ----------------------------------------------------
+runStep('Engineer Master System Prompt v1.0 & Tool Registry Gate (Tests T01–T12)', () => {
+  execSync('node server_backend/tests/engineerMasterSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
+
 
 
 
