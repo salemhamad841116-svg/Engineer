@@ -343,10 +343,11 @@ async function startServer() {
     const selectedAgent = state.agents.find((a) => a.id === agentId) || state.agents[0];
     const now = new Date().toISOString();
     const isAr = /[\u0600-\u06FF]/.test(cleanPrompt) || project.language === 'ar';
+    const hasActiveProject = Boolean(project && Array.isArray(project.files) && project.files.length > 0);
 
     // 1. Run Intent Router to strictly distinguish Chat Mode vs Build Mode
-    const intentResult = detectIntent(cleanPrompt, (mode as PromptMode) || 'auto');
-    const isGeneric = isGenericAppRequest(cleanPrompt);
+    const intentResult = detectIntent(cleanPrompt, (mode as PromptMode) || 'auto', hasActiveProject);
+    const isGeneric = isGenericAppRequest(cleanPrompt, hasActiveProject);
     const ai = getGeminiClient();
     let aiReplyText = '';
 
@@ -364,12 +365,34 @@ async function startServer() {
           'Custom App with My Own Idea',
         ];
 
+    const editSuggestions = isAr
+      ? [
+          'إظهار الرسم البياني',
+          'تغيير لون زر الشراء إلى الأزرق',
+          'تعديل نسبة المخاطرة الافتراضية',
+        ]
+      : [
+          'Show risk relationship chart',
+          'Change buy button color to blue',
+          'Adjust default risk percentage',
+        ];
+
+    const activeSuggestions = intentResult.subIntent === 'ambiguous_edit'
+      ? editSuggestions
+      : (isGeneric || intentResult.subIntent === 'clarification')
+      ? quickSuggestions
+      : undefined;
+
     if (intentResult.intent === 'chat') {
       // -------------------------------------------------------------
       // CHAT MODE: Pure conversation, explanations & technical Q&A
       // GUARANTEE: Never touches files, never modifies preview, never leaks Chief Architect
       // -------------------------------------------------------------
-      if (isGeneric || (intentResult.subIntent === 'clarification' && /(تطبيق|موقع|برنامج|منصة|app|website)/i.test(cleanPrompt))) {
+      if (intentResult.subIntent === 'ambiguous_edit') {
+        aiReplyText = isAr
+          ? 'أكيد، ما التعديل الذي تريد إجراءه على التطبيق الحالي؟'
+          : 'Sure, what modification would you like to make to the current application?';
+      } else if (isGeneric || (intentResult.subIntent === 'clarification' && /(تطبيق|موقع|برنامج|منصة|app|website)/i.test(cleanPrompt))) {
         aiReplyText = isAr
           ? 'أبشر! يسعدني بناء تطبيقك بالكامل. أي نوع من التطبيقات تود أن أصمم لك اليوم، وما أهم المميزات التي تريدها فيه؟'
           : 'Certainly! I would be delighted to build your complete application. What type of application would you like me to build today, and what are its core features?';
@@ -456,7 +479,7 @@ CRITICAL RULES:
         timestamp: new Date().toISOString(),
         model: activeModel,
         thinkingMode,
-        suggestions: (isGeneric || intentResult.subIntent === 'clarification') ? quickSuggestions : undefined,
+        suggestions: activeSuggestions,
       });
       thread.updatedAt = new Date().toISOString();
 
@@ -468,7 +491,7 @@ CRITICAL RULES:
         agent: selectedAgent,
         intent: 'chat',
         subIntent: intentResult.subIntent,
-        suggestions: (isGeneric || intentResult.subIntent === 'clarification') ? quickSuggestions : undefined,
+        suggestions: activeSuggestions,
         filesModified: [],
         tokensUsed: state.settings.aiTokensUsed,
       });
@@ -479,7 +502,7 @@ CRITICAL RULES:
     // BUILD MODE: Autonomous App Builder & Real Application Synthesis
     // -------------------------------------------------------------
     const spec = analyzeAppRequest(cleanPrompt, project);
-    if (spec.appTitle && spec.appTitle !== 'تطبيق ذكي' && spec.appTitle !== 'Smart Application') {
+    if (!hasActiveProject && spec.appTitle && spec.appTitle !== 'تطبيق ذكي' && spec.appTitle !== 'Smart Application') {
       project.name = spec.appTitle;
     }
     const plan = generateInternalPlan(spec, project);
@@ -522,12 +545,26 @@ CRITICAL RULES:
     project.status = verification.allPassed ? 'ready' : 'building';
 
     // Format customer-facing response based on build outcome
+    const isModification = spec.intent === 'modify_app' || (hasActiveProject && intentResult.subIntent === 'modify_code');
     if (spec.intent === 'fix_bug') {
       aiReplyText = formatCustomerLifecycleResponse('bug_repaired', {
         spec,
         testsCount: verification.testResults.length,
         passedTestsCount: verification.testResults.filter((t) => t.status === 'passed').length,
       });
+    } else if (isModification) {
+      if (verification.allPassed) {
+        aiReplyText = formatCustomerLifecycleResponse('modified', {
+          spec,
+          testsCount: verification.testResults.length,
+          passedTestsCount: verification.testResults.filter((t) => t.status === 'passed').length,
+        });
+      } else {
+        aiReplyText = formatCustomerLifecycleResponse('modification_failed', {
+          spec,
+          failedFeatures: verification.testResults.filter((t) => t.status !== 'passed').map((t) => t.name),
+        });
+      }
     } else if (verification.allPassed) {
       aiReplyText = formatCustomerLifecycleResponse('completed', {
         spec,

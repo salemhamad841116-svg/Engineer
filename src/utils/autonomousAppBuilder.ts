@@ -27,6 +27,8 @@ export interface ExtractedAppSpec {
     crud: boolean;
     tags: boolean;
     darkMode: boolean;
+    chart?: boolean;
+    buttonColor?: string;
   };
   constraints: {
     language: 'ar' | 'en';
@@ -41,6 +43,7 @@ export interface ExtractedAppSpec {
     testType: 'dom' | 'interaction' | 'persistence' | 'multimedia';
   }[];
   assumptions: string[];
+  rawPrompt?: string;
 }
 
 export interface InternalAppPlan {
@@ -90,26 +93,30 @@ export interface BuildResult {
 export function analyzeAppRequest(prompt: string, existingProject?: Project): ExtractedAppSpec {
   const p = prompt.trim();
   const isAr = /[\u0600-\u06FF]/.test(p);
+  const hasActiveFiles = Boolean(existingProject && existingProject.files && existingProject.files.some((f) => f.name === 'app.js' || f.name === 'index.html'));
 
   // 1. Detect Intent
   let intent: AppIntentType = 'new_app';
   let subIntent = 'create';
 
   const bugFixKeywords = /(?:لا يعمل|عطل|مشكلة|خطأ|صلح|إصلاح|fix|bug|broken|doesn't work|error|issue|repair)/i;
-  const modifyKeywords = /(?:أضف|اضف|عدل|غير|غيّر|تعديل|تغيير|تحديث|لون|صفحة|add|change|modify|update|customize|color)/i;
+  const modifyKeywords = /(?:أضف|اضف|عدل|عدلي|تعديل|تعديلات|غير|غيّر|تغيير|حدث|تحديث|أظهر|اظهر|إظهار|اظهار|اعرض|عرض|ارسم|رسم|رسومات|شارت|تشارت|بيان|بياني|مخطط|لون|تلوين|أزرق|ازرق|زر|أزرار|حساب|حسابات|صفحة|add|change|modify|update|customize|color|blue|button|chart|graph|plot|show|display|render)/i;
   const publishKeywords = /(?:انشر|نشر|رفع|استضافة|publish|deploy|host|release)/i;
   const newAppKeywords = /(?:اعمل لي|أنشئ|انشئ|ابن|اصنع|تطبيق|مشروع|بناء|create|build|make|new app)/i;
 
-  if (isGenericAppRequest(p)) {
+  if (isGenericAppRequest(p, hasActiveFiles)) {
     intent = 'chat';
     subIntent = 'clarification';
-  } else if (bugFixKeywords.test(p) && existingProject && existingProject.files.some((f) => f.name === 'app.js' || f.name === 'index.html')) {
+  } else if (bugFixKeywords.test(p) && hasActiveFiles) {
     intent = 'fix_bug';
     subIntent = 'bug_fix';
   } else if (publishKeywords.test(p)) {
     intent = 'publish';
     subIntent = 'publish';
-  } else if (modifyKeywords.test(p) && existingProject && existingProject.files.some((f) => f.name === 'app.js' || f.name === 'index.html') && !p.includes('اعمل لي تطبيق')) {
+  } else if (modifyKeywords.test(p) && hasActiveFiles && !p.includes('اعمل لي تطبيق')) {
+    intent = 'modify_app';
+    subIntent = 'feature_addition';
+  } else if (hasActiveFiles && /(?:رسم|شارت|بيان|لون|زر|chart|button|color)/i.test(p) && !p.includes('اعمل لي تطبيق')) {
     intent = 'modify_app';
     subIntent = 'feature_addition';
   } else if (newAppKeywords.test(p) || /ملاحظات|مهام|متجر|تسوق|dashboard|crm|تداول|مخاطر/i.test(p)) {
@@ -124,20 +131,34 @@ export function analyzeAppRequest(prompt: string, existingProject?: Project): Ex
     }
   }
 
-  // 2. Extract Category
+  // 2. Extract Category (Prioritize preserving existing project category)
   let appCategory: ExtractedAppSpec['appCategory'] = 'custom';
-  if (/زكاة|زكاه|حاسبة.*زكاة|ذهب.*فضة|zakat|nisab/i.test(p)) {
-    appCategory = 'zakat_calc';
-  } else if (/تداول|مخاطر|حاسب.*مخاطر|مخاطرة|فوركس|أسهم|عملات|trading|risk|forex|stocks|crypto|position\s*size/i.test(p)) {
-    appCategory = 'trading_risk_calc';
-  } else if (/ملاحظ|notes?|memo|دفتر/i.test(p)) {
-    appCategory = 'notes';
-  } else if (/مهام|todo|task|قائمة/i.test(p)) {
-    appCategory = 'tasks';
-  } else if (/متجر|store|shop|منتجات|cart/i.test(p)) {
-    appCategory = 'store';
-  } else if (/لوحة|تحليل|dashboard|analytics/i.test(p)) {
-    appCategory = 'dashboard';
+  if (hasActiveFiles && existingProject) {
+    if (/تداول|مخاطر|trading|risk/i.test(existingProject.name) || existingProject.files.some((f) => f.content?.includes('metric-risk-amount') || f.content?.includes('dir-long-btn'))) {
+      appCategory = 'trading_risk_calc';
+    } else if (/زكاة|زكاه|zakat/i.test(existingProject.name)) {
+      appCategory = 'zakat_calc';
+    } else if (/ملاحظ|note/i.test(existingProject.name)) {
+      appCategory = 'notes';
+    } else if (/مهام|task/i.test(existingProject.name)) {
+      appCategory = 'tasks';
+    }
+  }
+
+  if (appCategory === 'custom') {
+    if (/زكاة|زكاه|حاسبة.*زكاة|ذهب.*فضة|zakat|nisab/i.test(p)) {
+      appCategory = 'zakat_calc';
+    } else if (/تداول|مخاطر|حاسب.*مخاطر|مخاطرة|فوركس|أسهم|عملات|trading|risk|forex|stocks|crypto|position\s*size/i.test(p)) {
+      appCategory = 'trading_risk_calc';
+    } else if (/ملاحظ|notes?|memo|دفتر/i.test(p)) {
+      appCategory = 'notes';
+    } else if (/مهام|todo|task|قائمة/i.test(p)) {
+      appCategory = 'tasks';
+    } else if (/متجر|store|shop|منتجات|cart/i.test(p)) {
+      appCategory = 'store';
+    } else if (/لوحة|تحليل|dashboard|analytics/i.test(p)) {
+      appCategory = 'dashboard';
+    }
   }
 
   // 3. Extract Features
@@ -147,10 +168,14 @@ export function analyzeAppRequest(prompt: string, existingProject?: Project): Ex
   const hasSearch = /بحث|تصفية|search|filter|find/i.test(p);
   const hasSettings = /إعدادات|اعدادات|خصائص|ضبط|settings|preferences|config/i.test(p);
   const hasDarkMode = /داكن|ليلي|أسود|مظلم|dark|darkmode|theme/i.test(p);
+  const hasChart = /(?:رسم|شارت|تشارت|بيان|بياني|مخطط|chart|graph|plot)/i.test(p);
+  const hasButtonColor = /(?:لون.*أزرق|زر.*أزرق|أزرق.*زر|blue.*button|button.*blue)/i.test(p) || (/(?:لون|تلوين|color)/i.test(p) && /(?:أزرق|ازرق|blue)/i.test(p));
 
   // 4. Derive App Title
   let appTitle = isAr ? 'تطبيق ذكي' : 'Smart Application';
-  if (appCategory === 'zakat_calc') {
+  if (intent === 'modify_app' && existingProject?.name) {
+    appTitle = existingProject.name;
+  } else if (appCategory === 'zakat_calc') {
     appTitle = isAr ? 'حاسبة زكاة المال والذهب' : 'Zakat & Wealth Calculator';
   } else if (appCategory === 'trading_risk_calc') {
     appTitle = isAr ? 'حاسبة نسبة المخاطرة في التداول' : 'Trading Risk Calculator';
@@ -247,6 +272,8 @@ export function analyzeAppRequest(prompt: string, existingProject?: Project): Ex
       crud: true,
       tags: true,
       darkMode: hasDarkMode || true,
+      chart: hasChart,
+      buttonColor: hasButtonColor ? 'blue' : undefined,
     },
     constraints: {
       language: isAr ? 'ar' : 'en',
@@ -256,6 +283,7 @@ export function analyzeAppRequest(prompt: string, existingProject?: Project): Ex
     },
     acceptanceCriteria,
     assumptions,
+    rawPrompt: p,
   };
 }
 
@@ -2885,7 +2913,215 @@ function patchExistingFilesForModification(
     return buildNotesApplicationFiles(spec, generateInternalPlan(spec));
   }
 
-  // If user requested settings page / modal:
+  const promptText = (spec.rawPrompt || '') + ' ' + (spec.appTitle || '') + ' ' + (spec.assumptions?.join(' ') || '');
+  const wantsChart = Boolean(spec.features.chart || /(?:رسم|شارت|تشارت|بيان|بياني|مخطط|chart|graph|plot)/i.test(promptText));
+  const wantsButtonColor = Boolean(spec.features.buttonColor || /(?:لون.*أزرق|زر.*أزرق|زر.*الشراء.*أزرق|أزرق|blue)/i.test(promptText));
+
+  // 1. If user requested dynamic chart:
+  if (wantsChart && !result['index.html'].includes('risk-chart-canvas')) {
+    const chartSectionHtml = `
+    <!-- Dynamic Risk Relationship Chart (Injected by Engineer Modification) -->
+    <section id="risk-chart-panel" class="panel chart-panel">
+      <div class="panel-header-row">
+        <h2 class="panel-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          <span>الرسم البياني: العلاقة بين رصيد الحساب وقيمة المخاطرة والعائد</span>
+        </h2>
+        <span id="chart-live-legend" class="badge-safe" style="font-size:11px;padding:3px 8px;">مخطط ديناميكي حي</span>
+      </div>
+      <div class="chart-container" style="position:relative;width:100%;height:220px;margin-top:12px;">
+        <canvas id="risk-chart-canvas" width="600" height="220" style="width:100%;height:100%;border-radius:8px;background:rgba(15,23,42,0.6);"></canvas>
+      </div>
+    </section>
+    `;
+
+    if (result['index.html'].includes('<div class="workspace-grid">')) {
+      result['index.html'] = result['index.html'].replace('<div class="workspace-grid">', `${chartSectionHtml}\n    <div class="workspace-grid">`);
+    } else if (result['index.html'].includes('<!-- Main Workspace')) {
+      result['index.html'] = result['index.html'].replace('<!-- Main Workspace', `${chartSectionHtml}\n    <!-- Main Workspace`);
+    } else {
+      result['index.html'] = result['index.html'].replace('</body>', `${chartSectionHtml}\n</body>`);
+    }
+
+    if (result['styles.css'] && !result['styles.css'].includes('#risk-chart-canvas')) {
+      const chartCss = `
+/* Dynamic Risk Chart Panel (Injected by Engineer Modification) */
+.chart-panel {
+  background: var(--bg-card, rgba(18, 24, 38, 0.7));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.chart-container {
+  width: 100%;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px;
+}
+#risk-chart-canvas {
+  width: 100%;
+  height: 100%;
+  max-height: 220px;
+  display: block;
+}
+`;
+      result['styles.css'] += `\n${chartCss}\n`;
+    }
+
+    if (result['app.js'] && !result['app.js'].includes('initRiskChartEngine')) {
+      const chartJs = `
+// Dynamic Risk Relationship Chart Engine (Injected by Engineer Modification)
+(function initRiskChartEngine() {
+  function drawRiskChart() {
+    const canvas = document.getElementById('risk-chart-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const balanceInput = document.getElementById('account-balance');
+    const riskInput = document.getElementById('risk-input');
+    const entryInput = document.getElementById('entry-price');
+    const slInput = document.getElementById('stop-loss-price');
+    const tpInput = document.getElementById('take-profit-price');
+
+    const balance = parseFloat(balanceInput ? balanceInput.value : '10000') || 10000;
+    const riskPct = parseFloat(riskInput ? riskInput.value : '2') || 2;
+    const riskAmount = (balance * riskPct) / 100;
+
+    const entry = parseFloat(entryInput ? entryInput.value : '100') || 100;
+    const sl = parseFloat(slInput ? slInput.value : '98') || 98;
+    const tp = parseFloat(tpInput ? tpInput.value : '105') || 105;
+
+    const slDiff = Math.abs(entry - sl);
+    const tpDiff = Math.abs(tp - entry);
+    const posSize = slDiff > 0 ? riskAmount / slDiff : 0;
+    const potentialProfit = posSize * tpDiff;
+
+    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { width: 600, height: 220 };
+    const width = rect.width > 0 ? rect.width : 600;
+    const height = rect.height > 0 ? rect.height : 220;
+
+    if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+    }
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    // Background styling
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0, 'rgba(15, 23, 42, 0.85)');
+    bgGrad.addColorStop(1, 'rgba(11, 15, 25, 0.95)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.lineWidth = 1;
+    for (let y = 30; y < height - 30; y += 35) {
+      ctx.beginPath();
+      ctx.moveTo(30, y);
+      ctx.lineTo(width - 30, y);
+      ctx.stroke();
+    }
+
+    // Comparison bars: [Account Balance, Potential Profit, Risk Amount]
+    const items = [
+      { label: 'رصيد الحساب ($)', val: balance, color: '#38BDF8' },
+      { label: 'العائد المتوقع ($)', val: potentialProfit, color: '#34D399' },
+      { label: 'مبلغ المخاطرة ($)', val: riskAmount, color: '#F87171' }
+    ];
+
+    const barW = Math.min(80, (width - 120) / items.length);
+    const startX = 60;
+    const gap = items.length > 1 ? (width - 120 - barW * items.length) / (items.length - 1) : 20;
+    const chartBottom = height - 40;
+    const chartHeight = height - 80;
+
+    items.forEach((item, idx) => {
+      const x = startX + idx * (barW + gap);
+      const ratio = balance > 0 ? Math.min(1, Math.max(0.04, item.val / balance)) : 0.05;
+      const barH = ratio * chartHeight;
+      const y = chartBottom - barH;
+
+      const grad = ctx.createLinearGradient(x, y, x, chartBottom);
+      grad.addColorStop(0, item.color);
+      grad.addColorStop(1, item.color + '44');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y, barW, barH, [6, 6, 0, 0]);
+      } else {
+        ctx.rect(x, y, barW, barH);
+      }
+      ctx.fill();
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      const formattedVal = '$' + (item.val >= 1000 ? (item.val / 1000).toFixed(1) + 'k' : item.val.toFixed(0));
+      ctx.fillText(formattedVal, x + barW / 2, y - 6);
+
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(item.label, x + barW / 2, chartBottom + 18);
+    });
+
+    ctx.restore();
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => drawRiskChart());
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(drawRiskChart, 50);
+    }
+    ['account-balance', 'risk-input', 'risk-slider', 'entry-price', 'stop-loss-price', 'take-profit-price'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', drawRiskChart);
+        el.addEventListener('change', drawRiskChart);
+      }
+    });
+    document.querySelectorAll('.preset-btn, .dir-btn, #reset-btn').forEach(btn => {
+      btn.addEventListener('click', () => setTimeout(drawRiskChart, 50));
+    });
+    window.drawRiskRelationshipChart = drawRiskChart;
+  }
+})();
+`;
+      result['app.js'] += `\n${chartJs}\n`;
+    }
+  }
+
+  // 2. If user requested button color change (e.g. #dir-long-btn to Blue):
+  if (wantsButtonColor) {
+    if (result['styles.css'] && !result['styles.css'].includes('#dir-long-btn.active')) {
+      const buttonCss = `
+/* Injected Button Color Customization (dir-long-btn -> Blue) */
+#dir-long-btn,
+#dir-long-btn.active {
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+  border-color: #3B82F6 !important;
+  box-shadow: 0 0 14px rgba(37, 99, 235, 0.6) !important;
+}
+`;
+      result['styles.css'] += `\n${buttonCss}\n`;
+    }
+  }
+
+  // 3. If user requested settings page / modal:
   if (spec.features.settings && !result['index.html'].includes('settings-modal')) {
     const settingsModalHtml = `
     <!-- Settings Modal (Injected by Engineer Modification) -->
@@ -3129,7 +3365,7 @@ export function verifyGeneratedApp(
 // -----------------------------------------------------------------------------
 
 export function formatCustomerLifecycleResponse(
-  stage: 'acknowledgment' | 'preview_ready' | 'completed' | 'bug_repaired' | 'failed',
+  stage: 'acknowledgment' | 'preview_ready' | 'completed' | 'bug_repaired' | 'failed' | 'modified' | 'modification_failed',
   details: {
     spec: ExtractedAppSpec;
     testsCount?: number;
@@ -3151,6 +3387,18 @@ export function formatCustomerLifecycleResponse(
       raw = isAr
         ? 'معاينة التطبيق جاهزة. يمكنك تجربته الآن في الجهة اليسرى، وسأواصل استكمال الوظائف التي لم تنتهِ بعد إن وجدت.'
         : 'The application preview is ready. You can test it now in the left pane, and I will continue verifying remaining functions.';
+      break;
+
+    case 'modified':
+      raw = isAr
+        ? 'تم تعديل التطبيق وإضافة الميزة المطلوبة. يمكنك تجربة النتيجة في المعاينة.'
+        : 'The application has been modified and the requested feature was added. You can test the result in the preview.';
+      break;
+
+    case 'modification_failed':
+      raw = isAr
+        ? 'تعذر إكمال التعديل بسبب مشكلة أثناء التنفيذ أو الاختبار. سأعرض لك سبب المشكلة وما يحتاج إلى إصلاح.'
+        : 'Could not complete the modification due to an issue during execution or testing. I will show you the root cause and what needs to be fixed.';
       break;
 
     case 'completed': {

@@ -3,7 +3,7 @@
 
 export type PromptMode = 'auto' | 'chat' | 'build';
 export type IntentType = 'chat' | 'build';
-export type SubIntent = 'greeting' | 'qa' | 'clarification' | 'build_new' | 'modify_code';
+export type SubIntent = 'greeting' | 'qa' | 'clarification' | 'ambiguous_edit' | 'build_new' | 'modify_code';
 
 export interface IntentResult {
   intent: IntentType;
@@ -18,17 +18,49 @@ const CLARIFICATION_REGEX = /^(شكراً|شكرا|تمام|أوكي|اوكي|م
 
 const QA_PREFIX_REGEX = /^(اشرح|ما هو|ما هي|ماهو|ماهي|كيف|لماذا|هل يمكن|وضح|علل|ما الفرق|قارن|ماذا يعني|عرف|what is|how does|how do|explain|tell me about|why is|difference between|can you explain|what are)/i;
 
-const BUILD_ACTION_REGEX = /(?:^|[^\p{L}\p{N}_])(أنشئ|انشئ|ابن|ابني|اصنع|سوي|اعمل|عدل|غير|حدث|أضف|اضف|احذف|صلح|برمج|صمم|طور|ركب|حط|build|create|make|add|update|modify|change|fix|generate|scaffold|design|style|redesign|implement|code)(?:$|[^\p{L}\p{N}_])/iu;
+const BUILD_ACTION_REGEX = /(?:^|[^\p{L}\p{N}_])(أنشئ|انشئ|ابن|ابني|اصنع|سوي|اعمل|عدل|عدلي|تعديل|غير|غيّر|تغيير|حدث|تحديث|أضف|اضف|إضافة|اضافة|أظهر|اظهر|إظهار|اظهار|اعرض|عرض|ارسم|رسم|شارت|تشارت|بيان|بياني|مخطط|احذف|حذف|صلح|برمج|صمم|طور|ركب|حط|لون|زر|أزرار|azrar|build|create|make|add|show|display|render|chart|graph|plot|update|modify|change|edit|fix|generate|scaffold|design|style|redesign|implement|code)(?:$|[^\p{L}\p{N}_])/iu;
 
-const MODIFY_ACTION_REGEX = /(?:^|[^\p{L}\p{N}_])(عدل|غير|حدث|أضف|اضف|احذف|صلح|لون|زر|خط|حجم|شاش|modify|update|change|fix|style|color|button|text|background)(?:$|[^\p{L}\p{N}_])/iu;
+const MODIFY_ACTION_REGEX = /(?:^|[^\p{L}\p{N}_])(عدل|عدلي|تعديل|تعديلات|غير|غيّر|تغيير|حدث|تحديث|أضف|اضف|إضافة|اضافة|أظهر|اظهر|إظهار|اظهار|اعرض|عرض|ارسم|رسم|رسومات|شارت|تشارت|بيان|بياني|مخطط|احذف|حذف|صلح|لون|تلوين|أزرق|ازرق|زر|أزرار|ازرار|خط|حجم|شاش|modify|update|change|fix|style|color|blue|button|text|background|chart|graph|plot|show|display|render)(?:$|[^\p{L}\p{N}_])/iu;
+
+/**
+ * Detects ambiguous / underspecified modification requests without concrete details
+ * Examples: «محتاج تعديل في التطبيق»، «عدل التطبيق»، «أريد تعديل»، «i need to edit the app»
+ */
+export function isAmbiguousEditRequest(rawPrompt: string): boolean {
+  const p = (rawPrompt || '').trim().toLowerCase();
+  if (!p) return false;
+
+  // Concrete details indicating specific edits (not ambiguous)
+  const hasSpecificDetails = /(رسم|شارت|بيان|بياني|مخطط|لون|أزرق|ازرق|أخضر|اخضر|أحمر|احمر|زر|أزرار|حساب|حاسبة|رصيد|مخاطر|وقف|خسار|ربح|هدف|عنوان|حقل|مدخل|جدول|قائم|سجل|أيقون|نافذة|خط|حجم|chart|graph|plot|color|blue|button|balance|risk|trade|input|table|icon|font)/i.test(p);
+  if (hasSpecificDetails) {
+    return false;
+  }
+
+  const ambiguousPatterns = [
+    /^(محتاج|أريد|اريد|ابي|ابغى|ودّي|ودي)\s+(تعديل|أعدل|اعدل|تغيير|تحديث)\s*(في|على|بـ|ب)?\s*(التطبيق|الموقع|البرنامج|الكود|المشروع)?[\s!.,؟?]*$/i,
+    /^(عدل|غيّر|غير|حدث)\s*(لي\s+)?(في\s+|على\s+)?(التطبيق|الموقع|البرنامج|الكود|المشروع)[\s!.,؟?]*$/i,
+    /^(تعديل|تغيير|تحديث)\s*(في|على)?\s*(التطبيق|الموقع|البرنامج|الكود|المشروع)?[\s!.,؟?]*$/i,
+    /^(عندي|لدي)\s+(تعديل|تعديلات|تغيير|تحديث)[\s!.,؟?]*$/i,
+    /^(i need|i want|please)\s+(to\s+)?(edit|modify|change|update)\s+(the\s+)?(app|application|code|project|website)[\s!.,؟?]*$/i,
+    /^(edit|modify|change|update)\s+(the\s+)?(app|application|code|project|website)[\s!.,؟?]*$/i,
+  ];
+
+  return ambiguousPatterns.some((rgx) => rgx.test(p));
+}
 
 /**
  * Detects generic / underspecified requests for an app or website without details
  * Examples: «محتاج تطبيق»، «محتاج بنا تطبيق»، «اعمل لي موقع»، «أريد برنامج»، «أريد تطبيق»
  */
-export function isGenericAppRequest(rawPrompt: string): boolean {
+export function isGenericAppRequest(rawPrompt: string, hasActiveProject: boolean = false): boolean {
   const p = (rawPrompt || '').trim().toLowerCase();
   if (!p) return false;
+
+  // If there is an active project and the user asks for modification, it's not a generic new app
+  const hasEditWord = /(عدل|تعديل|غير|تغيير|حدث|تحديث|أظهر|اعرض|رسم|شارت|لون|أزرق|زر|edit|modify|change|update|show|chart|color)/i.test(p);
+  if (hasActiveProject && hasEditWord) {
+    return false;
+  }
 
   const genericPatterns = [
     /^(محتاج|أريد|اريد|ابي|ابغى|ودّي|ودي)\s+(بنا[ء]?\s+)?(تطبيق|موقع|برنامج|صفحة|منصة|سستم|سيستم)[\s!.,؟?]*$/i,
@@ -46,7 +78,7 @@ export function isGenericAppRequest(rawPrompt: string): boolean {
     const hasNeedOrAction = /(محتاج|اريد|أريد|ابغى|ابي|سوي|اعمل|صمم|بناء|بنا|ابن|أنشئ|انشئ|need|want|build|make)/i.test(p);
     const hasSpecificDomain = /(تداول|مخاطر|حاسب|أسهم|فوركس|متجر|سلة|مبيعات|إدار|فواتير|محاسب|عقار|مطعم|طبي|مستشفى|مدرسة|حجز|طيران|chat|store|calc|trade|shop|portfolio|todo|task)/i.test(p);
 
-    if (hasAppWord && hasNeedOrAction && !hasSpecificDomain) {
+    if (hasAppWord && hasNeedOrAction && !hasSpecificDomain && !hasEditWord) {
       return true;
     }
   }
@@ -56,11 +88,13 @@ export function isGenericAppRequest(rawPrompt: string): boolean {
 
 /**
  * Classifies a user prompt into 'chat' or 'build' intent.
- * Guarantees that greetings and Q&A never trigger file modifications or build pipelines.
+ * Guarantees that greetings and Q&A never trigger file modifications or build pipelines,
+ * while ensuring accurate project modification routing and ambiguous edit clarification.
  */
 export function detectIntent(
   rawPrompt: string,
-  forcedMode: PromptMode = 'auto'
+  forcedMode: PromptMode = 'auto',
+  hasActiveProject: boolean = false
 ): IntentResult {
   const prompt = (rawPrompt || '').trim();
 
@@ -81,14 +115,24 @@ export function detectIntent(
   if (forcedMode === 'build') {
     return {
       intent: 'build',
-      subIntent: MODIFY_ACTION_REGEX.test(prompt) ? 'modify_code' : 'build_new',
+      subIntent: (MODIFY_ACTION_REGEX.test(prompt) || hasActiveProject) ? 'modify_code' : 'build_new',
       confidence: 1.0,
       reason: 'Forced by user mode selector (Build Mode)',
     };
   }
 
+  // 1.2. Ambiguous Edit Detection: When user requests modification without concrete details
+  if (isAmbiguousEditRequest(prompt)) {
+    return {
+      intent: 'chat',
+      subIntent: 'ambiguous_edit',
+      confidence: 0.99,
+      reason: 'Ambiguous project modification request requiring clarification',
+    };
+  }
+
   // 1.5. Clarify-Before-Build Rule: Generic unspecified app requests require clarification
-  if (isGenericAppRequest(prompt)) {
+  if (isGenericAppRequest(prompt, hasActiveProject)) {
     return {
       intent: 'chat',
       subIntent: 'clarification',
@@ -129,16 +173,20 @@ export function detectIntent(
   }
 
   // 5. Code build or modification requests
-  if (BUILD_ACTION_REGEX.test(prompt)) {
+  const isModifyMatch = MODIFY_ACTION_REGEX.test(prompt);
+  const isBuildMatch = BUILD_ACTION_REGEX.test(prompt);
+
+  if (isModifyMatch || isBuildMatch) {
+    const isModify = isModifyMatch || hasActiveProject;
     return {
       intent: 'build',
-      subIntent: MODIFY_ACTION_REGEX.test(prompt) ? 'modify_code' : 'build_new',
-      confidence: 0.92,
-      reason: 'Imperative build or code modification action detected',
+      subIntent: isModify ? 'modify_code' : 'build_new',
+      confidence: 0.95,
+      reason: isModify ? 'Project modification action detected' : 'New application build action detected',
     };
   }
 
-  // 6. Ambiguous / short messages default to Chat Mode for safety (prevent accidental build)
+  // 6. Ambiguous / short messages default to Chat Mode for safety only if NOT matching build actions
   if (words.length <= 3) {
     return {
       intent: 'chat',
@@ -149,10 +197,10 @@ export function detectIntent(
   }
 
   // Default fallback: If it mentions coding artifacts, treat as build; otherwise chat
-  if (/(?:^|[^\p{L}\p{N}_])(app|component|page|button|dashboard|api|database|تطبيق|صفحة|واجهة|قاعدة بيانات|زر)(?:$|[^\p{L}\p{N}_])/iu.test(prompt)) {
+  if (/(?:^|[^\p{L}\p{N}_])(app|component|page|button|dashboard|api|database|chart|تطبيق|صفحة|واجهة|قاعدة بيانات|زر|رسم|شارت)(?:$|[^\p{L}\p{N}_])/iu.test(prompt)) {
     return {
       intent: 'build',
-      subIntent: 'build_new',
+      subIntent: hasActiveProject ? 'modify_code' : 'build_new',
       confidence: 0.8,
       reason: 'Software artifact mentioned in prompt',
     };

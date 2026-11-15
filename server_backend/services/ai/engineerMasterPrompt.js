@@ -204,7 +204,7 @@ function classifyMasterIntent(prompt = '') {
   }
 
   // 10. EDIT
-  if (/(عدل|غير|تغيير|حدث|تحديث|أضف حقل|لون زر|patch|modify|update|edit)/i.test(p)) {
+  if (/(عدل|عدلي|تعديل|غير|غيّر|تغيير|حدث|تحديث|أضف|اضف|أظهر|اظهر|اعرض|عرض|ارسم|رسم|شارت|تشارت|بياني|مخطط|لون|زر|أزرار|patch|modify|update|edit|chart|graph|plot|show|display)/i.test(p)) {
     return 'EDIT';
   }
 

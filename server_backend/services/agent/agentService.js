@@ -623,8 +623,8 @@ async function dispatchPromptAsync({
   const intent = classifyMasterIntent(prompt);
 
   const isEngineeringToolCall = ['TEST', 'DEBUG', 'AUTOMATE', 'REPORT', 'DEPLOY', 'DATA'].includes(intent) ||
-    (intent === 'BUILD' && (prompt.includes('مشروع') || prompt.includes('ملف') || prompt.includes('تطبيق كامل') || prompt.includes('run tests'))) ||
-    (intent === 'EDIT' && (prompt.includes('زر الحفظ') || prompt.includes('ملف') || prompt.includes('كود')));
+    (intent === 'BUILD' && (prompt.includes('مشروع') || prompt.includes('ملف') || prompt.includes('تطبيق كامل') || prompt.includes('run tests') || Boolean(projectId || files))) ||
+    (intent === 'EDIT' && (Boolean(projectId || files || currentScreen) || /(زر|لون|حقل|رسم|بيان|شارت|مخطط|ملف|كود|تطبيق)/i.test(prompt)));
 
   if (isEngineeringToolCall) {
     try {
