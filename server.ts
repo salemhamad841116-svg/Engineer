@@ -225,6 +225,15 @@ async function startServer() {
 
   attachBackendAndDatabase(app);
 
+  const { createWorkspaceAuth, pickAllowed, canAccessProject: _canAccessProject } = serverRequire('./server_backend/security/workspaceAuth.js');
+  const { extractToken } = serverRequire('./server_backend/auth/middleware.js');
+  const authService = serverRequire('./server_backend/auth/authService.js');
+  const workspaceAuth = createWorkspaceAuth({ authService, extractToken });
+  app.use(workspaceAuth.requireWorkspaceAuth);
+
+  const agentRoutes = serverRequire('./server_backend/routes/agentRoutes.js');
+  app.use('/api/agent', agentRoutes);
+
   const state = loadOrCreateState();
 
   function logActivity(action: string, target: string, actor = state.settings.userName) {
@@ -286,9 +295,16 @@ async function startServer() {
       res.status(404).json({ error: 'Project not found' });
       return;
     }
+    const ALLOWED_PROJECT_FIELDS = [
+      'name', 'description', 'category', 'appType', 'techStack', 'template',
+      'language', 'direction', 'databaseEngine', 'deployTarget', 'status',
+      'files', 'activeFileId', 'activeChatId', 'chatThreads', 'envVariables',
+      'buttonRegistry', 'tests'
+    ];
+    const safeBody = pickAllowed(req.body, ALLOWED_PROJECT_FIELDS);
     const updated: Project = {
       ...state.projects[idx],
-      ...req.body,
+      ...safeBody,
       id: state.projects[idx].id,
       updatedAt: new Date().toISOString(),
     };
@@ -384,6 +400,55 @@ async function startServer() {
           completionTokens: usage?.candidatesTokenCount || 0,
           totalTokens: usage?.totalTokenCount || 0,
           estimated: !usage,
+        },
+        latencyMs: Date.now() - t0,
+      };
+    },
+    chatWithTools: async ({ model, messages, tools, signal, maxTokens }: {
+      model: string;
+      messages: { role: string; content: string }[];
+      tools?: Array<{ name: string; description: string; parameters: object }>;
+      signal?: AbortSignal;
+      maxTokens?: number;
+    }) => {
+      const ai = getGeminiClient();
+      if (!ai) throw new Error('Gemini is not configured');
+      const t0 = Date.now();
+      const systemInstruction = messages.find((m) => m.role === 'system')?.content;
+      const contents = messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content || '' }] }));
+      const geminiTools = (tools && tools.length)
+        ? [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })) }]
+        : undefined;
+      const resp = await ai.models.generateContent({
+        model,
+        contents,
+        config: { systemInstruction, maxOutputTokens: maxTokens, tools: geminiTools, abortSignal: signal },
+      });
+      let text = '';
+      const toolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] = [];
+      const candidate = resp.candidates?.[0];
+      if (candidate?.content?.parts) {
+        for (const part of candidate.content.parts) {
+          if (part.text) text += part.text;
+          if (part.functionCall) {
+            toolCalls.push({
+              id: `call_${toolCalls.length}_${Date.now().toString(36)}`,
+              name: part.functionCall.name || '',
+              arguments: (part.functionCall.args as Record<string, unknown>) || {},
+            });
+          }
+        }
+      }
+      return {
+        text,
+        toolCalls,
+        usage: {
+          promptTokens: resp.usageMetadata?.promptTokenCount || 0,
+          completionTokens: resp.usageMetadata?.candidatesTokenCount || 0,
+          totalTokens: resp.usageMetadata?.totalTokenCount || 0,
+          estimated: !resp.usageMetadata,
         },
         latencyMs: Date.now() - t0,
       };
@@ -901,9 +966,15 @@ RULES:
           ? formatCustomerLifecycleResponse('bug_repaired', { spec, testsCount: verification.testResults.length, passedTestsCount: passed })
           : formatCustomerLifecycleResponse('modification_failed', { spec, failedFeatures });
       } else if (isModification) {
-        aiReplyText = verification.allPassed
-          ? formatCustomerLifecycleResponse('modified', { spec, testsCount: verification.testResults.length, passedTestsCount: passed })
-          : formatCustomerLifecycleResponse('modification_failed', { spec, failedFeatures });
+        if (modifiedFilePaths.length === 0) {
+          aiReplyText = isAr
+            ? 'تمت مراجعة طلبك، ولم يتم إجراء أي تعديل على ملفات المشروع لعدم وجود تطابق مع عناصر قابلة للتعديل. يرجى توضيح التعديل المطلوب بالتفصيل.'
+            : 'Your request was processed, but no project files were modified because no applicable modifications were matched. Please clarify your request in detail.';
+        } else {
+          aiReplyText = verification.allPassed
+            ? formatCustomerLifecycleResponse('modified', { spec, testsCount: verification.testResults.length, passedTestsCount: passed })
+            : formatCustomerLifecycleResponse('modification_failed', { spec, failedFeatures });
+        }
       } else {
         aiReplyText = verification.allPassed
           ? formatCustomerLifecycleResponse('completed', { spec, testsCount: verification.testResults.length, passedTestsCount: passed })
@@ -1098,9 +1169,14 @@ RULES:
 
   // 10. Update Settings
   app.put('/api/settings', (req, res) => {
+    const ALLOWED_SETTINGS_FIELDS = [
+      'userName', 'userEmail', 'userRole', 'theme', 'language',
+      'activeModel', 'openAiCompatibleBaseUrl', 'openAiCompatibleModel',
+      'geminiApiKey', 'autoSave', 'telemetryEnabled', 'notificationsEnabled'
+    ];
     state.settings = {
       ...state.settings,
-      ...req.body,
+      ...pickAllowed(req.body, ALLOWED_SETTINGS_FIELDS),
     };
     logActivity('Updated platform settings & preferences', 'Settings');
     res.json({ settings: state.settings });
@@ -1334,10 +1410,13 @@ RULES:
       return res.status(404).json({ error: 'Project not found' });
     }
 
+    const workspaceReq = req as express.Request & { workspaceUser?: { id: string; role: string } };
+    const derivedRole = (workspaceReq.workspaceUser?.role || userRole || 'Admin') as 'Owner' | 'Admin' | 'Editor' | 'Viewer';
+    const derivedUserId = workspaceReq.workspaceUser?.id || state.settings.userEmail || 'admin@cloudstudio.dev';
     const context = {
       projectId: project.id,
-      userId: state.settings.userEmail || 'admin@cloudstudio.dev',
-      userRole: (userRole || 'Admin') as 'Owner' | 'Admin' | 'Editor' | 'Viewer',
+      userId: derivedUserId,
+      userRole: derivedRole,
       callerModel: req.body?.callerModel || 'universal-engine',
       approvalToken,
       project,

@@ -63,6 +63,7 @@ import {
   detectFunctionDefinitions,
   computeLineDiff,
   compileProjectToPreviewHtml,
+  listPreviewEntries,
   inferLanguageFromFilename,
 } from '../utils/platformEngine';
 import { PromptMode } from '../utils/intentRouter';
@@ -160,6 +161,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [isFullscreenPreview, _setIsFullscreenPreview] = useState(false);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const [previewEntry, setPreviewEntry] = useState<string>('');
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [showServerConsole, setShowServerConsole] = useState(false);
   const [mobileActiveView, setMobileActiveView] = useState<'preview' | 'chat'>('preview');
@@ -178,10 +180,20 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     [project.chatThreads, project.activeChatId]
   );
 
-  const compiledPreviewHtml = useMemo(
-    () => compileProjectToPreviewHtml(project),
-    [project, previewRefreshKey]
-  );
+  const previewEntries = useMemo(() => listPreviewEntries(project), [project]);
+  const previewStorageKey = `engineer-preview-storage:${project.id}`;
+
+  const compiledPreviewHtml = useMemo(() => {
+    let storageSeed: Record<string, string>;
+    try {
+      storageSeed = JSON.parse(window.localStorage.getItem(previewStorageKey) || '{}') || {};
+    } catch {
+      storageSeed = {};
+    }
+    const entry = previewEntries.some((p) => p.path === previewEntry) ? previewEntry : undefined;
+    return compileProjectToPreviewHtml(project, { entry, storageSeed });
+    // previewRefreshKey intentionally re-reads the persisted storage snapshot.
+  }, [project, previewRefreshKey, previewEntry, previewEntries, previewStorageKey]);
 
   const functionDefs = useMemo(
     () => (activeFile ? detectFunctionDefinitions(activeFile.content) : []),
@@ -256,29 +268,39 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
       .catch(() => {});
   }, []);
 
-  // Activate isAppServerRunning when app files are generated/ready
+  // Activate the live preview once the project has a real, non-empty HTML page.
   useEffect(() => {
-    const hasBuiltApp = project.files.some(
-      (f) =>
-        ((f.name === 'index.html' || f.path === 'index.html' || f.path === '/index.html') &&
-          (f.content.includes('metric-risk-amount') ||
-            f.content.includes('data-live-app') ||
-            f.content.includes('trading-calculator'))) ||
-        ((f.name === 'app.js' || f.path === 'app.js' || f.path === '/app.js') &&
-          (f.content.includes('calculateRisk') || f.content.includes('initLiveApp')))
-    );
+    const hasBuiltApp = project.files.some((f) => f.name.endsWith('.html') && f.content.trim().length > 0);
     if (hasBuiltApp && !isGenerating) {
       setIsAppServerRunning(true);
     }
   }, [project.files, isGenerating]);
 
-  // Visual Click-to-Edit Inspector message listener from iframe
+  // Messages from the sandboxed preview iframe (only accepted from that exact frame).
   useEffect(() => {
     const handleElementSelected = (event: MessageEvent) => {
-      if (event.data?.type === 'ENGINEER_ELEMENT_SELECTED') {
+      const iframe = document.getElementById('live-app-preview-frame') as HTMLIFrameElement | null;
+      if (!iframe || event.source !== iframe.contentWindow) return;
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+      if (data.type === 'ENGINEER_PREVIEW_STORAGE' && data.data && typeof data.data === 'object') {
+        try {
+          const serialized = JSON.stringify(data.data);
+          if (serialized.length < 2_000_000) window.localStorage.setItem(previewStorageKey, serialized);
+        } catch {
+          /* storage quota exceeded: preview keeps working in memory */
+        }
+        return;
+      }
+      if (data.type === 'ENGINEER_NAVIGATE' && typeof data.entry === 'string') {
+        const target = data.entry.replace(/^\/+/, '');
+        if (previewEntries.some((p) => p.path === target)) setPreviewEntry(target);
+        return;
+      }
+      if (data.type === 'ENGINEER_ELEMENT_SELECTED') {
         setIsInspectorActive(false);
-        const { text, selector, tag } = event.data;
-        const targetLabel = text ? `"${text}"` : (selector || tag);
+        const { text, selector, tag } = data;
+        const targetLabel = text ? `"${String(text).slice(0, 40)}"` : String(selector || tag || '').slice(0, 60);
         const promptDraft = isAr
           ? `عدل هذا العنصر (${targetLabel}) واجعله `
           : `Modify this element (${targetLabel}) and make it `;
@@ -291,7 +313,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     };
     window.addEventListener('message', handleElementSelected);
     return () => window.removeEventListener('message', handleElementSelected);
-  }, [isAr, onNotify]);
+  }, [isAr, onNotify, previewStorageKey, previewEntries]);
 
   const handleToggleInspector = () => {
     const next = !isInspectorActive;
@@ -947,12 +969,12 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           <span className="font-medium">{isAr ? 'منصة Engineer · مساحة العمل الذكية' : 'Engineer Platform · Smart Workspace'}</span>
         </div>
 
-        {/* Actions: Developer Mode Toggle & Deploy CTA */}
+        {/* Actions: Developer Mode Toggle (the single Publish CTA lives in the preview toolbar) */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            id="toggle-edit-mode-btn"
-            data-testid="toggle-edit-mode-btn"
+            id="toggle-dev-mode-btn"
+            data-testid="toggle-dev-mode-btn"
             onClick={() => setIsEditMode(!isEditMode)}
             title={isAr ? 'الوضع المتقدم / محرر الأكواد والملفات' : 'Developer Mode (Code Editor & Files)'}
             className={`btn btn-sm ${
@@ -961,16 +983,6 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           >
             <Code2 className="w-3.5 h-3.5 stroke-[2]" />
             <span>{isEditMode ? (isAr ? 'عرض المعاينة' : 'Show Preview') : (isAr ? 'الوضع المتقدم' : 'Developer Mode')}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenModal('deploy')}
-            title={isAr ? 'نشر التطبيق' : 'Deploy Application'}
-            className="btn btn-primary btn-sm"
-          >
-            <Rocket className="w-3.5 h-3.5 stroke-[2]" />
-            <span>{isAr ? 'نشر' : 'Deploy'}</span>
           </button>
         </div>
       </header>
@@ -2302,6 +2314,23 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     </button>
                   </div>
 
+                  {/* Page selector (multi-page apps / agent-generated screens) */}
+                  {previewEntries.length > 1 && (
+                    <select
+                      data-testid="preview-entry-select"
+                      value={previewEntry || previewEntries[0].path}
+                      onChange={(e) => setPreviewEntry(e.target.value)}
+                      title={isAr ? 'الصفحة المعروضة' : 'Displayed page'}
+                      className="h-7 max-w-[150px] rounded-md bg-white/5 border border-white/10 text-slate-200 text-xs px-1.5 shrink-0"
+                    >
+                      {previewEntries.map((p) => (
+                        <option key={p.path} value={p.path}>
+                          {p.isScreen ? `▦ ${p.label}` : p.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
                   {/* Refresh Button */}
                   <button
                     type="button"
@@ -2352,11 +2381,12 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   }`}
                 >
                   <iframe
-                    key={previewRefreshKey}
+                    key={`${previewRefreshKey}:${previewEntry}`}
                     id="live-app-preview-frame"
+                    data-testid="live-app-preview-frame"
                     title={`Live Preview — ${project.name}`}
                     srcDoc={compiledPreviewHtml}
-                    sandbox="allow-scripts allow-forms allow-modals allow-same-origin allow-downloads"
+                    sandbox="allow-scripts allow-forms allow-modals allow-downloads"
                     className="w-full h-full border-0"
                   />
                 </div>

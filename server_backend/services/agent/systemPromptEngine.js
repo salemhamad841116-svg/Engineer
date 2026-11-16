@@ -1,46 +1,17 @@
 /**
- * systemPromptEngine.js
- * Phase 3: Dynamic System Prompt Engine (Node.js)
+ * systemPromptEngine.js — compatibility shim for the executive-assistant (screens) agent.
  *
- * Generates tailored, structured Markdown system prompts per request based on userRole
- * (Business Owner, Employee, Developer), enforces 3-line responses, injects active screen
- * context, and establishes safety guardrails for the 8B open-source model.
+ * All prompt text comes from the unified constitution (../ai/constitution.js).
+ * Keyword "sensitive operation" regexes were removed: dangerous actions are now blocked
+ * by the server-side policy in toolGuard.js (role checks + approval tokens), not by
+ * pattern-matching the user's words.
  */
+'use strict';
 
-const { MASTER_SYSTEM_PROMPT_V1, classifyMasterIntent } = require('../ai/engineerMasterPrompt');
+const { buildSystemPrompt: buildConstitutionPrompt, workspaceRoleForAccount, CONSTITUTION_TEXT } = require('../ai/constitution');
+const { classifyMasterIntent } = require('../ai/engineerMasterPrompt');
 
-const ROLE_PROFILES = {
-  business_owner: {
-    title: 'صاحب شركة ومستثمر (Business Owner)',
-    focus: 'التركيز على العائد الاستثماري (ROI)، توفير الوقت والتكاليف، مؤشرات الأداء (KPIs)، وملخصات الأعمال التنفيذية.',
-    tone: 'لغة تنفيذية حاسمة خالية تماماً من المصطلحات البرمجية والتعقيدات التقنية.',
-    defaults: {
-      includeKpis: true,
-      preferDashboards: true,
-      clarificationStyle: 'اقتراح أثر القرار على نمو المبيعات وتسريع العمليات.'
-    }
-  },
-  employee: {
-    title: 'موظف تشغيلي ومستخدم يومي (Employee)',
-    focus: 'تبسيط شاشات الإدخال، تقليل خطوات العمل اليومي، وضوح التسميات، وتقديم إرشادات استخدام سريعة ومريحة.',
-    tone: 'لغة عملية إرشادية واضحة تركز على سهولة الاستخدام وإتمام المهام اليومية بسرعة ودقة.',
-    defaults: {
-      includeKpis: false,
-      preferDashboards: false,
-      clarificationStyle: 'توضيح كيفية تقليل عبء العمل وتسهيل الوصول للبيانات.'
-    }
-  },
-  developer: {
-    title: 'مهندس برمجيات ومطور تقني (Developer)',
-    focus: 'بنية البيانات، معرفات الحقول (Field IDs)، أنواع البيانات (Types)، قواعد التحقق (Validation Rules)، ومسارات الربط البرمجي (APIs).',
-    tone: 'لغة تقنية دقيقة تستخدم مصطلحات هندسة البرمجيات المعيارية (Schemas, Validation, REST endpoints, Grid layout).',
-    defaults: {
-      includeKpis: true,
-      preferDashboards: false,
-      clarificationStyle: 'اقتراح قواعد التحقق وعلاقات المفاتيح ومعالجة الاستثناءات.'
-    }
-  }
-};
+const MASTER_SYSTEM_PROMPT_V1 = CONSTITUTION_TEXT;
 
 const PRIVILEGE_ESCALATION_PATTERNS = [
   /ترقية\s+(حساب|حسابي|الصلاحيات|المستخدم)/i,
@@ -63,9 +34,8 @@ const GUARDRAIL_BYPASS_PATTERNS = [
 const SENSITIVE_PATTERNS = [
   /حذف\s+(كافة|جميع|كل|بيانات|سجلات|قاعدة)/i,
   /مسح\s+(كافة|جميع|كل|بيانات|سجلات)/i,
-  /تفريغ\s+(الجدول|البيانات|السجلات)/i,
-  /إلغاء\s+(تثبيت|صلاحيات|حسابات)/i,
-  /تعديل\s+صلاحيات\s+(المدير|المسؤول|الكل)/i,
+  /تصفير\s+(البيانات|السجلات|الجدول)/i,
+  /delete\s+all/i,
   /drop\s+table/i,
   /delete\s+from/i,
   /truncate/i,
@@ -74,131 +44,82 @@ const SENSITIVE_PATTERNS = [
   ...GUARDRAIL_BYPASS_PATTERNS
 ];
 
-/**
- * Checks if a user prompt implies a high-risk or sensitive operation.
- */
 function isSensitiveOperation(prompt = '') {
   return SENSITIVE_PATTERNS.some((pattern) => pattern.test(prompt));
 }
 
-/**
- * Checks specifically for privilege escalation attempts.
- */
 function isPrivilegeEscalationAttempt(prompt = '') {
   return PRIVILEGE_ESCALATION_PATTERNS.some((pattern) => pattern.test(prompt));
 }
 
-/**
- * Checks for guardrail bypass attempts.
- */
 function isGuardrailBypassAttempt(prompt = '') {
   return GUARDRAIL_BYPASS_PATTERNS.some((pattern) => pattern.test(prompt));
 }
 
-/**
- * Builds the dynamic system prompt customized for the target userRole and screen context.
- */
-function buildSystemPrompt({ userRole = 'business_owner', currentScreen = null, tools = [], fewShotExamples = [] } = {}) {
-  const roleConfig = ROLE_PROFILES[userRole] || ROLE_PROFILES.business_owner;
-
-  let screenSummary = 'لا توجد شاشة مفتوحة حالياً (شاشة جديدة فارغة).';
-  if (currentScreen && currentScreen.meta) {
-    const fieldsCount = Array.isArray(currentScreen.fields) ? currentScreen.fields.length : 0;
-    screenSummary = `الشاشة النشطة: "${currentScreen.meta.title}" (المعرف: ${currentScreen.meta.screenId}) | نوع العرض: ${currentScreen.meta.viewType} | عدد الحقول: ${fieldsCount}`;
-  }
-
-  const promptText = `
-${MASTER_SYSTEM_PROMPT_V1}
-
----
-
-# دستور المساعد التنفيذي الذكي ومهندس الأنظمة (AI Executive Agent Constitution)
-
-## 1. الهوية والدور الأساسي
-أنت "مهندس أنظمة ومساعد تنفيذي ذكي" عالي الكفاءة متخصص في البناء الفوري للواجهات التفاعلية وأنظمة إدارة الأعمال المؤتمتة. مهمتك الأساسية هي **التنفيذ البرمجي المباشر وبناء الواجهات** دون الدخول في دردشة عامة أو شرح نظري مطول.
-
-## 2. التكيف التام مع صفة المستخدم: ${roleConfig.title}
-- **طبيعة التركيز المطلوبة**: ${roleConfig.focus}
-- **نبرة الخطاب ولغة التواصل**: ${roleConfig.tone}
-${userRole === 'business_owner' ? '- **ملاحظة إلزامية**: ركّز دائماً على إضافة مؤشرات إحصائية علوية (KPIs) تهم متخذي القرار مثل الإيرادات، نسبة التحويل، والأرباح.' : ''}
-${userRole === 'employee' ? '- **ملاحظة إلزامية**: بسّط النماذج إلى أقصى حد، واجعل الحقول الأساسية واضحة وسريعة التعبئة لتقليل الأخطاء البشرية.' : ''}
-${userRole === 'developer' ? '- **ملاحظة إلزامية**: وضّح أسماء الحقول ومفاتيحها التقنية (field IDs) وقواعد التحقق (min, max, pattern) وتأكد من تناسق الأنواع البرمجية.' : ''}
-
-## 3. قواعد التصميم وهندسة الواجهات (UI Rules)
-1. **التنفيذ الفوري**: ابدأ ببناء وتعديل الشاشات مباشرة وفق متطلبات الطلب.
-2. **التوزيع الشبكي الذكي (CSS Grid 12)**:
-   - الحقول القصيرة (مثل: الاسم، الهاتف، التاريخ، المبلغ، الحالة) تأخذ \`colSpan: 6\` (نصف السطر).
-   - الحقول العريضة (مثل: العنوان، الملاحظات، التفاصيل، الجداول) تأخذ \`colSpan: 12\` (عرض كامل).
-3. **الأيقونات والتنسيق العربي (RTL)**:
-   - عيّن أيقونة متناسقة من مكتبة Lucide لكل حقل (مثل: User, DollarSign, Calendar, Mail, Phone, Tag).
-4. **السجلات التجريبية الواقعية**:
-   - زوّد الشاشة بـ 3 سجلات بيانات عربية واقعية مكتملة تتطابق مفاتيحها مع أسماء الحقول \`name\`.
-5. **التعامل مع الطلبات العامة والموجزة**:
-   - إذا كان طلب المستخدم عاماً (مثل: "اصنع لي برنامج مبيعات")، ابنِ أفضل نموذج قياسي مكتمل فوراً، ثم اقترح في \`suggestedActions\` خيارين للتوسعة والتطوير.
-
-## 4. سياق الشاشة المفتوحة والأدوات المتاحة
-- **سياق الشاشة الحالية**: ${screenSummary}
-- **الأدوات البرمجية المسموح استدعاؤها**:
-  1. \`buildNewScreen\`: لإنشاء شاشة أو نظام متكامل جديد.
-  2. \`patchExistingScreen\`: لتعديل حقل محدد أو إضافة خاصية دون إعادة بناء الشاشة.
-  3. \`configureAutomation\`: لربط قواعد التنبيه والأتمتة التلقائية.
-
-## 5. ضوابط الأمان الفولاذية (Security Guardrails)
-- يُحظر حظراً باتاً تنفيذ أي عملية **حذف بيانات شاملة، أو تفريغ سجلات، أو تعديل صلاحيات حساسة، أو إرسال إشعارات جماعية** بشكل تلقائي.
-- عند رصد أي طلب من هذا النوع، يجب التوقف فوراً وضبط \`actionType: "REQUIRE_CONFIRMATION"\` وتعبئة حزمة \`guardrail\` لطلب تأكيد بشري صريح قبل التنفيذ.
-
-## 6. القيود الصارمة للرد النصي المصاحب (assistantMessage)
-يجب أن يحتوي كائن \`assistantMessage\` على 3 أسطر قصيرة ومحددة فقط لا غير:
-- \`confirmation\`: (السطر الأول) تأكيد التنفيذ المباشر بنبرة تناسب صفة المستخدم.
-- \`highlight\`: (السطر الثاني) إبراز ميزة ذكية أو تحسين هندسي تمت إضافته تلقائياً.
-- \`nextStepSuggestion\`: (السطر الثالث) سؤال واحد واضح ومحدد لاقتراح الخطوة القادمة.
-
-## 7. صيغة الإخراج الإلزامية (JSON Only)
-أخرج دائماً كائن JSON صالحاً بنسبة 100% يطابق الغلاف الموحد:
-\`\`\`json
-{
-  "actionType": "CREATE_SCREEN" | "PATCH_SCREEN" | "REQUIRE_CONFIRMATION" | "CHAT_ONLY",
-  "assistantMessage": {
-    "confirmation": "...",
-    "highlight": "...",
-    "nextStepSuggestion": "..."
+/** Audience profiles only adjust tone/content; they never grant permissions. */
+const ROLE_PROFILES = {
+  business_owner: {
+    title: 'صاحب شركة ومستثمر (Business Owner)',
+    focus: 'KPIs, ROI, time and cost savings, executive summaries. Avoid technical jargon.',
   },
-  "suggestedActions": ["...", "..."],
-  "uiPayload": { ... },
-  "operations": [ ... ],
-  "guardrail": { ... }
+  employee: {
+    title: 'موظف تشغيلي ومستخدم يومي (Employee)',
+    focus: 'Simple, fast data-entry forms with clear labels and few steps.',
+  },
+  developer: {
+    title: 'مهندس برمجيات ومطور تقني (Developer)',
+    focus: 'Field ids, data types, validation rules (min/max/pattern) and API-friendly naming.',
+  },
+};
+
+function describeScreen(currentScreen) {
+  if (!currentScreen || !currentScreen.meta) return 'No screen is open (a new screen will be created).';
+  const fields = Array.isArray(currentScreen.fields) ? currentScreen.fields : [];
+  return `Active screen: "${currentScreen.meta.title}" (id ${currentScreen.meta.screenId}, view ${currentScreen.meta.viewType}) with fields: ${fields
+    .map((f) => `${f.name}:${f.type}`)
+    .join(', ')}`;
 }
-\`\`\`
-`.trim();
 
-  let fullPrompt = promptText;
-  if (Array.isArray(fewShotExamples) && fewShotExamples.length > 0) {
-    fullPrompt += `\n\n## 8. أمثلة مرجعية معتمدة من التقييمات الإيجابية (Dynamic Few-Shot Examples)\n`;
-    for (const ex of fewShotExamples) {
-      fullPrompt += `- **طلب المستخدم**: "${ex.prompt}"\n  **الاستجابة المعتمدة**: \`${typeof ex.response === 'string' ? ex.response : JSON.stringify(ex.response)}\`\n`;
-    }
-  }
-
+/**
+ * Builds the system prompt for the screens agent from the constitution.
+ * @param {{userRole?: string, accountRole?: string, workspaceRole?: string, currentScreen?: object, fewShotExamples?: Array, language?: string}} o
+ */
+function buildSystemPrompt({ userRole = 'business_owner', accountRole, workspaceRole, currentScreen = null, fewShotExamples = [], language } = {}) {
+  const audience = ROLE_PROFILES[userRole] || ROLE_PROFILES.business_owner;
+  const role = workspaceRole || workspaceRoleForAccount(accountRole);
+  const examples = (Array.isArray(fewShotExamples) ? fewShotExamples : [])
+    .slice(0, 2)
+    .map((ex) => `- Request: "${String(ex.prompt).slice(0, 200)}"`)
+    .join('\n');
+  const extra = [
+    `Audience: ${audience.title}. Focus: ${audience.focus}`,
+    describeScreen(currentScreen),
+    examples ? `Requests users rated highly (for style only):\n${examples}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const systemPrompt = buildConstitutionPrompt({ mode: 'screens', role, language, extra });
   return {
-    systemPrompt: fullPrompt,
+    systemPrompt,
     temperature: 0.15,
     userRole,
-    roleTitle: roleConfig.title,
-    fewShotCount: Array.isArray(fewShotExamples) ? fewShotExamples.length : 0
+    workspaceRole: role,
+    roleTitle: audience.title,
+    fewShotCount: Array.isArray(fewShotExamples) ? fewShotExamples.length : 0,
   };
 }
 
-/**
- * Fetches approved high-rated few-shot examples from ai_feedback table in SQLite.
- */
+/** Fetches approved high-rated examples from ai_feedback (style hints only). */
 function fetchDynamicFewShots(db, userRole = 'business_owner', limit = 2) {
   if (!db) return [];
   try {
-    const rows = db.prepare(`
-      SELECT prompt, response_json FROM ai_feedback
-      WHERE is_few_shot_candidate = 1 AND rating = 1 AND (user_role = ? OR user_role IS NULL)
-      ORDER BY created_at DESC LIMIT ?
-    `).all(userRole, limit);
+    const rows = db
+      .prepare(
+        `SELECT prompt, response_json FROM ai_feedback
+         WHERE is_few_shot_candidate = 1 AND rating = 1 AND (user_role = ? OR user_role IS NULL)
+         ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(userRole, limit);
     return rows.map((r) => ({ prompt: r.prompt, response: r.response_json }));
   } catch (_) {
     return [];
@@ -208,11 +129,13 @@ function fetchDynamicFewShots(db, userRole = 'business_owner', limit = 2) {
 module.exports = {
   ROLE_PROFILES,
   SENSITIVE_PATTERNS,
+  PRIVILEGE_ESCALATION_PATTERNS,
+  GUARDRAIL_BYPASS_PATTERNS,
   isSensitiveOperation,
   isPrivilegeEscalationAttempt,
   isGuardrailBypassAttempt,
   classifyMasterIntent,
   MASTER_SYSTEM_PROMPT_V1,
   buildSystemPrompt,
-  fetchDynamicFewShots
+  fetchDynamicFewShots,
 };

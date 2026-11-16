@@ -370,10 +370,162 @@ function _resetCache() {
   listCache = { at: 0, data: null };
 }
 
+// ==============================================================================
+// FUNCTION CALLING
+// chatWithTools() sends tool JSON schemas to the selected model and returns the
+// model's text AND its tool calls. It never executes tools — execution is the job of
+// engineerAgent + toolGuard (server-side enforcement).
+// ==============================================================================
+
+let mockToolResponder = null;
+
+/** Test-only: installs a scripted model for LLM_PROVIDER=mock (fixtures replay tool calls). */
+function setMockToolResponder(fn) {
+  mockToolResponder = typeof fn === 'function' ? fn : null;
+}
+
+function mockAllowed() {
+  return process.env.NODE_ENV !== 'production' || process.env.E2E_TEST_MODE === '1';
+}
+
+/** Recovers tool calls that some local models print as text: <tool_call>{"name":..,"arguments":..}</tool_call>. */
+function extractTextToolCalls(text) {
+  const calls = [];
+  let rest = String(text || '');
+  const re = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+  let m;
+  while ((m = re.exec(text))) {
+    try {
+      const obj = JSON.parse(m[1]);
+      if (obj && typeof obj.name === 'string') {
+        calls.push({ id: `call_txt_${calls.length}_${Date.now().toString(36)}`, name: obj.name, arguments: obj.arguments == null ? {} : obj.arguments });
+      }
+    } catch (_) {
+      /* not JSON: leave as text */
+    }
+  }
+  if (calls.length) rest = rest.replace(re, '').trim();
+  return { calls, rest };
+}
+
+function toOpenAiTools(tools) {
+  return (tools || []).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
+}
+
+async function openAiCompatibleWithTools({ entry, messages, tools, timeoutMs, signal, maxTokens }) {
+  const t0 = Date.now();
+  const baseUrl = modelProvider.getBaseUrl();
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  const key = modelProvider.getApiKey();
+  if (key && !/your_|_here|placeholder/i.test(key)) headers.Authorization = `Bearer ${key}`;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  const body = { model: entry.id, messages, temperature: 0.2, max_tokens: maxTokens, stream: false };
+  if (tools && tools.length) {
+    body.tools = toOpenAiTools(tools);
+    body.tool_choice = 'auto';
+  }
+  if (entry.provider === 'ollama') body.options = { num_ctx: parseInt(process.env.OLLAMA_NUM_CTX || '', 10) || 16384 };
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal: combined });
+  } catch (err) {
+    throw classifyFetchError(err, { timeoutSignal, clientSignal: signal });
+  }
+  const raw = await res.text().catch(() => '');
+  if (!res.ok) {
+    if (res.status === 404 || /not found|no such model|pull/i.test(raw)) throw new WorkspaceModelError('MODEL_NOT_INSTALLED', `HTTP ${res.status}: ${raw.slice(0, 160)}`);
+    if (/does not support tools/i.test(raw)) throw new WorkspaceModelError('MODEL_UNAVAILABLE', `Model ${entry.id} does not support tool calling`);
+    if (/out of memory|insufficient|requires more system memory/i.test(raw)) throw new WorkspaceModelError('MODEL_RESOURCE_EXHAUSTED', raw.slice(0, 160));
+    throw new WorkspaceModelError('MODEL_ERROR', `HTTP ${res.status}: ${raw.slice(0, 160)}`);
+  }
+  let json;
+  try {
+    json = JSON.parse(raw);
+  } catch (_) {
+    throw new WorkspaceModelError('MODEL_ERROR', 'Invalid JSON from model server');
+  }
+  const msg = (json.choices && json.choices[0] && json.choices[0].message) || {};
+  let text = stripReasoning(msg.content || '');
+  let toolCalls = (Array.isArray(msg.tool_calls) ? msg.tool_calls : [])
+    .filter((c) => c && c.function && c.function.name)
+    .map((c, i) => ({ id: c.id || `call_${i}_${Date.now().toString(36)}`, name: c.function.name, arguments: c.function.arguments == null ? {} : c.function.arguments }));
+  if (!toolCalls.length && text.includes('<tool_call>')) {
+    const recovered = extractTextToolCalls(text);
+    toolCalls = recovered.calls;
+    text = recovered.rest;
+  }
+  const usage = json.usage || null;
+  return {
+    text,
+    toolCalls,
+    usage: {
+      promptTokens: usage ? usage.prompt_tokens || 0 : Math.round(JSON.stringify(messages).length / 4),
+      completionTokens: usage ? usage.completion_tokens || 0 : Math.round((text.length + JSON.stringify(toolCalls).length) / 4),
+      totalTokens: usage ? usage.total_tokens || 0 : Math.round((JSON.stringify(messages).length + text.length) / 4),
+      estimated: !usage,
+    },
+    latencyMs: Date.now() - t0,
+    model: entry.id,
+    provider: entry.provider,
+  };
+}
+
+/**
+ * One model turn with tool schemas.
+ * @param {{modelId?: string, messages: Array<object>, tools: Array<{name:string,description:string,parameters:object}>, timeoutMs?: number, signal?: AbortSignal, maxTokens?: number}} o
+ * @returns {Promise<{text:string, toolCalls:Array<{id:string,name:string,arguments:any}>, usage:object, latencyMs:number, model:string, provider:string}>}
+ */
+async function chatWithTools({ modelId, messages, tools = [], timeoutMs = DEFAULT_TIMEOUT_MS * 2, signal, maxTokens = 8192 }) {
+  const entry = await resolveModel(modelId);
+  if (entry.provider === 'mock') {
+    if (!mockAllowed()) throw new WorkspaceModelError('MODEL_UNAVAILABLE', 'The mock provider is disabled in production');
+    if (signal && signal.aborted) throw new WorkspaceModelError('CANCELLED', 'Client disconnected');
+    const t0 = Date.now();
+    const out = mockToolResponder
+      ? await mockToolResponder({ messages, tools, model: entry.id })
+      : { text: mockReply(messages, entry.id), toolCalls: [] };
+    const text = stripReasoning(out.text || '');
+    const toolCalls = (out.toolCalls || []).map((c, i) => ({ id: c.id || `call_mock_${i}_${Date.now().toString(36)}`, name: c.name, arguments: c.arguments == null ? {} : c.arguments }));
+    return {
+      text,
+      toolCalls,
+      usage: { promptTokens: Math.round(JSON.stringify(messages).length / 4), completionTokens: Math.round(text.length / 4), totalTokens: Math.round((JSON.stringify(messages).length + text.length) / 4), estimated: true },
+      latencyMs: Date.now() - t0,
+      model: entry.id,
+      provider: 'mock',
+    };
+  }
+  if (!entry.local) {
+    const adapter = cloudAdapters.get(entry.provider);
+    if (!adapter || typeof adapter.chatWithTools !== 'function') throw new WorkspaceModelError('MODEL_UNAVAILABLE', `No tool-calling adapter for ${entry.provider}`);
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    try {
+      const out = await adapter.chatWithTools({ model: entry.id, messages, tools, signal: combined, maxTokens });
+      let text = stripReasoning(out.text || '');
+      let toolCalls = out.toolCalls || [];
+      if (!toolCalls.length && text.includes('<tool_call>')) {
+        const recovered = extractTextToolCalls(text);
+        toolCalls = recovered.calls;
+        text = recovered.rest;
+      }
+      return { ...out, text, toolCalls, model: entry.id, provider: entry.provider };
+    } catch (err) {
+      throw classifyFetchError(err, { timeoutSignal, clientSignal: signal });
+    }
+  }
+  return openAiCompatibleWithTools({ entry, messages, tools, timeoutMs, signal, maxTokens });
+}
+
 module.exports = {
   listModels,
   resolveModel,
   chat,
+  chatWithTools,
+  setMockToolResponder,
+  extractTextToolCalls,
+  toOpenAiTools,
   registerCloudAdapter,
   stripReasoning,
   WorkspaceModelError,

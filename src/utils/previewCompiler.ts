@@ -22,6 +22,8 @@ export interface InlineAssetsInput {
   bodyScripts?: string[];
   /** Inject the runtime health probe (window errors + canvas pixel audit). */
   includeHealthProbe?: boolean;
+  /** Initial localStorage contents for the sandboxed (opaque-origin) preview. */
+  storageSeed?: Record<string, string>;
 }
 
 export interface InlineScriptSyntaxIssue {
@@ -139,6 +141,45 @@ export const PREVIEW_HEALTH_PROBE_SCRIPT = `<script id="engineer-preview-health"
 })();
 </script>`;
 
+export const PREVIEW_STORAGE_MESSAGE = 'ENGINEER_PREVIEW_STORAGE';
+
+/**
+ * The live preview iframe runs WITHOUT `allow-same-origin` (generated code must never get
+ * the platform origin, cookies or API access). Opaque-origin documents throw on
+ * `localStorage`/`sessionStorage`, so this shim installs an in-memory Storage seeded from the
+ * parent workspace and mirrors writes back via postMessage (persisted per project by the parent).
+ */
+export function buildPreviewStorageShim(seed: Record<string, string> = {}): string {
+  const safeSeed = JSON.stringify(seed || {}).replace(/</g, '\\u003c');
+  return `<script id="engineer-preview-storage">
+(function () {
+  function makeStore(initial, kind) {
+    var data = Object.create(null);
+    Object.keys(initial || {}).forEach(function (k) { data[k] = String(initial[k]); });
+    function sync() {
+      if (kind !== 'local') return;
+      try { window.parent && window.parent !== window && window.parent.postMessage({ type: '${PREVIEW_STORAGE_MESSAGE}', data: data }, '*'); } catch (_) {}
+    }
+    return {
+      get length() { return Object.keys(data).length; },
+      key: function (i) { var k = Object.keys(data); return i >= 0 && i < k.length ? k[i] : null; },
+      getItem: function (k) { k = String(k); return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+      setItem: function (k, v) { data[String(k)] = String(v); sync(); },
+      removeItem: function (k) { delete data[String(k)]; sync(); },
+      clear: function () { data = Object.create(null); sync(); }
+    };
+  }
+  var needsShim = false;
+  try { var t = window.localStorage; t.setItem('__engineer_probe__', '1'); t.removeItem('__engineer_probe__'); } catch (_) { needsShim = true; }
+  if (!needsShim) return;
+  var local = makeStore(${safeSeed}, 'local');
+  var session = makeStore({}, 'session');
+  try { Object.defineProperty(window, 'localStorage', { configurable: true, get: function () { return local; } }); } catch (_) {}
+  try { Object.defineProperty(window, 'sessionStorage', { configurable: true, get: function () { return session; } }); } catch (_) {}
+})();
+</script>`;
+}
+
 /** Builds the full preview document with inlined CSS/JS (no replace-pattern hazards). */
 export function inlineAssetsIntoHtml(input: InlineAssetsInput): string {
   let doc = String(input.html || '');
@@ -160,6 +201,9 @@ export function inlineAssetsIntoHtml(input: InlineAssetsInput): string {
   if (input.includeHealthProbe) {
     doc = insertAfterHeadOpen(doc, PREVIEW_HEALTH_PROBE_SCRIPT);
   }
+
+  // Storage shim must run before any application script (inserted first in <head>).
+  doc = insertAfterHeadOpen(doc, buildPreviewStorageShim(input.storageSeed));
 
   if (css && !doc.includes(css.slice(0, 30))) {
     const styleBlock = `<style>\n${escapeInlineStyle(css)}\n</style>`;

@@ -16,7 +16,7 @@ export interface ExtractedAppSpec {
   intent: AppIntentType;
   subIntent: string;
   appTitle: string;
-  appCategory: 'notes' | 'tasks' | 'store' | 'crm' | 'dashboard' | 'custom' | 'trading_risk_calc' | 'zakat_calc';
+  appCategory: 'notes' | 'tasks' | 'store' | 'crm' | 'dashboard' | 'custom' | 'trading_risk_calc' | 'zakat_calc' | 'recordings' | 'messaging';
   targetPlatform: 'Web' | 'Mobile' | 'Desktop' | 'PWA';
   features: {
     folders: boolean;
@@ -132,33 +132,39 @@ export function analyzeAppRequest(prompt: string, existingProject?: Project): Ex
     }
   }
 
-  // 2. Extract Category (Prioritize preserving existing project category)
+  // 2. Extract Category (Prioritize explicit domain keywords, then preserve existing project category for edits)
   let appCategory: ExtractedAppSpec['appCategory'] = 'custom';
-  if (hasActiveFiles && existingProject) {
+  if (/ملاحظ|notes?|memo|دفتر/i.test(p) && !/تطبيق\s*(?:تسجيل|صوت|ريكورد)|مسجل\s*صوت/i.test(p)) {
+    appCategory = 'notes';
+  } else if (/تسجيل|تسجيلات|صوتي|ريكورد|مذكرات صوتية|مسجل|record|recording|audio|voice/i.test(p)) {
+    appCategory = 'recordings';
+  } else if (/مراسلات|شات|محادث|رسائل|messenger|chat|messaging/i.test(p)) {
+    appCategory = 'messaging';
+  } else if (/زكاة|زكاه|حاسبة.*زكاة|ذهب.*فضة|zakat|nisab/i.test(p)) {
+    appCategory = 'zakat_calc';
+  } else if (/تداول|مخاطر|حاسب.*مخاطر|مخاطرة|فوركس|أسهم|عملات|trading|risk|forex|stocks|crypto|position\s*size/i.test(p)) {
+    appCategory = 'trading_risk_calc';
+  } else if (/ملاحظ|notes?|memo|دفتر/i.test(p)) {
+    appCategory = 'notes';
+  } else if (/مهام|todo|task|قائمة/i.test(p)) {
+    appCategory = 'tasks';
+  } else if (/متجر|store|shop|منتجات|cart/i.test(p)) {
+    appCategory = 'store';
+  } else if (/لوحة|تحليل|dashboard|analytics/i.test(p)) {
+    appCategory = 'dashboard';
+  } else if (hasActiveFiles && existingProject) {
     if (/تداول|مخاطر|trading|risk/i.test(existingProject.name) || existingProject.files.some((f) => f.content?.includes('metric-risk-amount') || f.content?.includes('dir-long-btn'))) {
       appCategory = 'trading_risk_calc';
     } else if (/زكاة|زكاه|zakat/i.test(existingProject.name)) {
       appCategory = 'zakat_calc';
+    } else if (/تسجيل|record/i.test(existingProject.name)) {
+      appCategory = 'recordings';
+    } else if (/مراس|شات|chat/i.test(existingProject.name)) {
+      appCategory = 'messaging';
     } else if (/ملاحظ|note/i.test(existingProject.name)) {
       appCategory = 'notes';
     } else if (/مهام|task/i.test(existingProject.name)) {
       appCategory = 'tasks';
-    }
-  }
-
-  if (appCategory === 'custom') {
-    if (/زكاة|زكاه|حاسبة.*زكاة|ذهب.*فضة|zakat|nisab/i.test(p)) {
-      appCategory = 'zakat_calc';
-    } else if (/تداول|مخاطر|حاسب.*مخاطر|مخاطرة|فوركس|أسهم|عملات|trading|risk|forex|stocks|crypto|position\s*size/i.test(p)) {
-      appCategory = 'trading_risk_calc';
-    } else if (/ملاحظ|notes?|memo|دفتر/i.test(p)) {
-      appCategory = 'notes';
-    } else if (/مهام|todo|task|قائمة/i.test(p)) {
-      appCategory = 'tasks';
-    } else if (/متجر|store|shop|منتجات|cart/i.test(p)) {
-      appCategory = 'store';
-    } else if (/لوحة|تحليل|dashboard|analytics/i.test(p)) {
-      appCategory = 'dashboard';
     }
   }
 
@@ -176,6 +182,10 @@ export function analyzeAppRequest(prompt: string, existingProject?: Project): Ex
   let appTitle = isAr ? 'تطبيق ذكي' : 'Smart Application';
   if (intent === 'modify_app' && existingProject?.name) {
     appTitle = existingProject.name;
+  } else if (appCategory === 'recordings') {
+    appTitle = isAr ? 'تطبيق التسجيلات والمذكرات الصوتية' : 'Voice Recordings & Memos';
+  } else if (appCategory === 'messaging') {
+    appTitle = isAr ? 'تطبيق المراسلات والمحادثات الفورية' : 'Live Messaging Studio';
   } else if (appCategory === 'zakat_calc') {
     appTitle = isAr ? 'حاسبة زكاة المال والذهب' : 'Zakat & Wealth Calculator';
   } else if (appCategory === 'trading_risk_calc') {
@@ -372,6 +382,10 @@ export function generateAppFiles(
     files = buildZakatCalculatorFiles(spec, plan);
   } else if (spec.appCategory === 'trading_risk_calc' || /تداول|مخاطر|trading|risk/i.test(spec.appTitle)) {
     files = buildTradingRiskCalculatorFiles(spec, plan);
+  } else if (spec.appCategory === 'recordings' || /تسجيل|صوت|ريكورد|audio|record/i.test(spec.appTitle)) {
+    files = buildRecordingsApplicationFiles(spec, plan);
+  } else if (spec.appCategory === 'messaging' || /مراسلات|شات|رسائل|chat|message/i.test(spec.appTitle)) {
+    files = buildMessagingApplicationFiles(spec, plan);
   } else if (spec.appCategory === 'custom') {
     files = buildFreestyleApplicationFiles(spec, plan);
   } else {
@@ -2047,6 +2061,684 @@ body { background: #080C14; color: #F1F5F9; font-family: 'Cairo', sans-serif; }
   };
 }
 
+
+export function buildRecordingsApplicationFiles(
+  spec: ExtractedAppSpec,
+  _plan?: InternalAppPlan
+): Record<string, string> {
+  const isRtl = spec.constraints.direction === "rtl";
+  const lang = spec.constraints.language;
+  const dir = spec.constraints.direction;
+
+  const html = `<!DOCTYPE html>
+<html lang="${lang}" dir="${dir}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${spec.appTitle}</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-dark">
+  <div class="recordings-app-container">
+    <header class="app-header">
+      <div class="brand">
+        <div class="mic-pulse-badge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">${spec.appTitle}</h1>
+          <p class="brand-sub">${isRtl ? "استوديو التسجيل الصوتي وإدارة المذكرات الصوتية" : "Voice Memo Recording & Audio Studio"}</p>
+        </div>
+      </div>
+      <div class="header-stats">
+        <div class="stat-pill">
+          <span class="stat-lbl">${isRtl ? "التسجيلات:" : "Total:"}</span>
+          <span id="recordings-count" class="stat-num">0</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-lbl">${isRtl ? "المدة الإجمالية:" : "Duration:"}</span>
+          <span id="total-duration" class="stat-num">00:00</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="studio-layout">
+      <section class="recorder-console">
+        <div class="recorder-card">
+          <div class="visualizer-wrapper">
+            <canvas id="audio-visualizer" width="600" height="120" role="img" aria-label="Audio Waveform"></canvas>
+            <div id="recording-status" class="recording-badge">${isRtl ? "جاهز للتسجيل" : "Ready to Record"}</div>
+          </div>
+
+          <div class="timer-display" id="recording-timer">00:00:00</div>
+
+          <div class="console-controls">
+            <button id="record-btn" class="btn-record" title="${isRtl ? "بدء التسجيل" : "Start Recording"}">
+              <span class="record-dot"></span>
+              <span id="record-btn-text">${isRtl ? "تسجيل جديد" : "Record"}</span>
+            </button>
+            <button id="pause-btn" class="btn-secondary" style="display:none;" title="${isRtl ? "إيقاف مؤقت" : "Pause"}">
+              <span id="pause-btn-text">${isRtl ? "إيقاف مؤقت" : "Pause"}</span>
+            </button>
+            <button id="cancel-btn" class="btn-danger" style="display:none;" title="${isRtl ? "إلغاء" : "Cancel"}">
+              ${isRtl ? "إلغاء" : "Cancel"}
+            </button>
+          </div>
+
+          <div class="metadata-form" id="recording-meta-form" style="display:none;">
+            <div class="form-row">
+              <input type="text" id="recording-title-input" placeholder="${isRtl ? "عنوان التسجيل..." : "Recording title..."}" class="input-text">
+              <select id="recording-tag-select" class="select-tag">
+                <option value="voice_memo">${isRtl ? "مذكرة صوتية" : "Voice Memo"}</option>
+                <option value="meeting">${isRtl ? "اجتماع" : "Meeting"}</option>
+                <option value="idea">${isRtl ? "فكرة سريعة" : "Quick Idea"}</option>
+                <option value="interview">${isRtl ? "مقابلة" : "Interview"}</option>
+              </select>
+            </div>
+            <button id="save-recording-btn" class="btn-primary">${isRtl ? "حفظ التسجيل" : "Save Recording"}</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="recordings-feed">
+        <div class="feed-header">
+          <div class="search-wrap">
+            <input type="text" id="search-recordings" placeholder="${isRtl ? "بحث في التسجيلات..." : "Search recordings..."}" class="search-input">
+          </div>
+          <div class="tag-filters">
+            <button class="tag-pill active" data-tag="all">${isRtl ? "الكل" : "All"}</button>
+            <button class="tag-pill" data-tag="voice_memo">${isRtl ? "مذكرات" : "Memos"}</button>
+            <button class="tag-pill" data-tag="meeting">${isRtl ? "اجتماعات" : "Meetings"}</button>
+            <button class="tag-pill" data-tag="idea">${isRtl ? "أفكار" : "Ideas"}</button>
+          </div>
+        </div>
+
+        <div id="recordings-list" class="recordings-list">
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>`;
+
+  const css = `* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #07090E; color: #F1F5F9; font-family: "Cairo", sans-serif; min-height: 100vh; }
+.recordings-app-container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+.app-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 20px; margin-bottom: 28px; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.mic-pulse-badge { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #EF4444, #DC2626); display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+.brand-title { font-size: 22px; font-weight: 800; color: #FFFFFF; }
+.brand-sub { font-size: 13px; color: #94A3B8; margin-top: 2px; }
+.header-stats { display: flex; gap: 12px; }
+.stat-pill { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 6px 14px; border-radius: 20px; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.stat-lbl { color: #94A3B8; }
+.stat-num { color: #38BDF8; font-weight: 700; font-family: "JetBrains Mono", monospace; }
+.studio-layout { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; }
+@media (max-width: 860px) { .studio-layout { grid-template-columns: 1fr; } }
+.recorder-card { background: #0E131F; border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 28px 24px; display: flex; flex-direction: column; align-items: center; gap: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+.visualizer-wrapper { width: 100%; height: 130px; background: #060911; border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#audio-visualizer { width: 100%; height: 100%; }
+.recording-badge { position: absolute; top: 10px; right: 12px; font-size: 11px; padding: 3px 10px; border-radius: 12px; background: rgba(56, 189, 248, 0.15); color: #38BDF8; font-weight: 600; }
+.recording-badge.active { background: rgba(239, 68, 68, 0.2); color: #EF4444; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+.timer-display { font-size: 44px; font-weight: 800; font-family: "JetBrains Mono", monospace; color: #FFFFFF; letter-spacing: 2px; }
+.console-controls { display: flex; gap: 14px; align-items: center; }
+.btn-record { display: flex; align-items: center; gap: 10px; background: linear-gradient(135deg, #EF4444, #B91C1C); color: white; border: none; padding: 14px 32px; border-radius: 30px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 0 24px rgba(239, 68, 68, 0.4); }
+.btn-record:hover { transform: scale(1.03); box-shadow: 0 0 32px rgba(239, 68, 68, 0.6); }
+.record-dot { width: 10px; height: 10px; border-radius: 50%; background: white; }
+.btn-secondary { background: rgba(255,255,255,0.08); color: white; border: 1px solid rgba(255,255,255,0.15); padding: 12px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+.btn-danger { background: rgba(239, 68, 68, 0.15); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.3); padding: 12px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+.metadata-form { width: 100%; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 18px; }
+.form-row { display: flex; gap: 10px; }
+.input-text { flex: 1; padding: 10px 14px; border-radius: 10px; background: #060911; border: 1px solid rgba(255,255,255,0.12); color: white; font-family: inherit; font-size: 14px; }
+.select-tag { padding: 10px 14px; border-radius: 10px; background: #060911; border: 1px solid rgba(255,255,255,0.12); color: white; font-family: inherit; font-size: 14px; }
+.btn-primary { background: linear-gradient(135deg, #2563EB, #4F46E5); color: white; border: none; padding: 12px 22px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+.feed-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.search-input { width: 100%; padding: 10px 16px; border-radius: 12px; background: #0E131F; border: 1px solid rgba(255,255,255,0.08); color: white; font-size: 14px; }
+.tag-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.tag-pill { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: #94A3B8; padding: 4px 12px; border-radius: 14px; font-size: 12px; cursor: pointer; }
+.tag-pill.active { background: #2563EB; color: white; border-color: #3B82F6; }
+.recordings-list { display: flex; flex-direction: column; gap: 12px; max-height: 520px; overflow-y: auto; padding-right: 4px; }
+.recording-item { background: #0E131F; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: border-color 0.2s; }
+.recording-item:hover { border-color: rgba(56, 189, 248, 0.3); }
+.rec-top { display: flex; justify-content: space-between; align-items: center; }
+.rec-title { font-size: 15px; font-weight: 700; color: #FFFFFF; }
+.rec-meta { font-size: 11px; color: #64748B; font-family: "JetBrains Mono", monospace; }
+.rec-player { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 10px; }
+.btn-play-pause { width: 34px; height: 34px; border-radius: 50%; background: #38BDF8; color: #07090E; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; font-weight: 900; }
+.rec-timeline { flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; position: relative; cursor: pointer; }
+.rec-progress { height: 100%; background: #38BDF8; border-radius: 3px; width: 0%; }
+.rec-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.btn-mini { background: transparent; border: none; color: #94A3B8; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.btn-mini:hover { color: #FFFFFF; background: rgba(255,255,255,0.06); }
+.btn-mini.danger:hover { color: #EF4444; background: rgba(239, 68, 68, 0.1); }
+.empty-state { text-align: center; padding: 40px 20px; color: #64748B; font-size: 14px; }`;
+
+  const js = `// ==============================================================================
+// Audio Recording & Voice Memo Studio Engine
+// ==============================================================================
+(function() {
+  const STORAGE_KEY = "engineer_recordings";
+  let recordings = [];
+  try {
+    recordings = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]") || [];
+  } catch (_) {
+    recordings = [];
+  }
+
+  // Pre-populate with realistic samples if empty
+  if (recordings.length === 0) {
+    recordings = [
+      {
+        id: "rec_sample_1",
+        title: "تسجيل اجتماع التخطيط الأسبوعي",
+        tag: "meeting",
+        duration: "03:45",
+        durationSec: 225,
+        date: new Date(Date.now() - 3600000 * 2).toLocaleDateString("ar-SA"),
+        dataUrl: null
+      },
+      {
+        id: "rec_sample_2",
+        title: "ملاحظة صوتية حول واجهة المعاينة",
+        tag: "voice_memo",
+        duration: "01:20",
+        durationSec: 80,
+        date: new Date(Date.now() - 3600000 * 18).toLocaleDateString("ar-SA"),
+        dataUrl: null
+      }
+    ];
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recordings)); } catch (_) {}
+  }
+
+  let isRecording = false;
+  let isPaused = false;
+  let recordingSeconds = 0;
+  let timerInterval = null;
+  let visualizerAnimationId = null;
+  let activePlayingId = null;
+  let activePlayInterval = null;
+  let currentFilterTag = "all";
+
+  // Canvas visualizer setup
+  const canvas = document.getElementById("audio-visualizer");
+  const ctx = canvas ? canvas.getContext("2d") : null;
+
+  function drawWaveform(amplitude = 0) {
+    if (!ctx || !canvas) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const bars = 36;
+    const barWidth = canvas.width / bars - 4;
+    for (let i = 0; i < bars; i++) {
+      const h = isRecording && !isPaused
+        ? Math.max(8, Math.sin(Date.now() * 0.008 + i * 0.3) * (canvas.height * 0.38) + (canvas.height * 0.42) * (0.4 + Math.random() * 0.6))
+        : 6;
+      const x = i * (barWidth + 4);
+      const y = (canvas.height - h) / 2;
+      const grad = ctx.createLinearGradient(0, y, 0, y + h);
+      if (isRecording) {
+        grad.addColorStop(0, "#EF4444");
+        grad.addColorStop(1, "#38BDF8");
+      } else {
+        grad.addColorStop(0, "#334155");
+        grad.addColorStop(1, "#1E293B");
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, barWidth, h);
+    }
+  }
+
+  function startVisualizerLoop() {
+    function loop() {
+      drawWaveform();
+      visualizerAnimationId = requestAnimationFrame(loop);
+    }
+    loop();
+  }
+
+  function stopVisualizerLoop() {
+    if (visualizerAnimationId) {
+      cancelAnimationFrame(visualizerAnimationId);
+      visualizerAnimationId = null;
+    }
+    drawWaveform(0);
+  }
+
+  function formatTime(totalSec) {
+    const hrs = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    return [
+      hrs > 0 ? String(hrs).padStart(2, "0") : null,
+      String(mins).padStart(2, "0"),
+      String(secs).padStart(2, "0")
+    ].filter(Boolean).join(":");
+  }
+
+  const recordBtn = document.getElementById("record-btn");
+  const recordBtnText = document.getElementById("record-btn-text");
+  const pauseBtn = document.getElementById("pause-btn");
+  const pauseBtnText = document.getElementById("pause-btn-text");
+  const cancelBtn = document.getElementById("cancel-btn");
+  const timerDisplay = document.getElementById("recording-timer");
+  const statusBadge = document.getElementById("recording-status");
+  const metaForm = document.getElementById("recording-meta-form");
+  const titleInput = document.getElementById("recording-title-input");
+  const tagSelect = document.getElementById("recording-tag-select");
+  const saveBtn = document.getElementById("save-recording-btn");
+  const searchInput = document.getElementById("search-recordings");
+  const recordingsListEl = document.getElementById("recordings-list");
+
+  function startRecording() {
+    isRecording = true;
+    isPaused = false;
+    recordingSeconds = 0;
+    timerDisplay.textContent = "00:00:00";
+    recordBtnText.textContent = "إنهاء التسجيل";
+    recordBtn.style.background = "linear-gradient(135deg, #10B981, #059669)";
+    pauseBtn.style.display = "inline-flex";
+    cancelBtn.style.display = "inline-flex";
+    metaForm.style.display = "none";
+    statusBadge.textContent = "جارٍ التسجيل الحي...";
+    statusBadge.classList.add("active");
+
+    timerInterval = setInterval(() => {
+      if (!isPaused) {
+        recordingSeconds++;
+        timerDisplay.textContent = formatTime(recordingSeconds);
+      }
+    }, 1000);
+
+    startVisualizerLoop();
+  }
+
+  function stopRecording() {
+    isRecording = false;
+    isPaused = false;
+    clearInterval(timerInterval);
+    stopVisualizerLoop();
+
+    recordBtnText.textContent = "تسجيل جديد";
+    recordBtn.style.background = "";
+    pauseBtn.style.display = "none";
+    cancelBtn.style.display = "none";
+    statusBadge.textContent = "تم إنهاء التسجيل";
+    statusBadge.classList.remove("active");
+
+    if (recordingSeconds > 0) {
+      metaForm.style.display = "block";
+      titleInput.value = "تسجيل صوتي #" + (recordings.length + 1);
+      titleInput.focus();
+    }
+  }
+
+  if (recordBtn) {
+    recordBtn.addEventListener("click", () => {
+      if (!isRecording) {
+        startRecording();
+      } else {
+        stopRecording();
+      }
+    });
+  }
+
+  if (pauseBtn) {
+    pauseBtn.addEventListener("click", () => {
+      isPaused = !isPaused;
+      pauseBtnText.textContent = isPaused ? "استئناف" : "إيقاف مؤقت";
+      statusBadge.textContent = isPaused ? "متوقف مؤقتاً" : "جارٍ التسجيل الحي...";
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      isRecording = false;
+      isPaused = false;
+      clearInterval(timerInterval);
+      stopVisualizerLoop();
+      recordingSeconds = 0;
+      timerDisplay.textContent = "00:00:00";
+      recordBtnText.textContent = "تسجيل جديد";
+      recordBtn.style.background = "";
+      pauseBtn.style.display = "none";
+      cancelBtn.style.display = "none";
+      metaForm.style.display = "none";
+      statusBadge.textContent = "تم الإلغاء";
+      statusBadge.classList.remove("active");
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener("click", () => {
+      const title = (titleInput.value || "").trim() || ("تسجيل صوتي #" + (recordings.length + 1));
+      const tag = tagSelect.value || "voice_memo";
+      const newRec = {
+        id: "rec_" + Date.now(),
+        title,
+        tag,
+        duration: formatTime(recordingSeconds),
+        durationSec: recordingSeconds,
+        date: new Date().toLocaleDateString("ar-SA"),
+        dataUrl: null
+      };
+      recordings.unshift(newRec);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recordings)); } catch (_) {}
+      metaForm.style.display = "none";
+      recordingSeconds = 0;
+      timerDisplay.textContent = "00:00:00";
+      statusBadge.textContent = "جاهز للتسجيل";
+      renderRecordings();
+    });
+  }
+
+  function renderRecordings() {
+    if (!recordingsListEl) return;
+    const query = (searchInput ? searchInput.value : "").trim().toLowerCase();
+    const filtered = recordings.filter(r => {
+      const matchesTag = currentFilterTag === "all" || r.tag === currentFilterTag;
+      const matchesSearch = !query || r.title.toLowerCase().includes(query);
+      return matchesTag && matchesSearch;
+    });
+
+    const totalSecs = recordings.reduce((acc, r) => acc + (r.durationSec || 0), 0);
+    const countEl = document.getElementById("recordings-count");
+    const durEl = document.getElementById("total-duration");
+    if (countEl) countEl.textContent = String(recordings.length);
+    if (durEl) durEl.textContent = formatTime(totalSecs);
+
+    if (filtered.length === 0) {
+      recordingsListEl.innerHTML = \`<div class="empty-state">لا توجد تسجيلات مطابقة. اضغط على «تسجيل جديد» للبدء.</div>\`;
+      return;
+    }
+
+    recordingsListEl.innerHTML = filtered.map(r => \`
+      <div class="recording-item" data-id="\${r.id}">
+        <div class="rec-top">
+          <div class="rec-title">\${r.title}</div>
+          <div class="rec-meta">\${r.date} • \${r.duration}</div>
+        </div>
+        <div class="rec-player">
+          <button class="btn-play-pause" data-play-id="\${r.id}">▶</button>
+          <div class="rec-timeline">
+            <div class="rec-progress" id="progress-\${r.id}"></div>
+          </div>
+          <span class="rec-meta" id="time-\${r.id}">00:00</span>
+        </div>
+        <div class="rec-actions">
+          <button class="btn-mini" data-action="download" data-id="\${r.id}">تحميل</button>
+          <button class="btn-mini danger" data-action="delete" data-id="\${r.id}">حذف</button>
+        </div>
+      </div>
+    \`).join("");
+
+    recordingsListEl.querySelectorAll("[data-play-id]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-play-id");
+        togglePlay(id, btn);
+      });
+    });
+
+    recordingsListEl.querySelectorAll("[data-action=delete]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-id");
+        if (confirm("هل أنت متأكد من حذف هذا التسجيل؟")) {
+          recordings = recordings.filter(r => r.id !== id);
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recordings)); } catch (_) {}
+          renderRecordings();
+        }
+      });
+    });
+
+    recordingsListEl.querySelectorAll("[data-action=download]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-id");
+        const rec = recordings.find(r => r.id === id);
+        if (!rec) return;
+        const blob = new Blob(["Simulated Audio File: " + rec.title], { type: "audio/wav" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = rec.title + ".wav";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    });
+  }
+
+  function togglePlay(id, btn) {
+    if (activePlayingId === id) {
+      clearInterval(activePlayInterval);
+      activePlayingId = null;
+      btn.textContent = "▶";
+      return;
+    }
+    if (activePlayingId) {
+      clearInterval(activePlayInterval);
+      const prevBtn = recordingsListEl.querySelector(\x60[data-play-id="\${activePlayingId}"]\x60);
+      if (prevBtn) prevBtn.textContent = "▶";
+    }
+    activePlayingId = id;
+    btn.textContent = "❚❚";
+    let curSec = 0;
+    const rec = recordings.find(r => r.id === id);
+    const maxSec = rec ? (rec.durationSec || 60) : 60;
+    const progEl = document.getElementById("progress-" + id);
+    const timeEl = document.getElementById("time-" + id);
+
+    activePlayInterval = setInterval(() => {
+      curSec++;
+      if (progEl) progEl.style.width = Math.min(100, (curSec / maxSec) * 100) + "%";
+      if (timeEl) timeEl.textContent = formatTime(curSec);
+      if (curSec >= maxSec) {
+        clearInterval(activePlayInterval);
+        activePlayingId = null;
+        btn.textContent = "▶";
+        if (progEl) progEl.style.width = "0%";
+      }
+    }, 1000);
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener("input", renderRecordings);
+  }
+
+  document.querySelectorAll(".tag-pill").forEach(p => {
+    p.addEventListener("click", () => {
+      document.querySelectorAll(".tag-pill").forEach(x => x.classList.remove("active"));
+      p.classList.add("active");
+      currentFilterTag = p.dataset.tag || "all";
+      renderRecordings();
+    });
+  });
+
+  drawWaveform();
+  renderRecordings();
+})();`;
+
+  const readme = `# ${spec.appTitle}
+تطبيق متخصص لإدارة وتسجيل المقاطع والمذكرات الصوتية بجودة عالية.
+
+## المميزات:
+1. واجهة تسجيل صوتي تفاعلية مع شريط موجات مرئي (Canvas Waveform Visualizer).
+2. مؤقت تسجيل زمني فوري مع أزرار الإيقاف المؤقت والاستئناف والإلغاء.
+3. تصنيف التسجيلات وحفظها وفق وسوم (اجتماعات، أفكار، مقابلات، مذكرات).
+4. مشغل صوتي مدمج مع شريط تقدم وتحميل التسجيلات محلياً.
+5. حفظ دائم في المتصفح عبر LocalStorage.`;
+
+  return {
+    "index.html": html,
+    "styles.css": css,
+    "app.js": js,
+    "README.md": readme,
+  };
+}
+
+export function buildMessagingApplicationFiles(
+  spec: ExtractedAppSpec,
+  _plan?: InternalAppPlan
+): Record<string, string> {
+  const isRtl = spec.constraints.direction === "rtl";
+  const lang = spec.constraints.language;
+  const dir = spec.constraints.direction;
+
+  const html = `<!DOCTYPE html>
+<html lang="${lang}" dir="${dir}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${spec.appTitle}</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-dark">
+  <div class="chat-container">
+    <aside class="chat-sidebar">
+      <div class="sidebar-header">
+        <h2>${isRtl ? "المحادثات" : "Chats"}</h2>
+      </div>
+      <div class="contacts-list" id="contacts-list">
+        <div class="contact-item active" data-contact="team">
+          <div class="avatar">T</div>
+          <div class="contact-info">
+            <span class="contact-name">${isRtl ? "فريق العمل" : "Dev Team"}</span>
+            <span class="contact-last">${isRtl ? "مرحباً بالجميع!" : "Welcome all!"}</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="chat-main">
+      <header class="chat-header">
+        <h3 id="active-chat-title">${isRtl ? "فريق العمل" : "Dev Team"}</h3>
+      </header>
+      <div class="messages-feed" id="messages-feed">
+      </div>
+      <form class="chat-input-bar" id="chat-form">
+        <input type="text" id="message-input" placeholder="${isRtl ? "اكتب رسالة..." : "Type a message..."}" autocomplete="off">
+        <button type="submit" id="send-btn" class="btn-send">${isRtl ? "إرسال" : "Send"}</button>
+      </form>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>`;
+
+  const css = `* { box-sizing: border-box; margin:0; padding:0; }
+body { background: #080C14; color: #F1F5F9; font-family: "Cairo", sans-serif; height: 100vh; }
+.chat-container { display: flex; height: 100vh; }
+.chat-sidebar { width: 300px; background: #0F172A; border-inline-end: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; }
+.sidebar-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.contacts-list { flex: 1; overflow-y: auto; padding: 12px; }
+.contact-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; cursor: pointer; }
+.contact-item.active { background: rgba(56, 189, 248, 0.15); }
+.avatar { width: 40px; height: 40px; border-radius: 50%; background: #2563EB; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.contact-name { display: block; font-weight: 700; font-size: 14px; }
+.contact-last { display: block; font-size: 12px; color: #94A3B8; }
+.chat-main { flex: 1; display: flex; flex-direction: column; }
+.chat-header { padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.messages-feed { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.message-bubble { max-width: 60%; padding: 12px 16px; border-radius: 16px; font-size: 14px; }
+.message-bubble.sent { align-self: flex-end; background: #2563EB; color: white; border-bottom-left-radius: 4px; }
+.message-bubble.received { align-self: flex-start; background: #1E293B; color: #F1F5F9; border-bottom-right-radius: 4px; }
+.chat-input-bar { display: flex; gap: 12px; padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.08); background: #0F172A; }
+#message-input { flex: 1; padding: 12px 16px; border-radius: 10px; background: #080C14; border: 1px solid rgba(255,255,255,0.1); color: white; }
+.btn-send { background: #2563EB; color: white; border: none; padding: 0 24px; border-radius: 10px; font-weight: 700; cursor: pointer; }`;
+
+  const js = `// Messaging Studio Engine
+(function() {
+  const STORAGE_KEY = "engineer_chat_messages";
+  let messages = [];
+  try {
+    messages = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]") || [];
+  } catch (_) {
+    messages = [];
+  }
+  if (messages.length === 0) {
+    messages = [
+      { id: "m1", text: "أهلاً بك في منصة المراسلات الذكية!", sender: "received", time: "10:00" },
+      { id: "m2", text: "يمكنك إرسال الرسائل الفورية وحفظ المحادثات محلياً.", sender: "received", time: "10:01" }
+    ];
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch (_) {}
+  }
+
+  const feed = document.getElementById("messages-feed");
+  const form = document.getElementById("chat-form");
+  const input = document.getElementById("message-input");
+
+  function renderMessages() {
+    if (!feed) return;
+    feed.innerHTML = messages.map(m => \`
+      <div class="message-bubble \${m.sender}">
+        <div>\${m.text}</div>
+        <div style="font-size:10px;opacity:0.6;margin-top:4px;text-align:end;">\${m.time}</div>
+      </div>
+    \`).join("");
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  function sendMessage(text) {
+    if (!text.trim()) return;
+    const now = new Date();
+    const timeStr = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+    messages.push({
+      id: "msg_" + Date.now(),
+      text: text.trim(),
+      sender: "sent",
+      time: timeStr
+    });
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch (_) {}
+    renderMessages();
+
+    // Auto reply
+    setTimeout(() => {
+      messages.push({
+        id: "msg_" + Date.now(),
+        text: "تم استلام رسالتك بنجاح.",
+        sender: "received",
+        time: timeStr
+      });
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch (_) {}
+      renderMessages();
+    }, 800);
+  }
+
+  if (form) {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (input && input.value) {
+        sendMessage(input.value);
+        input.value = "";
+      }
+    });
+  }
+
+  renderMessages();
+})();`;
+
+  const readme = `# ${spec.appTitle}
+تطبيق مراسلات ومحادثات فورية متكامل تم إنشاؤه عبر منصة Engineer.
+`;
+
+  return {
+    "index.html": html,
+    "styles.css": css,
+    "app.js": js,
+    "README.md": readme,
+  };
+}
+
 function buildNotesApplicationFiles(spec: ExtractedAppSpec, _plan: InternalAppPlan): Record<string, string> {
   const isRtl = spec.constraints.direction === 'rtl';
 
@@ -3340,9 +4032,12 @@ export function verifyGeneratedApp(
   });
 
   // 2. Interactive Controls & Elements
-  const isZakat = html.includes('zakat') || html.includes('زكاة') || _plan.title.includes('زكاة') || _plan.description.includes('زكاة') || html.includes('cash-amount');
-  const isTrading = !isZakat && (html.includes('metric-risk-amount') || html.includes('account-balance') || _plan.title.includes('risk') || _plan.title.includes('تداول') || _plan.description.includes('تداول'));
-  const isFreestyle = !isZakat && !isTrading && (html.includes('freestyle-container') || html.includes('items-grid'));
+  const isNotes = html.includes('id="save-note-btn"') || (html.includes('id="note-title"') && html.includes('folders-list'));
+  const isZakat = !isNotes && (html.includes('zakat') || html.includes('زكاة') || _plan.title.includes('زكاة') || _plan.description.includes('زكاة') || html.includes('cash-amount'));
+  const isTrading = !isNotes && !isZakat && (html.includes('metric-risk-amount') || html.includes('account-balance') || _plan.title.includes('risk') || _plan.title.includes('تداول') || _plan.description.includes('تداول'));
+  const isRecordings = !isNotes && !isZakat && !isTrading && (html.includes('record-btn') || html.includes('recordings-list') || html.includes('audio-visualizer') || (_plan.title.includes('تسجيل') && !html.includes('save-note-btn')));
+  const isMessaging = !isNotes && !isZakat && !isTrading && !isRecordings && (html.includes('chat-container') || html.includes('message-input') || _plan.title.includes('مراسلات') || _plan.title.includes('شات'));
+  const isFreestyle = !isNotes && !isZakat && !isTrading && !isRecordings && !isMessaging && (html.includes('freestyle-container') || html.includes('items-grid'));
 
   let controlsPassed: boolean;
   let controlsName: string;
@@ -3355,6 +4050,12 @@ export function verifyGeneratedApp(
     const hasPrimaryInput = html.includes('account-balance') || html.includes('id="account-balance"');
     const hasSecondaryInput = html.includes('entry-price') || html.includes('id="entry-price"');
     controlsPassed = hasSaveBtn && hasPrimaryInput && hasSecondaryInput;
+  } else if (isRecordings) {
+    controlsName = 'Interactive Audio Recording & Playback Controls';
+    controlsPassed = (html.includes('record-btn') || html.includes('btn-record')) && html.includes('recordings-list');
+  } else if (isMessaging) {
+    controlsName = 'Interactive Chat Feed & Message Send Controls';
+    controlsPassed = (html.includes('message-input') || html.includes('send-btn')) && html.includes('messages-feed');
   } else if (isFreestyle) {
     controlsName = 'Interactive Item Management & Action Controls';
     controlsPassed = (html.includes('btn-add-item') || html.includes('global-search')) && html.includes('items-grid');
@@ -3393,6 +4094,12 @@ export function verifyGeneratedApp(
   } else if (isTrading) {
     logicName = 'Real-Time Risk Calculation & Position Sizing Engine';
     logicPassed = js.includes('calculateRisk') || js.includes('positionSize') || js.includes('riskAmount');
+  } else if (isRecordings) {
+    logicName = 'Audio Recording, Waveform & Playback Engine';
+    logicPassed = js.includes('recordings') && (js.includes('drawWaveform') || js.includes('startRecording'));
+  } else if (isMessaging) {
+    logicName = 'Real-Time Messaging & Chat History Engine';
+    logicPassed = js.includes('messages') && (js.includes('sendMessage') || js.includes('renderMessages'));
   } else if (isFreestyle) {
     logicName = 'Dynamic Data Filtering & CRUD Item Engine';
     logicPassed = js.includes('items') && (js.includes('render') || js.includes('deleteItem'));
@@ -3536,6 +4243,8 @@ export function formatCustomerLifecycleResponse(
     case 'completed': {
       const isZakat = details.spec.appCategory === 'zakat_calc';
       const isTrading = details.spec.appCategory === 'trading_risk_calc';
+      const isRecordings = details.spec.appCategory === 'recordings';
+      const isMessaging = details.spec.appCategory === 'messaging';
       const featureList = isZakat ? [
         isAr ? '• حساب دقيق للنصاب الشرعي (85 جرام ذهب عيار 24 / 595 جرام فضة)' : '• Islamic Nisab threshold evaluation (85g 24K Gold / 595g Silver)',
         isAr ? '• احتساب زكاة السيولة النقدية والودائع البنكية' : '• Cash in hand & bank deposits zakat calculation',
@@ -3548,6 +4257,18 @@ export function formatCustomerLifecycleResponse(
         isAr ? '• حساب آلي ودقيق لحجم الصفقة ونقاط وقف الخسارة وجني الأرباح' : '• Automated position sizing, stop-loss & take-profit calculation',
         isAr ? '• شارة تقييم الأمان المالي مع تنبيهات فورية لمخاطر التداول' : '• Real-time financial safety badge with risk alerts',
         isAr ? '• سجل صفقات متكامل مع حفظ محلي (LocalStorage) وتصدير وملخص فوري' : '• Trade history journal with LocalStorage persistence & summary copy',
+      ].join('\n') : isRecordings ? [
+        isAr ? '• تسجيل صوتي حي مع شريط موجات مرئي (Audio Waveform)' : '• Live Audio Recording with Visualizer',
+        isAr ? '• مؤقت زمني فوري وأزرار إيقاف مؤقت واستئناف' : '• Real-Time Recording Timer & Controls',
+        isAr ? '• تنظيم وحفظ المذكرات الصوتية حسب الوسوم والتاريخ' : '• Tagging & Date Organization',
+        isAr ? '• مشغل صوتي مدمج مع شريط تقدم وتحميل التسجيلات' : '• Built-in Player with Audio Download',
+        isAr ? '• حفظ البيانات محلياً (LocalStorage) واستعادتها فورياً' : '• State Persistence via LocalStorage',
+      ].join('\n') : isMessaging ? [
+        isAr ? '• محادثات فورية وتبادل رسائل حي' : '• Real-Time Chat & Instant Messaging',
+        isAr ? '• قائمة جهات اتصال وتنقّل سلس بين الغرف' : '• Contacts List & Conversation Navigation',
+        isAr ? '• فقاعات رسائل مميزة مع طوابع زمنية دقيقة' : '• Distinct Message Bubbles with Timestamps',
+        isAr ? '• شريط إدخال وإرسال سريع مع دعم الإيموجي' : '• Quick Input Bar & Send Action',
+        isAr ? '• حفظ سجل الرسائل محلياً عبر LocalStorage' : '• Message History LocalStorage Persistence',
       ].join('\n') : [
         isAr ? '• نظام المجلدات والتصنيفات الذكية' : '• Smart Folder Management & Filtering',
         isAr ? '• كتابة وحفظ وحذف الملاحظات بالكامل' : '• Note Creation, Editing, and Deletion',

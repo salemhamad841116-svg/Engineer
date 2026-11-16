@@ -41,7 +41,12 @@ export function isExplicitNewAppCreation(rawPrompt: string): boolean {
   const p = stripArabicDiacritics(rawPrompt).trim();
   if (!p) return false;
   if (mentionsNewProject(p)) return true;
-  return CREATE_VERB_REGEX.test(p) && APP_NOUN_REGEX.test(p);
+  const hasVerb = CREATE_VERB_REGEX.test(p);
+  const hasNoun = APP_NOUN_REGEX.test(p);
+  const hasDomain = /(?:تسجيل|صوت|مراس|شات|متجر|تداول|مخاطر|زكاة|ملاحظ|مهام|فواتير|محاسب|حاسب|record|audio|voice|message|chat|store|calc|trade|todo|task)/i.test(p);
+  if (hasVerb && hasNoun) return true;
+  if (hasNoun && hasDomain) return true;
+  return false;
 }
 
 export function mentionsNewProject(rawPrompt: string): boolean {
@@ -116,7 +121,7 @@ export function isGenericAppRequest(rawPrompt: string, hasActiveProject: boolean
   if (words.length <= 5) {
     const hasAppWord = /(تطبيق|موقع|برنامج|منصة|app|website|system)/i.test(p);
     const hasNeedOrAction = /(محتاج|اريد|أريد|ابغى|ابي|سوي|اعمل|صمم|بناء|بنا|ابن|أنشئ|انشئ|need|want|build|make)/i.test(p);
-    const hasSpecificDomain = /(تداول|مخاطر|حاسب|أسهم|فوركس|متجر|سلة|مبيعات|إدار|فواتير|محاسب|عقار|مطعم|طبي|مستشفى|مدرسة|حجز|طيران|chat|store|calc|trade|shop|portfolio|todo|task)/i.test(p);
+    const hasSpecificDomain = /(تداول|مخاطر|حاسب|أسهم|فوركس|متجر|سلة|مبيعات|إدار|فواتير|محاسب|عقار|مطعم|طبي|مستشفى|مدرسة|حجز|طيران|تسجيل|تسجيلات|صوت|صوتي|ريكورد|مراسلات|شات|محادث|رسائل|موسيقى|فيديو|ملاحظ|دفتر|أخبار|طقس|chat|store|calc|trade|shop|portfolio|todo|task|record|voice|audio|message|messaging|notes?)/i.test(p);
 
     if (hasAppWord && hasNeedOrAction && !hasSpecificDomain && !hasEditWord) {
       return true;

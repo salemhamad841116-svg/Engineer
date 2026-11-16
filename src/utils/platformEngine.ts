@@ -487,10 +487,40 @@ export function calculateWorkingTreeChanges(
   return changes;
 }
 
-export function compileProjectToPreviewHtml(project: Project): string {
-  const htmlFile = project.files.find((f) => f.name.endsWith('.html'));
-  const cssFiles = project.files.filter((f) => f.name.endsWith('.css'));
-  const jsFiles = project.files.filter((f) => f.name.endsWith('.js') && !f.name.endsWith('.config.js'));
+export interface PreviewCompileOptions {
+  /** Path or name of the HTML page to render (defaults to index.html). */
+  entry?: string;
+  /** localStorage contents restored into the sandboxed preview. */
+  storageSeed?: Record<string, string>;
+}
+
+const normalizeFilePath = (p: string) => String(p || '').replace(/^\/+/, '');
+
+/** True for self-contained agent screens (screens/<slug>.html) that must not receive app.js/styles.css. */
+export function isScreenPage(file: { name: string; path?: string; folder?: string }): boolean {
+  const p = normalizeFilePath(file.path || file.name);
+  return p.startsWith('screens/') || file.folder === 'screens';
+}
+
+/** Lists the HTML pages the preview can render (index first). */
+export function listPreviewEntries(project: Project): { path: string; label: string; isScreen: boolean }[] {
+  return project.files
+    .filter((f) => f.name.endsWith('.html') && f.content.trim())
+    .map((f) => ({ path: normalizeFilePath(f.path || f.name), label: f.name, isScreen: isScreenPage(f) }))
+    .sort((a, b) => (a.label === 'index.html' ? -1 : b.label === 'index.html' ? 1 : a.path.localeCompare(b.path)));
+}
+
+export function compileProjectToPreviewHtml(project: Project, options: PreviewCompileOptions = {}): string {
+  const htmlFiles = project.files.filter((f) => f.name.endsWith('.html') && f.content.trim());
+  const wanted = options.entry ? normalizeFilePath(options.entry) : '';
+  const htmlFile =
+    (wanted && htmlFiles.find((f) => normalizeFilePath(f.path || f.name) === wanted || f.name === wanted)) ||
+    htmlFiles.find((f) => f.name === 'index.html' && !isScreenPage(f)) ||
+    htmlFiles.find((f) => !isScreenPage(f)) ||
+    htmlFiles[0];
+  const screenEntry = Boolean(htmlFile && isScreenPage(htmlFile));
+  const cssFiles = screenEntry ? [] : project.files.filter((f) => f.name.endsWith('.css') && !isScreenPage(f));
+  const jsFiles = screenEntry ? [] : project.files.filter((f) => f.name.endsWith('.js') && !f.name.endsWith('.config.js') && !isScreenPage(f));
   const appFile = project.files.find((f) => f.name === 'App.tsx' || f.name === 'App.jsx' || f.name === 'main.tsx');
 
   // 1. If project contains an index.html file, compile and render the real application
@@ -506,12 +536,22 @@ export function compileProjectToPreviewHtml(project: Project): string {
       dir: project.direction || 'rtl',
       title: project.name,
       includeHealthProbe: true,
+      storageSeed: options.storageSeed,
     });
 
     const inspectorScript = `<script id="engineer-inspector-runtime">
 (function() {
   let isInspectorActive = false;
   let hoveredEl = null;
+
+  // Page navigation inside the sandboxed srcdoc preview: <a data-engineer-screen="screens/x.html">
+  document.addEventListener('click', function(e) {
+    if (isInspectorActive) return;
+    var link = e.target && e.target.closest ? e.target.closest('[data-engineer-screen]') : null;
+    if (!link) return;
+    e.preventDefault();
+    window.parent.postMessage({ type: 'ENGINEER_NAVIGATE', entry: String(link.getAttribute('data-engineer-screen') || '') }, '*');
+  });
 
   window.addEventListener('message', function(event) {
     if (!event.data || typeof event.data !== 'object') return;
