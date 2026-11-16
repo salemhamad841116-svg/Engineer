@@ -146,18 +146,40 @@ export interface ExecutionPipelineStage {
   detail: string;
 }
 
+export type ChatMessageStatus = 'SENDING' | 'PROCESSING' | 'STREAMING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export interface ChatAttachmentMeta {
+  id?: string;
+  name: string;
+  type: string;
+  size: number;
+  kind?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
   model?: string;
+  provider?: string;
   thinkingMode?: 'standard' | 'deep' | 'plan';
   agentId?: string;
-  attachments?: { name: string; type: string; size: number }[];
+  attachments?: ChatAttachmentMeta[];
   pipelineStages?: ExecutionPipelineStage[];
   modifiedFiles?: string[];
   suggestions?: string[];
+  /** Lifecycle state; messages without status are legacy COMPLETED messages. */
+  status?: ChatMessageStatus;
+  /** Server request id (for support / logs). */
+  requestId?: string;
+  /** Assistant → id of the user message it answers. */
+  replyTo?: string;
+  /** Client-generated id used for idempotent retries. */
+  clientId?: string;
+  errorCode?: string;
+  newProjectId?: string;
+  verification?: { passed: boolean; expectChart?: boolean };
 }
 
 export interface ChatThread {

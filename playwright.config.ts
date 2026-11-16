@@ -51,6 +51,7 @@ export default defineConfig({
       HTTPS_PROXY: '',
       no_proxy: '*',
       NO_PROXY: '*',
+      LLM_PROVIDER: 'mock',
     },
   },
 });

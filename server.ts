@@ -17,7 +17,7 @@ import {
 import { getInitialButtonRegistry, runAutomatedRegistryVerification } from './src/utils/buttonRegistry';
 import { AIAgentProfile, ButtonRegistryEntry, Project, ProjectFile } from './src/types/platform';
 import { attachBackendAndDatabase } from './src/backendBridge';
-import { detectIntent, isGenericAppRequest, PromptMode } from './src/utils/intentRouter';
+import { detectIntent, isGenericAppRequest } from './src/utils/intentRouter';
 import { formatUserFacingResponse } from './src/utils/responseFormatter';
 import {
   analyzeAppRequest,
@@ -329,316 +329,650 @@ async function startServer() {
     res.json({ deletedId: removed.id });
   });
 
-  // 6. Execute AI Engineer Prompt & Multi-Agent Pipeline (Intent-Routed Dual Mode)
-  app.post('/api/ai/execute', async (req, res) => {
-    const { projectId, prompt, model, thinkingMode, agentId, mode } = req.body || {};
-    const project = state.projects.find((p) => p.id === projectId) || state.projects[0];
-    if (!project || !prompt) {
-      res.status(400).json({ error: 'Project and prompt are required' });
+  // 6. Workspace Chat Pipeline:
+  //    User Input → Message API → Intent Router → AI Model / Build Engine → Verification
+  //    → Response Streaming (NDJSON) → Chat Renderer.
+  //    Every request has a requestId + stage log (no secrets). Failures are NEVER masked
+  //    with canned text: they return status FAILED + errorCode + a clear user message.
+  const workspaceModelRouter = serverRequire('./server_backend/services/ai/workspaceModelRouter.js');
+  const workspaceAttachments = serverRequire('./server_backend/services/ai/workspaceAttachments.js');
+
+  // Explicit, opt-in cloud adapter: listed only when a real Gemini key exists. It is used
+  // exclusively when the user SELECTS it — never as a silent fallback.
+  workspaceModelRouter.registerCloudAdapter('google', {
+    models: () =>
+      getGeminiClient()
+        ? [
+            { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
+            { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite' },
+          ]
+        : [],
+    chat: async ({ model, messages, onDelta, signal, maxTokens }: {
+      model: string;
+      messages: { role: string; content: string }[];
+      onDelta?: (t: string) => void;
+      signal?: AbortSignal;
+      maxTokens?: number;
+    }) => {
+      const ai = getGeminiClient();
+      if (!ai) throw new Error('Gemini is not configured');
+      const t0 = Date.now();
+      const systemInstruction = messages.find((m) => m.role === 'system')?.content;
+      const contents = messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+      const stream = await ai.models.generateContentStream({
+        model,
+        contents,
+        config: { systemInstruction, maxOutputTokens: maxTokens, abortSignal: signal },
+      });
+      let text = '';
+      let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
+      for await (const chunk of stream) {
+        if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+        const piece = chunk.text || '';
+        if (piece) {
+          text += piece;
+          onDelta?.(piece);
+        }
+        if (chunk.usageMetadata) usage = chunk.usageMetadata;
+      }
+      return {
+        text,
+        usage: {
+          promptTokens: usage?.promptTokenCount || 0,
+          completionTokens: usage?.candidatesTokenCount || 0,
+          totalTokens: usage?.totalTokenCount || 0,
+          estimated: !usage,
+        },
+        latencyMs: Date.now() - t0,
+      };
+    },
+  });
+
+  app.get('/api/ai/models', async (req, res) => {
+    try {
+      const data = await workspaceModelRouter.listModels({ force: req.query.refresh === '1' });
+      res.json(data);
+    } catch (err: unknown) {
+      res.status(500).json({ error: 'MODELS_UNAVAILABLE', message: err instanceof Error ? err.message.slice(0, 200) : 'error' });
+    }
+  });
+
+  // Attachments: validated upload (type/size/content sniffing), linked to messages by id.
+  app.post('/api/ai/attachments', (req, res) => {
+    const { projectId, files } = req.body || {};
+    const project = state.projects.find((p) => p.id === projectId);
+    if (!project) {
+      res.status(404).json({ status: 'FAILED', errorCode: 'PROJECT_NOT_FOUND', userMessage: 'المشروع غير موجود على الخادم.' });
       return;
     }
+    try {
+      const saved = workspaceAttachments.saveAttachments(DATA_DIR, project.id, files);
+      res.status(201).json({ attachments: saved });
+    } catch (err: unknown) {
+      const e = err as { code?: string; httpStatus?: number; userMessageAr?: string; message?: string };
+      res.status(e.httpStatus || 400).json({ status: 'FAILED', errorCode: e.code || 'UPLOAD_FAILED', userMessage: e.userMessageAr || 'تعذر رفع الملف.' });
+    }
+  });
 
-    const cleanPrompt = String(prompt).trim();
-    const activeModel = model === 'gemini-3.1-flash-lite' ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash';
-    const selectedAgent = state.agents.find((a) => a.id === agentId) || state.agents[0];
-    const now = new Date().toISOString();
-    const isAr = /[\u0600-\u06FF]/.test(cleanPrompt) || project.language === 'ar';
-    const hasActiveProject = Boolean(project && Array.isArray(project.files) && project.files.length > 0);
+  app.get('/api/ai/attachments/:projectId/:id', (req, res) => {
+    const found = workspaceAttachments.attachmentFilePath(DATA_DIR, req.params.projectId, req.params.id);
+    if (!found || !fs.existsSync(found.filePath)) {
+      res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
+      return;
+    }
+    res.setHeader('Content-Type', found.meta.type || 'application/octet-stream');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(found.meta.name)}"`);
+    res.sendFile(found.filePath);
+  });
 
-    // 1. Run Intent Router to strictly distinguish Chat Mode vs Build Mode
-    const intentResult = detectIntent(cleanPrompt, (mode as PromptMode) || 'auto', hasActiveProject);
-    const isGeneric = isGenericAppRequest(cleanPrompt, hasActiveProject);
+  // Speech-to-text for browsers without the Web Speech API (e.g. Firefox).
+  app.post('/api/ai/transcribe', async (req, res) => {
+    const { audioBase64, mimeType, language } = req.body || {};
+    const buf = Buffer.from(String(audioBase64 || '').replace(/^data:[^;]+;base64,/, ''), 'base64');
+    if (!buf.length) {
+      res.status(400).json({ status: 'FAILED', errorCode: 'AUDIO_REQUIRED', userMessage: 'لم يصل أي تسجيل صوتي.' });
+      return;
+    }
+    if (buf.length > 15 * 1024 * 1024) {
+      res.status(413).json({ status: 'FAILED', errorCode: 'AUDIO_TOO_LARGE', userMessage: 'التسجيل الصوتي أطول من المسموح.' });
+      return;
+    }
+    const mime = String(mimeType || 'audio/webm').slice(0, 60);
+    const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'm4a' : mime.includes('wav') ? 'wav' : 'webm';
+    // 1) Configured speech-to-text role (OpenAI-compatible Whisper endpoint: local or cloud).
+    try {
+      const settingsService = serverRequire('./server_backend/services/settingsService.js');
+      const role = settingsService.getAiConfig().roles.transcription;
+      if (role && role.target !== 'disabled' && role.model) {
+        const client = serverRequire('./server_backend/services/ai/openaiCompatClient.js');
+        const text = await client.transcribe(buf, { target: role.target, model: role.model, filename: `voice.${ext}`, mime, language: language || undefined, timeoutMs: 60000 });
+        res.json({ status: 'COMPLETED', text: String(text || '').trim(), provider: role.target, model: role.model });
+        return;
+      }
+    } catch (err: unknown) {
+      console.warn('[Transcribe] configured STT role unavailable:', err instanceof Error ? err.message.slice(0, 160) : String(err));
+    }
+    // 2) Gemini audio understanding, only when a real key is configured.
     const ai = getGeminiClient();
-    let aiReplyText = '';
-
-    const quickSuggestions = isAr
-      ? [
-          'منصة تداول وتحليل مالي',
-          'متجر إلكتروني متكامل',
-          'نظام إدارة ومبيعات',
-          'تطبيق مخصص بفكرتي',
-        ]
-      : [
-          'Trading & Financial Analytics Platform',
-          'Full-Featured E-Commerce Store',
-          'Sales & Management ERP System',
-          'Custom App with My Own Idea',
-        ];
-
-    const editSuggestions = isAr
-      ? [
-          'إظهار الرسم البياني',
-          'تغيير لون زر الشراء إلى الأزرق',
-          'تعديل نسبة المخاطرة الافتراضية',
-        ]
-      : [
-          'Show risk relationship chart',
-          'Change buy button color to blue',
-          'Adjust default risk percentage',
-        ];
-
-    const activeSuggestions = intentResult.subIntent === 'ambiguous_edit'
-      ? editSuggestions
-      : (isGeneric || intentResult.subIntent === 'clarification')
-      ? quickSuggestions
-      : undefined;
-
-    if (intentResult.intent === 'chat') {
-      // -------------------------------------------------------------
-      // CHAT MODE: Pure conversation, explanations & technical Q&A
-      // GUARANTEE: Never touches files, never modifies preview, never leaks Chief Architect
-      // -------------------------------------------------------------
-      if (intentResult.subIntent === 'ambiguous_edit') {
-        aiReplyText = isAr
-          ? 'أكيد، ما التعديل الذي تريد إجراءه على التطبيق الحالي؟'
-          : 'Sure, what modification would you like to make to the current application?';
-      } else if (isGeneric || (intentResult.subIntent === 'clarification' && /(تطبيق|موقع|برنامج|منصة|app|website)/i.test(cleanPrompt))) {
-        aiReplyText = isAr
-          ? 'أبشر! يسعدني بناء تطبيقك بالكامل. أي نوع من التطبيقات تود أن أصمم لك اليوم، وما أهم المميزات التي تريدها فيه؟'
-          : 'Certainly! I would be delighted to build your complete application. What type of application would you like me to build today, and what are its core features?';
-      } else if (ai) {
-        try {
-          const config: { systemInstruction: string; thinkingConfig?: { thinkingLevel: ThinkingLevel } } = {
-            systemInstruction: `You are Engineer, a helpful, polite, and senior AI software engineering companion.
-You are conversing directly with the user.
-Respond concisely, naturally, and helpfully in the same language as the user's prompt (${isAr ? 'Arabic' : 'English'}).
-CRITICAL RULES:
-- For greetings and casual conversation (e.g. "هلا", "مرحبا", "hello"), respond warmly, concisely, and naturally. Do NOT force lists or numbered steps on greetings.
-- For technical explanations, guides, architectural advice, or multi-step questions (e.g. "اشرح لي React", "what is SQL"):
-  * Start with a clear bold headline or overview.
-  * Structure core concepts or sequential steps with numbered items (1., 2., 3.) with bold titles.
-  * Place bullet points (•) directly under each numbered step for specific sub-details.
-  * Provide concise, practical code snippets inside markdown fenced code blocks (\`\`\`language ... \`\`\`) with explicit language identifiers whenever helpful.
-  * Ensure clean, readable Markdown typography on both mobile and desktop screens.
-- NEVER mention internal role names like "Chief Architect" or "المدير الرئيسي".
-- NEVER output internal pipeline steps like "1. تحليل الطلب والتخطيط", "2. تحديث الأكواد والملفات".
-- NEVER claim that you modified any files, built bundles, or passed tests in chat mode, because this is an educational/conversational reply.`,
-          };
-          if (activeModel === 'gemini-3.8-flash') {
-            config.thinkingConfig = {
-              thinkingLevel: thinkingMode === 'deep' || thinkingMode === 'plan' ? ThinkingLevel.HIGH : ThinkingLevel.LOW,
-            };
-          }
-
-          const response = await ai.models.generateContent({
-            model: activeModel,
-            contents: cleanPrompt,
-            config,
-          });
-          aiReplyText = response.text || '';
-        } catch (err: unknown) {
-          console.warn('Gemini Chat API fallback triggered:', err instanceof Error ? err.message : String(err));
-        }
+    if (ai) {
+      try {
+        const out = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { inlineData: { mimeType: mime, data: buf.toString('base64') } },
+                { text: 'Transcribe this audio verbatim in its original language. Return only the transcript text.' },
+              ],
+            },
+          ],
+        });
+        res.json({ status: 'COMPLETED', text: String(out.text || '').trim(), provider: 'google', model: 'gemini-3.1-flash-lite' });
+        return;
+      } catch (err: unknown) {
+        console.warn('[Transcribe] Gemini failed:', err instanceof Error ? err.message.slice(0, 160) : String(err));
       }
+    }
+    res.status(501).json({
+      status: 'FAILED',
+      errorCode: 'TRANSCRIPTION_UNAVAILABLE',
+      userMessage: 'التحويل الصوتي إلى نص غير متاح حالياً على الخادم. يمكنك كتابة رسالتك بدلاً من ذلك.',
+    });
+  });
 
-      // Robust natural fallbacks for Chat Mode
-      if (!aiReplyText) {
-        if (intentResult.subIntent === 'greeting') {
-          aiReplyText = isAr
-            ? 'أهلاً وسهلاً بك! أنا Engineer، كيف يمكنني مساعدتك اليوم؟ يمكنك أن تطلب مني بناء تطبيق جديد، أو تعديل كود، أو الإجابة على أي سؤال تقني أو برمجي.'
-            : 'Hello! I am Engineer, your software development assistant. How can I help you today? You can ask me to build a new app, modify code, or explain any technical concept.';
-        } else if (intentResult.subIntent === 'qa') {
-          if (/react/i.test(cleanPrompt)) {
-            aiReplyText = isAr
-              ? `**مكتبة React: بناء واجهات المستخدم الحديثة**\n\nReact هي مكتبة JavaScript مفتوحة المصدر طورتها Meta لبناء واجهات مستخدم تفاعلية وسريعة.\n\n1. **معمارية المكونات (Component-Based)**\n   • تقسيم الواجهة إلى مكونات مستقلة قابلة لإعادة الاستخدام.\n   • سهولة الصيانة والاختبار في المشاريع الكبيرة.\n\n2. **شجرة العناصر الافتراضية (Virtual DOM)**\n   • مقارنة التغييرات في الذاكرة أولاً قبل تحديث المتصفح.\n   • سرعة فائقة في تحديث الشاشة وتوفير موارد الجهاز.\n\n3. **خطافات التفاعل (React Hooks)**\n   • استخدام \`useState\` لإدارة الحالة وتخزين المتغيرات.\n   • استخدام \`useEffect\` لإدارة التأثيرات الجانبية والاتصال بالخادم.\n\n\`\`\`tsx\nimport React, { useState } from 'react';\n\nexport function Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <button onClick={() => setCount(count + 1)}>\n      العدد: {count}\n    </button>\n  );\n}\n\`\`\``
-              : `**React Library: Modern UI Engineering**\n\nReact is an open-source JavaScript library developed by Meta for building interactive user interfaces.\n\n1. **Component-Based Architecture**\n   • Break UI into independent, reusable components.\n   • Modular structure simplifies testing and large-scale maintenance.\n\n2. **Virtual DOM Engine**\n   • Computes efficient diffs in memory before DOM mutations.\n   • Delivers fast screen updates and optimal rendering performance.\n\n3. **Modern React Hooks**\n   • \`useState\` for intuitive local state management.\n   • \`useEffect\` for side effects and data synchronization.\n\n\`\`\`tsx\nimport React, { useState } from 'react';\n\nexport function Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <button onClick={() => setCount(count + 1)}>\n      Count: {count}\n    </button>\n  );\n}\n\`\`\``;
-          } else {
-            aiReplyText = isAr
-              ? `**بخصوص استفسارك حول ${cleanPrompt}**\n\nأهلاً بك! أنا هنا للإجابة على تساؤلاتك وتوضيح المفاهيم الهندسية خطوة بخطوة وتطبيقها عملياً في مشروعك عند رغبتك.`
-              : `**Regarding: ${cleanPrompt}**\n\nHello! I am here to answer your questions, explain technical concepts step-by-step, and implement them directly in your project whenever you are ready.`;
-          }
-        } else {
-          aiReplyText = isAr
-            ? 'على الرحب والسعة! يسعدني دائماً مساعدتك في مشروعك، أخبرني بما تريد تنفيذه.'
-            : "You're very welcome! I'm always happy to assist with your project. Let me know what you'd like to work on.";
-        }
+  // Live preview runtime health reported by the in-iframe probe (errors + canvas pixels).
+  app.post('/api/projects/:id/preview-health', (req, res) => {
+    const project = state.projects.find((p) => p.id === req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+    const body = req.body || {};
+    const errors: string[] = Array.isArray(body.errors) ? body.errors.slice(0, 8).map((e: unknown) => String(e).slice(0, 300)) : [];
+    const ok = Boolean(body.ok);
+    const now = new Date().toISOString();
+    (project as Project & { previewHealth?: unknown }).previewHealth = {
+      ok,
+      errors,
+      blankCanvases: Number(body.blankCanvases) || 0,
+      hiddenCanvases: Number(body.hiddenCanvases) || 0,
+      phase: String(body.phase || ''),
+      at: now,
+    };
+    if (!ok) {
+      project.serverLogs.unshift({
+        time: now,
+        level: 'error',
+        message: `[Preview Runtime] ${errors[0] || `${Number(body.blankCanvases) || 0} blank chart canvas(es)`}`,
+      });
+      project.serverLogs = project.serverLogs.slice(0, 200);
+    }
+    saveState(state);
+    res.json({ recorded: true });
+  });
+
+  app.post('/api/ai/execute', async (req, res) => {
+    const startedAt = Date.now();
+    const requestId = `req-${startedAt.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const stages: { stage: string; at: string; elapsedMs: number; detail?: string }[] = [];
+    const wantsStream = String(req.headers.accept || '').includes('application/x-ndjson');
+    let streamOpen = false;
+    const clientAbort = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) clientAbort.abort();
+    });
+    res.setHeader('X-Request-Id', requestId);
+
+    const emit = (event: Record<string, unknown>) => {
+      if (!wantsStream || res.writableEnded) return;
+      if (!streamOpen) {
+        res.status(200);
+        res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders();
+        streamOpen = true;
       }
-
-      // Sanitize output
-      aiReplyText = formatUserFacingResponse(aiReplyText);
-
-      // Append to active chat thread without modifying project files
-      const threadId = project.activeChatId || project.chatThreads[0]?.id || 'default-chat';
-      let thread = project.chatThreads.find((t) => t.id === threadId);
-      if (!thread) {
-        thread = { id: threadId, title: isAr ? 'محادثة' : 'Chat', updatedAt: now, messages: [] };
-        project.chatThreads.unshift(thread);
+      res.write(`${JSON.stringify(event)}\n`);
+    };
+    const mark = (stage: string, detail?: string) => {
+      const entry = { stage, at: new Date().toISOString(), elapsedMs: Date.now() - startedAt, ...(detail ? { detail } : {}) };
+      stages.push(entry);
+      console.log(`[ChatPipeline ${requestId}] ${stage}${detail ? ` – ${detail}` : ''} (+${entry.elapsedMs}ms)`);
+      emit({ type: 'stage', requestId, ...entry });
+    };
+    const finish = (payload: Record<string, unknown>) => {
+      const body = { status: 'COMPLETED', requestId, stages, latencyMs: Date.now() - startedAt, ...payload };
+      if (wantsStream) {
+        emit({ type: 'done', ...body });
+        res.end();
+      } else {
+        res.json(body);
       }
-      thread.messages.push({
-        id: `msg-u-${Date.now()}`,
-        role: 'user',
-        content: cleanPrompt,
-        timestamp: now,
-        model: activeModel,
-        thinkingMode,
-      });
-      thread.messages.push({
-        id: `msg-a-${Date.now() + 1}`,
-        role: 'assistant',
-        content: aiReplyText,
-        timestamp: new Date().toISOString(),
-        model: activeModel,
-        thinkingMode,
-        suggestions: activeSuggestions,
-      });
-      thread.updatedAt = new Date().toISOString();
+    };
+    const fail = (httpStatus: number, errorCode: string, userMessage: string, extra: Record<string, unknown> = {}) => {
+      if (!stages.some((s) => s.stage === 'failed')) mark('failed', errorCode);
+      const body = { status: errorCode === 'CANCELLED' ? 'CANCELLED' : 'FAILED', requestId, errorCode, userMessage, error: userMessage, stages, ...extra };
+      if (res.writableEnded) return;
+      if (wantsStream && streamOpen) {
+        emit({ type: 'error', ...body });
+        res.end();
+      } else if (!res.headersSent) {
+        res.status(httpStatus).json(body);
+      }
+    };
 
-      saveState(state);
-
-      res.json({
-        reply: aiReplyText,
-        project,
-        agent: selectedAgent,
-        intent: 'chat',
-        subIntent: intentResult.subIntent,
-        suggestions: activeSuggestions,
-        filesModified: [],
-        tokensUsed: state.settings.aiTokensUsed,
-      });
+    const { projectId, prompt, model, thinkingMode, agentId, clientMessageId, attachmentIds } = req.body || {};
+    mark('received');
+    const cleanPrompt = String(prompt || '').trim();
+    const isArPrompt = /[\u0600-\u06FF]/.test(cleanPrompt);
+    if (!cleanPrompt) {
+      fail(400, 'PROMPT_REQUIRED', 'الرجاء كتابة رسالة قبل الإرسال.');
+      return;
+    }
+    if (cleanPrompt.length > 20000) {
+      fail(413, 'PROMPT_TOO_LONG', 'الرسالة طويلة جداً. اختصرها أو أرفق النص كملف.');
+      return;
+    }
+    if (!projectId) {
+      fail(400, 'PROJECT_REQUIRED', 'لم يتم تحديد المشروع. افتح مشروعاً ثم أعد المحاولة.');
+      return;
+    }
+    const project = state.projects.find((p) => p.id === projectId);
+    if (!project) {
+      fail(404, 'PROJECT_NOT_FOUND', 'المشروع غير موجود على الخادم. حدّث الصفحة ثم أعد المحاولة.');
       return;
     }
 
-    // -------------------------------------------------------------
-    // BUILD MODE: Autonomous App Builder & Real Application Synthesis
-    // -------------------------------------------------------------
-    const spec = analyzeAppRequest(cleanPrompt, project);
-    if (!hasActiveProject && spec.appTitle && spec.appTitle !== 'تطبيق ذكي' && spec.appTitle !== 'Smart Application') {
-      project.name = spec.appTitle;
+    const isAr = isArPrompt || project.language === 'ar';
+    const tr = (ar: string, en: string) => (isAr ? ar : en);
+    const now = new Date().toISOString();
+    const hasActiveProject = Boolean(Array.isArray(project.files) && project.files.length > 0);
+    const selectedAgent = state.agents.find((a) => a.id === agentId) || state.agents[0];
+    const requestedModelId = typeof model === 'string' && model.trim() ? model.trim() : undefined;
+
+    // Attachments (already uploaded via /api/ai/attachments) are linked to this message.
+    const attachments: { id: string; name: string; type: string; size: number; kind: string; ext: string; text: string | null }[] =
+      Array.isArray(attachmentIds) && attachmentIds.length
+        ? workspaceAttachments.resolveAttachments(DATA_DIR, project.id, attachmentIds)
+        : [];
+    if (Array.isArray(attachmentIds) && attachmentIds.length && attachments.length !== Math.min(attachmentIds.length, 5)) {
+      fail(400, 'ATTACHMENT_NOT_FOUND', tr('تعذر العثور على أحد المرفقات. أعد إرفاق الملف ثم أرسل مجدداً.', 'An attachment could not be found. Re-attach and resend.'));
+      return;
     }
-    const plan = generateInternalPlan(spec, project);
-    const generatedFiles = generateAppFiles(spec, plan, project.files);
+    if (attachments.length) mark('attachments', `${attachments.length} linked`);
 
-    // Apply real files to project
-    const modifiedFilePaths: string[] = [];
-    for (const [fileName, fileContent] of Object.entries(generatedFiles)) {
-      const existingFile = project.files.find((f) => f.name === fileName || f.path === '/' + fileName);
-      if (existingFile) {
-        existingFile.previousContent = existingFile.content;
-        existingFile.content = fileContent;
-        existingFile.size = fileContent.length;
-        existingFile.updatedAt = now;
-        modifiedFilePaths.push(existingFile.path);
-      } else {
-        const newFile: ProjectFile = {
-          id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          name: fileName,
-          path: '/' + fileName,
-          folder: 'root',
-          content: fileContent,
-          language: fileName.endsWith('.html') ? 'html' : fileName.endsWith('.css') ? 'css' : 'javascript',
-          size: fileContent.length,
-          updatedAt: now,
-        };
-        project.files.push(newFile);
-        modifiedFilePaths.push(newFile.path);
-      }
-    }
-
-    const indexFile = project.files.find((f) => f.name === 'index.html');
-    if (indexFile) {
-      project.activeFileId = indexFile.id;
-    }
-
-    // Run automated verification on generated files
-    const verification = verifyGeneratedApp(generatedFiles, plan);
-    project.tests = verification.testResults;
-    project.status = verification.allPassed ? 'ready' : 'building';
-
-    // Format customer-facing response based on build outcome
-    const isModification = spec.intent === 'modify_app' || (hasActiveProject && intentResult.subIntent === 'modify_code');
-    if (spec.intent === 'fix_bug') {
-      aiReplyText = formatCustomerLifecycleResponse('bug_repaired', {
-        spec,
-        testsCount: verification.testResults.length,
-        passedTestsCount: verification.testResults.filter((t) => t.status === 'passed').length,
-      });
-    } else if (isModification) {
-      if (verification.allPassed) {
-        aiReplyText = formatCustomerLifecycleResponse('modified', {
-          spec,
-          testsCount: verification.testResults.length,
-          passedTestsCount: verification.testResults.filter((t) => t.status === 'passed').length,
-        });
-      } else {
-        aiReplyText = formatCustomerLifecycleResponse('modification_failed', {
-          spec,
-          failedFeatures: verification.testResults.filter((t) => t.status !== 'passed').map((t) => t.name),
-        });
-      }
-    } else if (verification.allPassed) {
-      aiReplyText = formatCustomerLifecycleResponse('completed', {
-        spec,
-        testsCount: verification.testResults.length,
-        passedTestsCount: verification.testResults.filter((t) => t.status === 'passed').length,
-      });
-    } else {
-      aiReplyText = formatCustomerLifecycleResponse('failed', {
-        spec,
-        failedFeatures: verification.testResults.filter((t) => t.status !== 'passed').map((t) => t.name),
-      });
-    }
-
-    aiReplyText = formatUserFacingResponse(aiReplyText);
-
-    // Keep internal agent operations in background logs (Dev Mode & Admin view)
-    selectedAgent.status = 'completed';
-    selectedAgent.operationsLog.unshift({
-      time: now,
-      action: `Executed build prompt: "${cleanPrompt.slice(0, 50)}"`,
-      result: `Generated ${modifiedFilePaths.length} files & verified build`,
-    });
-    for (const p of modifiedFilePaths) {
-      if (!selectedAgent.modifiedFiles.includes(p)) {
-        selectedAgent.modifiedFiles.unshift(p);
-      }
-    }
-
-    state.settings.aiTokensUsed += 640;
-    project.updatedAt = now;
-    project.serverLogs.unshift({
-      time: now,
-      level: 'success',
-      message: `[Engineer] Completed execution & updated ${modifiedFilePaths.join(', ')}`,
-    });
-
-    logActivity(`AI Engineer built feature on ${project.name}`, cleanPrompt.slice(0, 48), 'Engineer');
-
-    // Append to active chat thread
+    // Thread + idempotent user message (a retry re-uses the same clientMessageId).
     const threadId = project.activeChatId || project.chatThreads[0]?.id || 'default-chat';
     let thread = project.chatThreads.find((t) => t.id === threadId);
     if (!thread) {
       thread = { id: threadId, title: isAr ? 'محادثة' : 'Chat', updatedAt: now, messages: [] };
       project.chatThreads.unshift(thread);
     }
-    thread.messages.push({
-      id: `msg-u-${Date.now()}`,
-      role: 'user',
-      content: cleanPrompt,
-      timestamp: now,
-      model: activeModel,
-      thinkingMode,
-    });
-    thread.messages.push({
-      id: `msg-a-${Date.now() + 1}`,
-      role: 'assistant',
-      content: aiReplyText,
-      timestamp: new Date().toISOString(),
-      model: activeModel,
-      thinkingMode,
-    });
-    thread.updatedAt = new Date().toISOString();
+    const activeThread = thread;
+    const history = activeThread.messages
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.status !== 'FAILED')
+      .slice(-10)
+      .map((m) => ({ role: m.role, content: String(m.content || '').slice(0, 2000) }));
 
+    let userMessage = clientMessageId
+      ? activeThread.messages.find((m) => m.role === 'user' && m.clientId === clientMessageId)
+      : undefined;
+    if (userMessage) {
+      const replyTo = userMessage.id;
+      activeThread.messages = activeThread.messages.filter((m) => !(m.role === 'assistant' && m.replyTo === replyTo && m.status === 'FAILED'));
+    } else {
+      userMessage = {
+        id: `msg-u-${startedAt}-${Math.random().toString(36).slice(2, 6)}`,
+        clientId: typeof clientMessageId === 'string' ? clientMessageId.slice(0, 80) : undefined,
+        role: 'user',
+        content: cleanPrompt,
+        timestamp: now,
+        model: requestedModelId,
+        thinkingMode,
+        requestId,
+        status: 'COMPLETED',
+        attachments: attachments.map((a) => ({ id: a.id, name: a.name, type: a.type, size: a.size, kind: a.kind })),
+      };
+      activeThread.messages.push(userMessage);
+    }
+    const userMsgId = userMessage.id;
+    activeThread.updatedAt = now;
     saveState(state);
 
-    res.json({
-      reply: aiReplyText,
-      project,
-      agent: selectedAgent,
-      intent: 'build',
-      subIntent: intentResult.subIntent,
-      filesModified: modifiedFilePaths,
-      tokensUsed: state.settings.aiTokensUsed,
-    });
+    const persistAssistant = (content: string, extra: Record<string, unknown> = {}) => {
+      const msg = {
+        id: `msg-a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        role: 'assistant' as const,
+        content,
+        timestamp: new Date().toISOString(),
+        thinkingMode,
+        replyTo: userMsgId,
+        requestId,
+        status: 'COMPLETED' as const,
+        ...extra,
+      };
+      activeThread.messages.push(msg as (typeof activeThread.messages)[number]);
+      activeThread.updatedAt = msg.timestamp;
+      return msg;
+    };
+
+    // 1. Intent Router — CHAT / BUILD / EDIT is decided automatically (no UI mode buttons).
+    const intentResult = detectIntent(cleanPrompt, 'auto', hasActiveProject);
+    const isGeneric = isGenericAppRequest(cleanPrompt, hasActiveProject);
+    mark('intent', `${intentResult.intent}/${intentResult.subIntent}`);
+
+    const quickSuggestions = isAr
+      ? ['منصة تداول وتحليل مالي', 'متجر إلكتروني متكامل', 'نظام إدارة ومبيعات', 'تطبيق مخصص بفكرتي']
+      : ['Trading & Financial Analytics Platform', 'Full-Featured E-Commerce Store', 'Sales & Management ERP System', 'Custom App with My Own Idea'];
+    const editSuggestions = isAr
+      ? ['إظهار الرسم البياني', 'تغيير لون زر الشراء إلى الأزرق', 'تعديل نسبة المخاطرة الافتراضية']
+      : ['Show risk relationship chart', 'Change buy button color to blue', 'Adjust default risk percentage'];
+
+    const replyDeterministic = (reply: string, suggestions?: string[]) => {
+      const text = formatUserFacingResponse(reply);
+      const msg = persistAssistant(text, { suggestions, model: 'engineer-router', provider: 'engine' });
+      saveState(state);
+      emit({ type: 'delta', requestId, text });
+      mark('completed', 'deterministic-router-reply');
+      finish({
+        reply: text,
+        project,
+        agent: selectedAgent,
+        intent: 'chat',
+        subIntent: intentResult.subIntent,
+        suggestions,
+        filesModified: [],
+        tokensUsed: state.settings.aiTokensUsed,
+        modelUsed: { id: 'engineer-router', provider: 'engine', note: 'Deterministic router reply (no model call needed)' },
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, estimated: false },
+        toolsInvoked: ['intent_router'],
+        userMessageId: userMsgId,
+        assistantMessageId: msg.id,
+      });
+    };
+
+    const runModelChat = async () => {
+      const fileList = project.files.slice(0, 40).map((f) => f.path || f.name).join(', ');
+      const attachmentContext = attachments
+        .map((a) => (a.text ? `--- ATTACHMENT ${a.name} (${a.kind}) ---\n${a.text.slice(0, 20000)}` : `--- ATTACHMENT ${a.name} (${a.kind}, ${a.size} bytes, binary: content not readable as text) ---`))
+        .join('\n\n');
+      const systemPrompt = `You are Engineer, a senior AI software engineering assistant inside the Engineer workspace.
+Reply in the user's language (${isAr ? 'Arabic' : 'English'}), concisely and helpfully.
+Current project: "${project.name}" (${project.category}). Files: ${fileList || 'none'}.
+RULES:
+- Greetings/casual messages: short, warm, natural. No forced lists.
+- Technical questions: bold headline, numbered sections with bold titles, bullets, fenced code blocks with language ids.
+- Never claim you modified files, ran builds or tests in this conversational reply.
+- Never mention internal roles or pipeline steps.`;
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history,
+        { role: 'user', content: attachmentContext ? `${cleanPrompt}\n\n${attachmentContext}` : cleanPrompt },
+      ];
+      mark('model', `requesting ${requestedModelId || 'default'}`);
+      let streamedChars = 0;
+      try {
+        const out = await workspaceModelRouter.chat({
+          modelId: requestedModelId,
+          messages,
+          signal: clientAbort.signal,
+          onDelta: (piece: string) => {
+            if (streamedChars === 0) mark('streaming');
+            streamedChars += piece.length;
+            emit({ type: 'delta', requestId, text: piece });
+          },
+        });
+        const text = formatUserFacingResponse(out.text);
+        state.settings.aiTokensUsed += out.usage.totalTokens || 0;
+        const msg = persistAssistant(text, { model: out.model, provider: out.provider, suggestions: undefined });
+        saveState(state);
+        mark('completed', `${out.provider}:${out.model} ${out.usage.totalTokens} tokens`);
+        finish({
+          reply: text,
+          project,
+          agent: selectedAgent,
+          intent: 'chat',
+          subIntent: intentResult.subIntent,
+          filesModified: [],
+          tokensUsed: state.settings.aiTokensUsed,
+          modelUsed: { id: out.model, provider: out.provider },
+          usage: out.usage,
+          modelLatencyMs: out.latencyMs,
+          firstTokenMs: out.firstTokenMs,
+          toolsInvoked: ['intent_router', 'model_chat'],
+          userMessageId: userMsgId,
+          assistantMessageId: msg.id,
+        });
+      } catch (err: unknown) {
+        const e = err as { code?: string; httpStatus?: number; userMessageAr?: string; userMessageEn?: string; detail?: string; message?: string };
+        const code = e.code || 'MODEL_ERROR';
+        const userMsg = (isAr ? e.userMessageAr : e.userMessageEn) || tr('حدث خطأ أثناء توليد الرد. أعد المحاولة.', 'Failed to generate a reply. Please retry.');
+        console.warn(`[ChatPipeline ${requestId}] model failure ${code}: ${(e.detail || e.message || '').slice(0, 200)}`);
+        if (code !== 'CANCELLED') {
+          persistAssistant(userMsg, { status: 'FAILED', errorCode: code, model: requestedModelId });
+          saveState(state);
+        }
+        fail(e.httpStatus || 502, code, userMsg, { userMessageId: userMsgId, retryable: code !== 'MODEL_NOT_INSTALLED' });
+      }
+    };
+
+    // ---------------------------------------------------------------- CHAT
+    if (intentResult.intent === 'chat') {
+      if (intentResult.subIntent === 'ambiguous_edit') {
+        replyDeterministic(tr('أكيد، ما التعديل الذي تريد إجراءه على التطبيق الحالي؟', 'Sure, what modification would you like to make to the current application?'), editSuggestions);
+        return;
+      }
+      if (intentResult.subIntent === 'create_conflict') {
+        const requested = analyzeAppRequest(cleanPrompt).appTitle || tr('تطبيق جديد', 'New application');
+        replyDeterministic(
+          tr(
+            `هل تريد إنشاء مشروع جديد (${requested}) أم تعديل المشروع الحالي (${project.name})؟`,
+            `Do you want to create a new project (${requested}) or modify the current project (${project.name})?`
+          ),
+          isAr
+            ? [`أنشئ مشروعاً جديداً: ${cleanPrompt}`, `عدّل المشروع الحالي: ${cleanPrompt}`]
+            : [`Create a new project: ${cleanPrompt}`, `Modify the current project: ${cleanPrompt}`]
+        );
+        return;
+      }
+      if (isGeneric || (intentResult.subIntent === 'clarification' && /(تطبيق|موقع|برنامج|منصة|app|website)/i.test(cleanPrompt))) {
+        replyDeterministic(
+          tr(
+            'أبشر! يسعدني بناء تطبيقك بالكامل. أي نوع من التطبيقات تود أن أصمم لك اليوم، وما أهم المميزات التي تريدها فيه؟',
+            'Certainly! I would be delighted to build your complete application. What type of application would you like me to build today, and what are its core features?'
+          ),
+          quickSuggestions
+        );
+        return;
+      }
+      if (intentResult.subIntent === 'greeting') {
+        replyDeterministic(
+          tr(
+            `أهلاً وسهلاً! أنا Engineer. كيف أقدر أساعدك في «${project.name}» اليوم؟ تقدر تطلب تعديلاً، أو بناء تطبيق جديد، أو تسأل أي سؤال تقني.`,
+            `Hello! I'm Engineer. How can I help with "${project.name}" today? Ask for a change, a new app, or any technical question.`
+          )
+        );
+        return;
+      }
+      await runModelChat();
+      return;
+    }
+
+    // ---------------------------------------------------------------- BUILD / EDIT
+    try {
+      let targetProject = project;
+      let newProjectId: string | undefined;
+      const toolsInvoked: string[] = ['intent_router'];
+      let spec = analyzeAppRequest(cleanPrompt, targetProject);
+
+      // The builder concluded this is conversation, not code → answer with the model, never regenerate files.
+      if (spec.intent === 'chat' && !intentResult.createNewProject) {
+        mark('reroute', 'builder classified as chat');
+        await runModelChat();
+        return;
+      }
+
+      if (intentResult.createNewProject) {
+        const created = createNewProjectFromSpec({
+          name: spec.appTitle || tr('مشروع جديد', 'New project'),
+          description: cleanPrompt.slice(0, 200),
+          category: project.category || 'app',
+          appType: 'Full-Stack Web App',
+          techStack: 'react-ts-vite',
+          template: 'blank',
+          language: project.language || state.settings.language,
+          direction: project.direction || (isAr ? 'rtl' : 'ltr'),
+          databaseEngine: 'sqlite',
+          deployTarget: project.deployTarget || 'cloud-run-eu',
+        });
+        created.files = [];
+        created.chatThreads = [
+          { id: `chat-${Date.now()}`, title: isAr ? 'محادثة' : 'Chat', updatedAt: now, messages: [{ ...userMessage, id: `${userMessage.id}-n` }] },
+        ];
+        created.activeChatId = created.chatThreads[0].id;
+        state.projects.unshift(created);
+        targetProject = created;
+        newProjectId = created.id;
+        spec = analyzeAppRequest(cleanPrompt, targetProject);
+        toolsInvoked.push('project_factory.create');
+        mark('project', `created ${created.id}`);
+      }
+
+      const targetHasFiles = targetProject.files.length > 0;
+      if (targetHasFiles && intentResult.subIntent === 'modify_code' && spec.intent !== 'fix_bug') {
+        spec.intent = 'modify_app'; // EDIT_EXISTING_PROJECT: patch, never rebuild from scratch.
+      }
+      if (!targetHasFiles && spec.appTitle && spec.appTitle !== 'تطبيق ذكي' && spec.appTitle !== 'Smart Application') {
+        targetProject.name = spec.appTitle;
+      }
+      const wantsChart = Boolean(spec.features.chart);
+      const plan = generateInternalPlan(spec, targetProject);
+      mark('tools', `autonomous_app_builder.${spec.intent}`);
+      const generatedFiles = generateAppFiles(spec, plan, targetProject.files);
+      toolsInvoked.push(spec.intent === 'modify_app' ? 'autonomous_app_builder.patch_existing_files' : spec.intent === 'fix_bug' ? 'autonomous_app_builder.bug_repair' : 'autonomous_app_builder.generate_app');
+      if (wantsChart) toolsInvoked.push('chart_feature.apply');
+
+      const modifiedFilePaths: string[] = [];
+      for (const [fileName, fileContent] of Object.entries(generatedFiles)) {
+        const existingFile = targetProject.files.find((f) => f.name === fileName || f.path === '/' + fileName);
+        if (existingFile) {
+          if (existingFile.content === fileContent) continue;
+          existingFile.previousContent = existingFile.content;
+          existingFile.content = fileContent;
+          existingFile.size = fileContent.length;
+          existingFile.updatedAt = now;
+          modifiedFilePaths.push(existingFile.path);
+        } else {
+          const newFile: ProjectFile = {
+            id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: fileName,
+            path: '/' + fileName,
+            folder: 'root',
+            content: fileContent,
+            language: fileName.endsWith('.html') ? 'html' : fileName.endsWith('.css') ? 'css' : 'javascript',
+            size: fileContent.length,
+            updatedAt: now,
+          };
+          targetProject.files.push(newFile);
+          modifiedFilePaths.push(newFile.path);
+        }
+      }
+      const indexFile = targetProject.files.find((f) => f.name === 'index.html');
+      if (indexFile) targetProject.activeFileId = indexFile.id;
+
+      // Verification on the exact compiled preview (script syntax + chart wiring).
+      const verification = verifyGeneratedApp(generatedFiles, plan, { expectChart: wantsChart });
+      toolsInvoked.push('build_verifier.compiled_preview');
+      targetProject.tests = verification.testResults;
+      targetProject.status = verification.allPassed ? 'ready' : 'building';
+      mark('verify', verification.allPassed ? 'passed' : `failed: ${verification.testResults.filter((t) => t.status !== 'passed').map((t) => t.id).join(',')}`);
+
+      const passed = verification.testResults.filter((t) => t.status === 'passed').length;
+      const failedFeatures = verification.testResults.filter((t) => t.status !== 'passed').map((t) => t.name);
+      const isModification = spec.intent === 'modify_app';
+      let aiReplyText: string;
+      if (spec.intent === 'fix_bug') {
+        aiReplyText = verification.allPassed
+          ? formatCustomerLifecycleResponse('bug_repaired', { spec, testsCount: verification.testResults.length, passedTestsCount: passed })
+          : formatCustomerLifecycleResponse('modification_failed', { spec, failedFeatures });
+      } else if (isModification) {
+        aiReplyText = verification.allPassed
+          ? formatCustomerLifecycleResponse('modified', { spec, testsCount: verification.testResults.length, passedTestsCount: passed })
+          : formatCustomerLifecycleResponse('modification_failed', { spec, failedFeatures });
+      } else {
+        aiReplyText = verification.allPassed
+          ? formatCustomerLifecycleResponse('completed', { spec, testsCount: verification.testResults.length, passedTestsCount: passed })
+          : formatCustomerLifecycleResponse('failed', { spec, failedFeatures });
+      }
+      if (newProjectId) {
+        aiReplyText = `${tr(`أنشأت مشروعاً جديداً منفصلاً باسم «${targetProject.name}» وفتحته في المعاينة، ولم يتغير المشروع السابق «${project.name}».`, `I created a new separate project "${targetProject.name}" and opened it in the preview; "${project.name}" was not changed.`)}\n\n${aiReplyText}`;
+      }
+      aiReplyText = formatUserFacingResponse(aiReplyText);
+
+      selectedAgent.status = 'completed';
+      selectedAgent.operationsLog.unshift({
+        time: now,
+        action: `Executed build prompt: "${cleanPrompt.slice(0, 50)}"`,
+        result: `Generated ${modifiedFilePaths.length} files & verified build (${verification.allPassed ? 'passed' : 'failed'})`,
+      });
+      for (const p of modifiedFilePaths) {
+        if (!selectedAgent.modifiedFiles.includes(p)) selectedAgent.modifiedFiles.unshift(p);
+      }
+      targetProject.updatedAt = now;
+      targetProject.serverLogs.unshift({
+        time: now,
+        level: verification.allPassed ? 'success' : 'error',
+        message: `[Engineer ${requestId}] ${verification.allPassed ? 'Completed' : 'Verification failed'}: ${modifiedFilePaths.join(', ') || 'no file changes'}`,
+      });
+      logActivity(`AI Engineer built feature on ${targetProject.name}`, cleanPrompt.slice(0, 48), 'Engineer');
+
+      const assistantExtra = {
+        model: 'autonomous-app-builder',
+        provider: 'engine',
+        modifiedFiles: modifiedFilePaths,
+        verification: { passed: verification.allPassed, expectChart: wantsChart },
+        ...(newProjectId ? { newProjectId } : {}),
+      };
+      const assistantMsg = persistAssistant(aiReplyText, assistantExtra);
+      if (newProjectId) {
+        targetProject.chatThreads[0].messages.push({ ...assistantMsg, id: `${assistantMsg.id}-n` } as (typeof activeThread.messages)[number]);
+      }
+      saveState(state);
+      emit({ type: 'delta', requestId, text: aiReplyText });
+      mark('completed', `${modifiedFilePaths.length} files`);
+
+      finish({
+        reply: aiReplyText,
+        project: targetProject,
+        sourceProject: newProjectId ? project : undefined,
+        newProjectId,
+        agent: selectedAgent,
+        intent: 'build',
+        subIntent: intentResult.subIntent,
+        filesModified: modifiedFilePaths,
+        tokensUsed: state.settings.aiTokensUsed,
+        modelUsed: { id: 'autonomous-app-builder', provider: 'engine', note: 'Deterministic code generation engine' },
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, estimated: false },
+        verification: { allPassed: verification.allPassed, expectChart: wantsChart, tests: verification.testResults.map((t) => ({ id: t.id, name: t.name, status: t.status, evidence: t.evidenceLog })) },
+        toolsInvoked,
+        userMessageId: userMsgId,
+        assistantMessageId: assistantMsg.id,
+      });
+    } catch (err: unknown) {
+      console.error(`[ChatPipeline ${requestId}] build failure:`, err instanceof Error ? err.stack || err.message : String(err));
+      const userMsg = tr(
+        'تعذر إكمال التعديل بسبب مشكلة أثناء التنفيذ أو الاختبار. سأعرض لك سبب المشكلة وما يحتاج إلى إصلاح.',
+        'The change could not be completed due to an execution or test problem.'
+      );
+      persistAssistant(userMsg, { status: 'FAILED', errorCode: 'BUILD_FAILED' });
+      saveState(state);
+      fail(500, 'BUILD_FAILED', userMsg, { userMessageId: userMsgId, retryable: true });
+    }
   });
 
   // 7. AI Code Review for Editor File

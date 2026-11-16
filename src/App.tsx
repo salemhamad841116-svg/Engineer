@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Home,
   LayoutGrid,
@@ -21,6 +21,8 @@ import {
 import {
   AIAgentProfile,
   ButtonRegistryEntry,
+  ChatAttachmentMeta,
+  ChatMessage,
   ExecutionPipelineStage,
   Language,
   Project,
@@ -33,7 +35,6 @@ import {
 } from './utils/platformEngine';
 import { getInitialButtonRegistry, runAutomatedRegistryVerification } from './utils/buttonRegistry';
 import { PromptMode } from './utils/intentRouter';
-import { formatUserFacingResponse } from './utils/responseFormatter';
 import { HomeLaunchpad } from './components/HomeLaunchpad';
 import { IdeWorkspace } from './components/IdeWorkspace';
 import { ModalsHub, type SettingsState } from './components/ModalsHub';
@@ -48,6 +49,35 @@ import { OnboardingTour } from './components/OnboardingTour';
 import { AdminPortalView } from './components/AdminPortalView';
 
 import { DynamicAgentWorkspace } from './components/dynamic-agent/DynamicAgentWorkspace';
+
+/** Client-side hard ceiling for one chat request (server model timeout is shorter). */
+const CHAT_REQUEST_TIMEOUT_MS = 120_000;
+
+export interface ExecutePromptResult {
+  status: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  intent?: string;
+  errorCode?: string;
+  newProjectId?: string;
+}
+
+/**
+ * Merge messages by stable id only. Two different replies with identical text are both kept
+ * (the old role+content key silently dropped legitimate repeated answers).
+ */
+function dedupeMessages<T extends { id: string }>(list: T[]): T[] {
+  const index = new Map<string, number>();
+  const out: T[] = [];
+  for (const m of list) {
+    const at = index.get(m.id);
+    if (at === undefined) {
+      index.set(m.id, out.length);
+      out.push(m);
+    } else {
+      out[at] = m;
+    }
+  }
+  return out;
+}
 
 export default function App() {
   // Primary State
@@ -94,6 +124,8 @@ export default function App() {
   // AI Execution Pipeline State
   const [isGenerating, setIsGenerating] = useState(false);
   const [pipelineStages, setPipelineStages] = useState<ExecutionPipelineStage[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
 
   // Phase 12 Launch Pack: Onboarding Tour & Legal Modals State
   const [showOnboardingTour, setShowOnboardingTour] = useState(false);
@@ -304,8 +336,10 @@ export default function App() {
     }
   };
 
-  // 9-Stage AI Engineering Execution Engine
-  // AI Engineering Execution & Chat Engine (Intent-Routed Dual Mode)
+  // Workspace Chat Engine — reliable message lifecycle:
+  // SENDING → PROCESSING → STREAMING → COMPLETED | FAILED | CANCELLED.
+  // Messages are merged by id (never by content), errors are always visible with a
+  // retry action, and Stop really aborts the HTTP request (and the server-side model call).
   const handleExecutePrompt = async (
     prompt: string,
     options: {
@@ -313,135 +347,252 @@ export default function App() {
       thinkingMode: 'standard' | 'deep' | 'plan';
       agentId?: string;
       category?: ProjectCategory;
-      attachments?: { name: string; type: string; size: number }[];
+      attachments?: ChatAttachmentMeta[];
+      attachmentIds?: string[];
       mode?: PromptMode;
+      retryOfClientId?: string;
     }
-  ): Promise<{ intent?: string } | void> => {
-    if (isGenerating) return;
+  ): Promise<ExecutePromptResult> => {
+    const text = String(prompt || '').trim();
+    if (!text) return { status: 'FAILED', errorCode: 'EMPTY_PROMPT' };
+    if (inFlightRef.current) {
+      notify('info', isAr ? 'ما زال الطلب السابق قيد التنفيذ. انتظر اكتماله أو اضغط إيقاف.' : 'The previous request is still running. Wait or press Stop.');
+      return { status: 'FAILED', errorCode: 'BUSY' };
+    }
+    inFlightRef.current = true;
     setIsGenerating(true);
     setActiveView('ide');
     setSidebarOpen(false);
 
+    const project = activeProject;
+    const projectId = project.id;
+    const threadId = project.activeChatId || project.chatThreads[0]?.id || 'default-chat';
+    const clientId = options.retryOfClientId || `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    const localUserId = `local-u-${clientId}`;
+    const localAssistantId = `local-a-${clientId}`;
     const now = new Date().toISOString();
-    const userMessage = {
-      id: `msg-u-${Date.now()}`,
-      role: 'user' as const,
-      content: prompt,
-      timestamp: now,
-      model: options.model,
-      thinkingMode: options.thinkingMode,
-      agentId: options.agentId || 'agent-chief',
-      attachments: options.attachments,
+
+    const patchThread = (fn: (messages: ChatMessage[]) => ChatMessage[]) => {
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id !== projectId) return p;
+          const hasThread = p.chatThreads.some((th) => th.id === threadId);
+          const threads = hasThread
+            ? p.chatThreads.map((th) => (th.id === threadId ? { ...th, messages: fn(th.messages), updatedAt: new Date().toISOString() } : th))
+            : [{ id: threadId, title: isAr ? 'محادثة' : 'Chat', updatedAt: now, messages: fn([]) }, ...p.chatThreads];
+          return { ...p, chatThreads: threads };
+        })
+      );
+    };
+    const patchMessage = (id: string, patch: Partial<ChatMessage> | ((m: ChatMessage) => Partial<ChatMessage>)) =>
+      patchThread((msgs) => msgs.map((m) => (m.id === id ? { ...m, ...(typeof patch === 'function' ? patch(m) : patch) } : m)));
+
+    // Optimistic user message (or re-activation of the original one on retry) + assistant placeholder.
+    patchThread((msgs) => {
+      let list = msgs;
+      if (options.retryOfClientId) {
+        const original = list.find((m) => m.role === 'user' && m.clientId === options.retryOfClientId);
+        list = list.filter(
+          (m) => !(m.role === 'assistant' && (m.status === 'FAILED' || m.status === 'CANCELLED') && (m.clientId === options.retryOfClientId || (original && m.replyTo === original.id)))
+        );
+        if (original) {
+          list = list.map((m) => (m.id === original.id ? { ...m, status: 'SENDING' as const } : m));
+        }
+      }
+      const hasUser = list.some((m) => m.role === 'user' && m.clientId === clientId);
+      const userMessage: ChatMessage = {
+        id: localUserId,
+        clientId,
+        role: 'user',
+        content: text,
+        timestamp: now,
+        model: options.model,
+        thinkingMode: options.thinkingMode,
+        agentId: options.agentId || 'agent-chief',
+        attachments: options.attachments,
+        status: 'SENDING',
+      };
+      const placeholder: ChatMessage = {
+        id: localAssistantId,
+        clientId,
+        role: 'assistant',
+        content: '',
+        timestamp: now,
+        model: options.model,
+        status: 'PROCESSING',
+      };
+      return dedupeMessages([...list, ...(hasUser ? [] : [userMessage]), placeholder]);
+    });
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, CHAT_REQUEST_TIMEOUT_MS);
+
+    const markUserDelivered = () =>
+      patchThread((msgs) => msgs.map((m) => (m.role === 'user' && m.clientId === clientId ? { ...m, status: 'COMPLETED' as const } : m)));
+
+    type StreamEvent = {
+      type: 'stage' | 'delta' | 'done' | 'error';
+      stage?: string;
+      text?: string;
+      status?: string;
+      requestId?: string;
+      errorCode?: string;
+      userMessage?: string;
+      reply?: string;
+      intent?: string;
+      project?: Project;
+      sourceProject?: Project;
+      newProjectId?: string;
+      agent?: AIAgentProfile;
+      modelUsed?: { id: string; provider: string };
     };
 
-    // Optimistically update chat thread with user message
-    const threadId = activeProject.activeChatId || activeProject.chatThreads[0]?.id || 'default-chat';
-    const updatedThreadsWithUser = activeProject.chatThreads.map((th) =>
-      th.id === threadId ? { ...th, messages: [...th.messages, userMessage], updatedAt: now } : th
-    );
-    const projectWithUserMsg = { ...activeProject, chatThreads: updatedThreadsWithUser };
-    setProjects((prev) => prev.map((p) => (p.id === activeProject.id ? projectWithUserMsg : p)));
-
-    let replyContent = '';
-    let updatedServerProject: Project | null = null;
-    let detectedIntent: 'chat' | 'build' = 'chat';
-
+    let final: StreamEvent | null = null;
+    let networkFailure = false;
     try {
       const res = await fetch('/api/ai/execute', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
         body: JSON.stringify({
-          projectId: activeProject.id,
-          prompt,
+          projectId,
+          prompt: text,
           model: options.model,
           thinkingMode: options.thinkingMode,
           agentId: options.agentId || 'agent-chief',
-          mode: options.mode || 'auto',
+          clientMessageId: clientId,
+          attachmentIds: options.attachmentIds,
         }),
+        signal: controller.signal,
       });
-      if (res.ok) {
-        const data = await res.json();
-        replyContent = data.reply;
-        updatedServerProject = data.project;
-        detectedIntent = data.intent === 'build' ? 'build' : 'chat';
-        if (data.agent) {
-          setAgents((prev) => prev.map((a) => (a.id === data.agent.id ? data.agent : a)));
+      markUserDelivered();
+      const ctype = res.headers.get('content-type') || '';
+      if (ctype.includes('application/x-ndjson') && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamed = '';
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line) continue;
+            let ev: StreamEvent;
+            try {
+              ev = JSON.parse(line) as StreamEvent;
+            } catch {
+              continue;
+            }
+            if (ev.type === 'stage') {
+              patchMessage(localAssistantId, { requestId: ev.requestId });
+            } else if (ev.type === 'delta' && ev.text) {
+              streamed += ev.text;
+              const snapshot = streamed;
+              patchMessage(localAssistantId, { content: snapshot, status: 'STREAMING' });
+            } else if (ev.type === 'done' || ev.type === 'error') {
+              final = ev;
+            }
+          }
         }
+      } else {
+        const data = (await res.json().catch(() => null)) as StreamEvent | null;
+        if (data) final = { ...data, type: res.ok && data.status !== 'FAILED' ? 'done' : 'error' };
+        else final = { type: 'error', errorCode: `HTTP_${res.status}`, userMessage: isAr ? `استجاب الخادم بخطأ (${res.status}).` : `Server error (${res.status}).` };
       }
-    } catch {
-      // fallback below
+      if (!final) {
+        final = { type: 'error', errorCode: 'STREAM_INTERRUPTED', userMessage: isAr ? 'انقطع الاتصال قبل اكتمال الرد.' : 'The connection dropped before the reply completed.' };
+      }
+    } catch (err: unknown) {
+      const aborted = controller.signal.aborted;
+      if (aborted && !timedOut) {
+        final = { type: 'error', status: 'CANCELLED', errorCode: 'CANCELLED', userMessage: isAr ? 'تم إيقاف التوليد بناءً على طلبك.' : 'Generation stopped.' };
+      } else if (timedOut) {
+        final = { type: 'error', errorCode: 'CLIENT_TIMEOUT', userMessage: isAr ? 'استغرق الرد وقتاً أطول من المسموح فتم إيقافه. أعد المحاولة.' : 'The reply took too long and was stopped. Please retry.' };
+      } else {
+        networkFailure = true;
+        final = {
+          type: 'error',
+          errorCode: 'NETWORK_ERROR',
+          userMessage: isAr ? 'تعذر الاتصال بالخادم. تحقق من الاتصال ثم أعد المحاولة.' : 'Could not reach the server. Check your connection and retry.',
+        };
+        console.warn('[Chat] network failure', err);
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      abortRef.current = null;
     }
 
-    const cleanReply = formatUserFacingResponse(
-      replyContent ||
-      (detectedIntent === 'chat'
-        ? (isAr ? 'أهلاً بك! كيف يمكنني مساعدتك اليوم؟' : 'Hello! How can I help you today?')
-        : (isAr ? 'تم بنجاح تنفيذ وتطبيق التعديل المطلوب وتحديث المعاينة المباشرة.' : 'Successfully implemented your changes and updated live preview.'))
-    );
-
-    const assistantMsg = {
-      id: `msg-a-${Date.now()}`,
-      role: 'assistant' as const,
-      content: cleanReply,
-      timestamp: new Date().toISOString(),
-      model: options.model,
-      thinkingMode: options.thinkingMode,
-      agentId: options.agentId || 'agent-chief',
-    };
-
-    const dedupeMessages = <T extends { role: string; content: string }>(list: T[]): T[] => {
-      const seen = new Set<string>();
-      return list.filter((m) => {
-        const key = `${m.role}:${m.content.trim()}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
+    const result: ExecutePromptResult = { status: 'FAILED' };
+    const ev = final as StreamEvent;
+    if (ev.type === 'done' && ev.project) {
+      const serverProject = ev.project;
+      const sourceProject = ev.sourceProject;
+      setProjects((prev) => {
+        const merged = prev.map((p) => {
+          if (sourceProject && p.id === sourceProject.id) return sourceProject;
+          if (p.id === serverProject.id) {
+            return {
+              ...serverProject,
+              chatThreads: serverProject.chatThreads.map((th) => ({ ...th, messages: dedupeMessages(th.messages) })),
+            };
+          }
+          return p;
+        });
+        return merged.some((p) => p.id === serverProject.id) ? merged : [serverProject, ...merged];
       });
-    };
-
-    const baseProj = updatedServerProject || projectWithUserMsg;
-    const finalThreads = baseProj.chatThreads.map((th) => {
-      if (th.id !== threadId) return th;
-      const combined = [...th.messages];
-      if (!combined.some((m) => m.role === 'user' && m.content.trim() === userMessage.content.trim())) {
-        combined.push(userMessage);
+      if (ev.newProjectId) setActiveProjectId(ev.newProjectId);
+      if (ev.agent) {
+        const agent = ev.agent;
+        setAgents((prev) => prev.map((a) => (a.id === agent.id ? agent : a)));
       }
-      if (!combined.some((m) => m.role === 'assistant' && m.content.trim() === cleanReply.trim())) {
-        combined.push(assistantMsg);
+      const detectedIntent: 'chat' | 'build' = ev.intent === 'build' ? 'build' : 'chat';
+      if (detectedIntent === 'build') {
+        notify('success', isAr ? 'اكتمل تنفيذ التعديلات وتحديث المعاينة' : 'Completed code updates & refreshed preview');
       }
-      return {
-        ...th,
-        messages: dedupeMessages(combined),
-        updatedAt: new Date().toISOString(),
-      };
-    });
-
-    const finalProject: Project = {
-      ...baseProj,
-      chatThreads: finalThreads,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (detectedIntent === 'build') {
-      await handleUpdateProject(
-        finalProject,
-        isAr ? 'اكتمل بناء التعديلات وتحديث المعاينة' : 'Completed code updates & refreshed preview'
-      );
+      result.status = 'COMPLETED';
+      result.intent = detectedIntent;
+      result.newProjectId = ev.newProjectId;
     } else {
-      // In Chat Mode: Update state silently without altering files, preview, or showing build toasts
-      setProjects((prev) => prev.map((p) => (p.id === finalProject.id ? finalProject : p)));
+      const cancelled = ev.status === 'CANCELLED' || ev.errorCode === 'CANCELLED';
+      patchThread((msgs) =>
+        msgs.map((m) => {
+          if (m.id === localAssistantId) {
+            return {
+              ...m,
+              content: ev.userMessage || (isAr ? 'تعذر إكمال الطلب. أعد المحاولة.' : 'The request could not be completed. Please retry.'),
+              status: cancelled ? ('CANCELLED' as const) : ('FAILED' as const),
+              errorCode: ev.errorCode,
+              requestId: ev.requestId || m.requestId,
+            };
+          }
+          if (networkFailure && m.role === 'user' && m.clientId === clientId) return { ...m, status: 'FAILED' as const };
+          return m;
+        })
+      );
+      result.status = cancelled ? 'CANCELLED' : 'FAILED';
+      result.errorCode = ev.errorCode;
     }
 
+    inFlightRef.current = false;
     setIsGenerating(false);
-    return { intent: detectedIntent };
+    return result;
   };
 
   const handleStopGeneration = () => {
-    setIsGenerating(false);
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
     setPipelineStages((prev) =>
       prev.map((st) => (st.status === 'running' ? { ...st, status: 'done' } : st))
     );
-    notify('info', isAr ? 'تم إيقاف عملية التوليد بناءً على طلبك' : 'Stopped generation task');
   };
 
   const handleVerifyAllRegistry = async () => {

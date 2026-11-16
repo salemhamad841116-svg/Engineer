@@ -3,16 +3,56 @@
 
 export type PromptMode = 'auto' | 'chat' | 'build';
 export type IntentType = 'chat' | 'build';
-export type SubIntent = 'greeting' | 'qa' | 'clarification' | 'ambiguous_edit' | 'build_new' | 'modify_code';
+export type SubIntent =
+  | 'greeting'
+  | 'qa'
+  | 'clarification'
+  | 'ambiguous_edit'
+  | 'create_conflict'
+  | 'build_new'
+  | 'modify_code';
 
 export interface IntentResult {
   intent: IntentType;
   subIntent: SubIntent;
   confidence: number;
   reason: string;
+  /** True when the user explicitly asked for a NEW, separate project while another one is open. */
+  createNewProject?: boolean;
 }
 
-const GREETING_REGEX = /^(هلا|أهلا|اهلاً|أهلاً|مرحبا|مرحباً|السلام عليكم|سلام عليكم|صباح الخير|مساء الخير|صباح النور|مساء النور|تحياتي|يا هلا|أهلين|اهلين|hello|hi|hey|greetings|good morning|good evening|howdy)([\s!.,؟?].*)?$/i;
+const ARABIC_DIACRITICS = /[\u064B-\u0652\u0670\u0640]/g;
+
+/** Removes Arabic diacritics/tatweel so «ابنِ» and «ابن» route identically. */
+export function stripArabicDiacritics(text: string): string {
+  return String(text || '').replace(ARABIC_DIACRITICS, '');
+}
+
+const CREATE_VERB_REGEX = /(?:^|[^\p{L}\p{N}_])(أنشئ|انشئ|ابن|ابني|اصنع|سوي|اعمل|صمم|برمج|جهز|build|create|make|generate)(?:$|[^\p{L}\p{N}_])/iu;
+const APP_NOUN_REGEX = /(تطبيق|موقع|منصة|برنامج|نظام|متجر|مشروع|لوحة تحكم|\bapp\b|\bproject\b|application|website|platform|system|store|dashboard)/i;
+const EXPLICIT_NEW_PROJECT_REGEX = /(مشروع(?:اً|ا)?\s+جديد(?:اً|ا)?|تطبيق(?:اً|ا)?\s+جديد(?:اً|ا)?|منصة\s+جديدة|موقع(?:اً|ا)?\s+جديد(?:اً|ا)?|من الصفر|new project|new app|from scratch|separate project)/i;
+const EXPLICIT_CURRENT_PROJECT_REGEX = /(الحالي|الحالية|نفس التطبيق|نفس المشروع|هذا التطبيق|هذا المشروع|على التطبيق|للتطبيق|في التطبيق|current project|current app|this app|existing app|existing project)/i;
+
+/**
+ * Explicit request to CREATE an application (verb + app noun), e.g.
+ * «ابنِ لي تطبيق منصة تداول مع الرسم البياني», «أنشئ تطبيق منصة تداول يحتوي على رسم بياني».
+ */
+export function isExplicitNewAppCreation(rawPrompt: string): boolean {
+  const p = stripArabicDiacritics(rawPrompt).trim();
+  if (!p) return false;
+  if (mentionsNewProject(p)) return true;
+  return CREATE_VERB_REGEX.test(p) && APP_NOUN_REGEX.test(p);
+}
+
+export function mentionsNewProject(rawPrompt: string): boolean {
+  return EXPLICIT_NEW_PROJECT_REGEX.test(stripArabicDiacritics(rawPrompt));
+}
+
+export function mentionsCurrentProject(rawPrompt: string): boolean {
+  return EXPLICIT_CURRENT_PROJECT_REGEX.test(stripArabicDiacritics(rawPrompt));
+}
+
+const GREETING_REGEX = /^(هلا|أهلا|اهلا|اهلاً|أهلاً|مرحبا|مرحباً|السلام عليكم|سلام عليكم|صباح الخير|مساء الخير|صباح النور|مساء النور|تحياتي|يا هلا|أهلين|اهلين|hello|hi|hey|greetings|good morning|good evening|howdy)([\s!.,؟?].*)?$/i;
 
 const CLARIFICATION_REGEX = /^(شكراً|شكرا|تمام|أوكي|اوكي|ممتاز|يعطيك العافية|تسلم|مشكور|thanks|thank you|great|cool|ok|okay|nice|got it)[\s!.,؟?]*$/i;
 
@@ -96,7 +136,8 @@ export function detectIntent(
   forcedMode: PromptMode = 'auto',
   hasActiveProject: boolean = false
 ): IntentResult {
-  const prompt = (rawPrompt || '').trim();
+  // Diacritics/tatweel are removed so «عدّل», «غيّر», «ابنِ» route like their plain forms.
+  const prompt = stripArabicDiacritics(rawPrompt).trim();
 
   // 1. Manual user override takes precedence
   if (forcedMode === 'chat') {
@@ -139,6 +180,35 @@ export function detectIntent(
       confidence: 0.99,
       reason: 'Generic app request requiring clarification before building',
     };
+  }
+
+  // 1.6. CREATE_NEW_PROJECT vs EDIT_EXISTING_PROJECT disambiguation
+  if (isExplicitNewAppCreation(prompt)) {
+    if (mentionsNewProject(prompt)) {
+      return {
+        intent: 'build',
+        subIntent: 'build_new',
+        confidence: 0.97,
+        reason: 'Explicit request for a new, separate project',
+        createNewProject: hasActiveProject,
+      };
+    }
+    if (hasActiveProject && !mentionsCurrentProject(prompt)) {
+      return {
+        intent: 'chat',
+        subIntent: 'create_conflict',
+        confidence: 0.9,
+        reason: 'New-application request while a project is open: ask whether to create a new project or edit the current one',
+      };
+    }
+    if (!hasActiveProject) {
+      return {
+        intent: 'build',
+        subIntent: 'build_new',
+        confidence: 0.96,
+        reason: 'Explicit new application request (no project open)',
+      };
+    }
   }
 
   // 2. Pure greetings (e.g. «هلا», «مرحبا», «السلام عليكم»)

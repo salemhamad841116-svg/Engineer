@@ -32,7 +32,6 @@ import {
   FileArchive,
   CheckSquare,
   Send,
-  StopCircle,
   Bot,
   Terminal,
   Loader2,
@@ -40,9 +39,17 @@ import {
   Folder,
   MessageSquarePlus,
   MousePointerClick,
+  Paperclip,
+  Mic,
+  MicOff,
+  X,
+  Square,
+  ChevronDown,
 } from 'lucide-react';
 import {
   AIAgentProfile,
+  ChatAttachmentMeta,
+  ChatMessage,
   ExecutionPipelineStage,
   Language,
   Project,
@@ -76,8 +83,11 @@ interface IdeWorkspaceProps {
       thinkingMode: 'standard' | 'deep' | 'plan';
       agentId?: string;
       mode?: PromptMode;
+      attachments?: ChatAttachmentMeta[];
+      attachmentIds?: string[];
+      retryOfClientId?: string;
     }
-  ) => Promise<{ intent?: string } | void>;
+  ) => Promise<unknown>;
   onStopGeneration: () => void;
   onOpenModal: (modal: string, payload?: unknown) => void;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
@@ -102,8 +112,18 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [showChatSearch, setShowChatSearch] = useState(false);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
-  const [selectedModel] = useState('gemini-3.8-flash');
-  const [promptMode, setPromptMode] = useState<PromptMode>('auto');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
+  const [availableModels, setAvailableModels] = useState<{ id: string; name: string; provider: string; available: boolean; local?: boolean }[]>([]);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachmentMeta[]>([]);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [_promptMode] = useState<PromptMode>('auto');
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const speechRecognitionRef = useRef<{ stop: () => void; start: () => void; lang: string; interimResults: boolean; maxAlternatives: number; onstart: () => void; onresult: (e: { results: Array<Array<{ transcript?: string }>> }) => void; onerror: () => void; onend: () => void } | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
 
   // Center Pane state: Code Editor vs Cloud File Manager
   const [centerTab, setCenterTab] = useState<'editor' | 'files'>('editor');
@@ -207,15 +227,44 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     lastFilesRef.current = project.files;
   }, [project.files]);
 
+  // Close model picker on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
+        setShowModelPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch available real models from server
+  useEffect(() => {
+    fetch('/api/ai/models')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.models && Array.isArray(data.models)) {
+          setAvailableModels(data.models);
+          if (data.defaultModelId) {
+            setSelectedModel((prev) => {
+              const currentAvailable = data.models.some((m: { id: string; available: boolean }) => m.id === prev && m.available);
+              return currentAvailable ? prev : data.defaultModelId;
+            });
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Activate isAppServerRunning when app files are generated/ready
   useEffect(() => {
     const hasBuiltApp = project.files.some(
       (f) =>
-        (f.path === 'index.html' &&
+        ((f.name === 'index.html' || f.path === 'index.html' || f.path === '/index.html') &&
           (f.content.includes('metric-risk-amount') ||
             f.content.includes('data-live-app') ||
             f.content.includes('trading-calculator'))) ||
-        (f.path === 'app.js' &&
+        ((f.name === 'app.js' || f.path === 'app.js' || f.path === '/app.js') &&
           (f.content.includes('calculateRisk') || f.content.includes('initLiveApp')))
     );
     if (hasBuiltApp && !isGenerating) {
@@ -628,20 +677,201 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     }, 180);
   };
 
+  // --- Attachments & Voice Handlers ---
+  const handleAttachmentFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (pendingAttachments.length + files.length > 5) {
+      onNotify('error', isAr ? 'الحد الأقصى هو 5 ملفات في الرسالة الواحدة' : 'Maximum 5 files per message');
+      return;
+    }
+    setIsUploadingAttachments(true);
+    try {
+      const fileDataList: { name: string; type: string; dataBase64: string }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 10 * 1024 * 1024) {
+          onNotify('error', isAr ? `الملف ${file.name} يتجاوز 10 ميغابايت` : `File ${file.name} exceeds 10MB`);
+          continue;
+        }
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        fileDataList.push({ name: file.name, type: file.type || 'application/octet-stream', dataBase64: base64 });
+      }
+      if (fileDataList.length > 0) {
+        const res = await fetch('/api/ai/attachments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: project.id, files: fileDataList }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.attachments)) {
+            setPendingAttachments((prev) => [...prev, ...data.attachments]);
+            onNotify('success', isAr ? `تم إرفاق ${data.attachments.length} ملف بنجاح` : `Attached ${data.attachments.length} file(s)`);
+          }
+        } else {
+          const errData = await res.json().catch(() => null);
+          onNotify('error', errData?.userMessage || (isAr ? 'فشل رفع المرفق' : 'Failed to upload attachment'));
+        }
+      }
+    } catch {
+      onNotify('error', isAr ? 'حدث خطأ أثناء قراءة المرفقات' : 'Error reading attachments');
+    } finally {
+      setIsUploadingAttachments(false);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveAttachment = (idOrName: string) => {
+    setPendingAttachments((prev) => prev.filter((a) => (a.id ? a.id !== idOrName : a.name !== idOrName)));
+  };
+
+  const handleToggleVoiceInput = () => {
+    if (isRecordingVoice) {
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.stop(); } catch { /* ignore */ }
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+      }
+      setIsRecordingVoice(false);
+      return;
+    }
+
+    interface BrowserSpeechRecognition {
+      stop: () => void;
+      start: () => void;
+      lang: string;
+      interimResults: boolean;
+      maxAlternatives: number;
+      onstart: () => void;
+      onresult: (e: { results: Array<Array<{ transcript?: string }>> }) => void;
+      onerror: () => void;
+      onend: () => void;
+    }
+    const win = window as unknown as {
+      SpeechRecognition?: new () => BrowserSpeechRecognition;
+      webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
+    };
+    const SpeechRecognitionClass = win.SpeechRecognition || win.webkitSpeechRecognition;
+    if (SpeechRecognitionClass) {
+      try {
+        const recognition = new SpeechRecognitionClass();
+        recognition.lang = isAr ? 'ar-SA' : 'en-US';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        recognition.onstart = () => setIsRecordingVoice(true);
+        recognition.onresult = (event: { results: Array<Array<{ transcript?: string }>> }) => {
+          const transcript = event.results[0]?.[0]?.transcript;
+          if (transcript) {
+            setChatInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+          }
+          setIsRecordingVoice(false);
+        };
+        recognition.onerror = () => {
+          setIsRecordingVoice(false);
+          onNotify('error', isAr ? 'تعذر التعرف على الصوت. يمكنك كتابة الرسالة.' : 'Voice recognition error.');
+        };
+        recognition.onend = () => setIsRecordingVoice(false);
+        speechRecognitionRef.current = recognition;
+        recognition.start();
+        return;
+      } catch (err) {
+        console.warn('SpeechRecognition failed, falling back to MediaRecorder', err);
+      }
+    }
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => {
+          const mediaRecorder = new MediaRecorder(stream);
+          mediaRecorderRef.current = mediaRecorder;
+          audioChunksRef.current = [];
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          };
+          mediaRecorder.onstop = async () => {
+            stream.getTracks().forEach((t) => t.stop());
+            setIsRecordingVoice(false);
+            const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+            if (audioBlob.size < 100) return;
+            const reader = new FileReader();
+            reader.onload = async () => {
+              const base64 = String(reader.result || '').split(',')[1] || '';
+              try {
+                const res = await fetch('/api/ai/transcribe', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    audioBase64: base64,
+                    mimeType: audioBlob.type,
+                    language: isAr ? 'ar' : 'en',
+                  }),
+                });
+                const data = await res.json();
+                if (res.ok && data.text) {
+                  setChatInput((prev) => (prev ? `${prev} ${data.text}` : data.text));
+                  onNotify('success', isAr ? 'تم تحويل الصوت إلى نص' : 'Transcribed voice');
+                } else {
+                  onNotify('info', data?.userMessage || (isAr ? 'التحويل الصوتي غير متاح حالياً' : 'Voice transcription unavailable'));
+                }
+              } catch {
+                onNotify('error', isAr ? 'تعذر إرسال التسجيل الصوتي' : 'Failed to send audio');
+              }
+            };
+            reader.readAsDataURL(audioBlob);
+          };
+          mediaRecorder.start();
+          setIsRecordingVoice(true);
+        })
+        .catch(() => {
+          onNotify('error', isAr ? 'يرجى السماح بالوصول إلى الميكروفون' : 'Microphone access denied');
+        });
+    } else {
+      onNotify('info', isAr ? 'الميكروفون غير مدعوم في هذا المتصفح' : 'Microphone not supported in this browser');
+    }
+  };
+
+  const handleRetryMessage = async (failedMsg: ChatMessage) => {
+    if (isGenerating) return;
+    const promptText = failedMsg.replyTo
+      ? activeChatThread?.messages.find((m) => m.id === failedMsg.replyTo)?.content || failedMsg.content
+      : failedMsg.content;
+    const result = await onExecutePrompt(promptText, {
+      model: selectedModel,
+      thinkingMode: 'standard',
+      mode: 'auto',
+      retryOfClientId: failedMsg.clientId,
+    });
+    if (result && (result as { intent?: string }).intent === 'build') {
+      setIsAppServerRunning(true);
+      setPreviewRefreshKey((k) => k + 1);
+    }
+  };
+
   // --- AI Chat Submit ---
   const handleSendChatMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!chatInput.trim() || isGenerating) return;
+    if ((!chatInput.trim() && pendingAttachments.length === 0) || isGenerating) return;
     const text = chatInput.trim();
+    const attachmentsToSend = [...pendingAttachments];
     setChatInput('');
+    setPendingAttachments([]);
     if (chatTextareaRef.current) {
       chatTextareaRef.current.style.height = 'auto';
     }
     setEditingMsgId(null);
-    const result = await onExecutePrompt(text, {
+    const result = await onExecutePrompt(text || (isAr ? 'راجع المرفقات المرفقة' : 'Please check the attachments'), {
       model: selectedModel,
       thinkingMode: 'standard',
-      mode: promptMode,
+      mode: 'auto',
+      attachments: attachmentsToSend,
+      attachmentIds: attachmentsToSend.map((a) => a.id).filter(Boolean) as string[],
     });
     if (result && (result as { intent?: string }).intent === 'build') {
       setIsAppServerRunning(true);
@@ -798,22 +1028,22 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
         {!isFullscreenPreview && (
           <aside
             dir={isAr ? 'rtl' : 'ltr'}
-            className={`w-[390px] min-w-[360px] lg:w-[32%] lg:max-w-[440px] shrink-0 border-e border-white/10 glass-panel flex flex-col min-h-0 h-full overflow-hidden ${
+            className={`w-[390px] min-w-[360px] lg:w-[32%] lg:max-w-[440px] shrink-0 border-e border-[#252529] bg-[#151517] flex flex-col min-h-0 h-full overflow-hidden ${
               mobileActiveView === 'chat' ? 'flex' : 'hidden lg:flex'
             }`}
           >
-            {/* Clean Chat Header */}
-            <div className="px-3.5 py-2.5 border-b border-white/8 bg-[#10131c] flex items-center justify-between gap-2 shrink-0">
+            {/* Clean Chat Header (Bolt-inspired minimal aesthetic) */}
+            <div className="px-3.5 py-2.5 border-b border-[#252529] bg-[#171719] flex items-center justify-between gap-2 shrink-0">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <div className="w-6 h-6 rounded-lg bg-[#246290]/20 border border-[#246290]/40 flex items-center justify-center">
+                  <Sparkles className="w-3.5 h-3.5 text-[#38bdf8]" />
                 </div>
                 <div>
-                  <h2 className="text-xs font-semibold text-white leading-none">
+                  <h2 className="text-xs font-semibold text-[#f4f1f5] leading-none">
                     {isAr ? 'محادثة Engineer' : 'Engineer Chat'}
                   </h2>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">
-                    {isAr ? 'سؤال وجواب · بناء فوري' : 'Q&A · Instant Generation'}
+                  <p className="text-[10px] text-[#969498] mt-0.5">
+                    {isAr ? 'سؤال وجواب · بناء وتعديل فوري' : 'Q&A · Instant Generation'}
                   </p>
                 </div>
               </div>
@@ -822,7 +1052,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   type="button"
                   onClick={() => setShowChatSearch(!showChatSearch)}
                   title={isAr ? 'بحث في الرسائل' : 'Search Messages'}
-                  className={`btn btn-ghost btn-sm p-1.5 ${showChatSearch ? 'text-blue-400' : 'text-zinc-400'}`}
+                  className={`p-1.5 rounded-lg text-[#96969e] hover:text-[#f4f1f5] hover:bg-[#252529] transition-all ${
+                    showChatSearch ? 'text-[#38bdf8] bg-[#252529]' : ''
+                  }`}
                 >
                   <Search className="w-3.5 h-3.5" />
                 </button>
@@ -830,7 +1062,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   type="button"
                   onClick={handleNewChatThread}
                   title={isAr ? 'بدء محادثة جديدة' : 'New Chat Thread'}
-                  className="btn btn-ghost btn-sm p-1.5"
+                  className="p-1.5 rounded-lg text-[#96969e] hover:text-[#f4f1f5] hover:bg-[#252529] transition-all"
                 >
                   <MessageSquarePlus className="w-3.5 h-3.5" />
                 </button>
@@ -838,7 +1070,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   type="button"
                   onClick={() => activeChatThread && handleDeleteChatThread(activeChatThread.id)}
                   title={isAr ? 'مسح المحادثة' : 'Clear Chat'}
-                  className="btn btn-ghost btn-sm p-1.5 text-zinc-400 hover:text-rose-400"
+                  className="p-1.5 rounded-lg text-[#96969e] hover:text-rose-400 hover:bg-[#252529] transition-all"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -847,19 +1079,19 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
 
             {/* Chat Search Bar */}
             {showChatSearch && (
-              <div className="px-3.5 py-1.5 border-b border-white/8 bg-[#0b0e17] flex items-center gap-2">
-                <Search className="w-3 h-3 text-zinc-500 shrink-0" />
+              <div className="px-3.5 py-1.5 border-b border-[#252529] bg-[#111114] flex items-center gap-2">
+                <Search className="w-3 h-3 text-[#96969e] shrink-0" />
                 <input
                   value={chatSearchQuery}
                   onChange={(e) => setChatSearchQuery(e.target.value)}
                   placeholder={isAr ? 'بحث في الرسائل...' : 'Search messages...'}
-                  className="bg-transparent text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none w-full"
+                  className="bg-transparent text-xs text-[#f4f1f5] placeholder-[#9898a0] focus:outline-none w-full"
                 />
               </div>
             )}
 
             {/* Messages Stream - Clean Q&A ONLY (User + Engineer) */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3 overscroll-contain">
+            <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5 overscroll-contain bg-[#151517]">
               {(activeChatThread?.messages || [])
                 .filter((m) => !chatSearchQuery.trim() || m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()))
                 .map((msg) => (
@@ -867,25 +1099,56 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     key={msg.id}
                     className={`text-xs leading-relaxed transition-all ${
                       msg.role === 'user'
-                        ? 'glass-chat-user text-white rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] self-end ms-auto shadow-sm group relative'
-                        : 'glass-chat-assistant text-slate-200 rounded-2xl rounded-tr-sm px-4 py-3.5 max-w-[95%] shadow-sm group relative'
+                        ? 'bg-[#1e1e21] border border-[#2c2c30] text-[#f4f1f5] rounded-xl px-3.5 py-2.5 max-w-[88%] self-end ms-auto shadow-sm group relative'
+                        : 'text-[#f4f1f5] px-1 py-1.5 max-w-full group relative'
                     }`}
                   >
-                    <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5 pb-1 border-b border-white/5">
+                    {/* Header line for each message */}
+                    <div className="flex items-center justify-between text-[11px] text-[#969498] mb-1.5 pb-1 border-b border-white/5">
                       <div className="flex items-center gap-1.5">
                         {msg.role === 'user' ? (
-                          <span className="font-semibold text-blue-300">
+                          <span className="font-semibold text-[#93c5fd]">
                             {isAr ? 'أنت' : 'You'}
                           </span>
                         ) : (
-                          <div className="flex items-center gap-1.5 font-semibold text-white">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+                          <div className="flex items-center gap-1.5 font-semibold text-[#f4f1f5]">
+                            <span className="w-2 h-2 rounded-full bg-[#246290] inline-block shadow-[0_0_8px_rgba(36,98,144,0.8)]" />
                             <span>Engineer</span>
                           </div>
                         )}
+                        {/* Status badges */}
+                        {msg.status === 'SENDING' && (
+                          <span className="text-[10px] text-[#969498] flex items-center gap-1">
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            {isAr ? 'جاري الإرسال...' : 'Sending...'}
+                          </span>
+                        )}
+                        {msg.status === 'PROCESSING' && (
+                          <span className="text-[10px] text-[#38bdf8] flex items-center gap-1 animate-pulse">
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            {isAr ? 'قيد المعالجة...' : 'Processing...'}
+                          </span>
+                        )}
+                        {msg.status === 'STREAMING' && (
+                          <span className="text-[10px] text-[#38bdf8] flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8] animate-ping" />
+                            {isAr ? 'يكتب...' : 'Typing...'}
+                          </span>
+                        )}
+                        {msg.status === 'CANCELLED' && (
+                          <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                            {isAr ? 'تم الإيقاف' : 'Cancelled'}
+                          </span>
+                        )}
+                        {msg.status === 'FAILED' && (
+                          <span className="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
+                            {isAr ? 'تعذر الإكمال' : 'Failed'}
+                          </span>
+                        )}
                       </div>
-                      {/* Decluttered Actions: visible smoothly on hover only */}
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-slate-900/90 border border-white/10 rounded-lg p-0.5 shadow-md">
+
+                      {/* Actions: visible on hover */}
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-[#1e1e21] border border-[#36363b] rounded-lg p-0.5 shadow-md">
                         {msg.role === 'user' && (
                           <button
                             type="button"
@@ -894,7 +1157,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                               setChatInput(msg.content);
                             }}
                             title={isAr ? 'تعديل الرسالة' : 'Edit message'}
-                            className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
+                            className="p-1 rounded hover:bg-white/10 text-[#96969e] hover:text-[#f4f1f5] cursor-pointer"
                           >
                             <Edit3 className="w-3 h-3 stroke-[2]" />
                           </button>
@@ -906,7 +1169,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                             onNotify('success', isAr ? 'تم نسخ الرد' : 'Copied response');
                           }}
                           title={isAr ? 'نسخ النص' : 'Copy text'}
-                          className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
+                          className="p-1 rounded hover:bg-white/10 text-[#96969e] hover:text-[#f4f1f5] cursor-pointer"
                         >
                           <Copy className="w-3 h-3 stroke-[2]" />
                         </button>
@@ -920,13 +1183,30 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                               })
                             }
                             title={isAr ? 'إعادة التوليد' : 'Retry generation'}
-                            className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
+                            className="p-1 rounded hover:bg-white/10 text-[#96969e] hover:text-[#f4f1f5] cursor-pointer"
                           >
                             <RotateCcw className="w-3 h-3 stroke-[2]" />
                           </button>
                         )}
                       </div>
                     </div>
+
+                    {/* Attached files preview in message */}
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {msg.attachments.map((att, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#252529] border border-[#36363b] text-[10px] text-[#f4f1f5]"
+                          >
+                            <FileText className="w-3 h-3 text-[#96969e]" />
+                            <span className="max-w-[120px] truncate">{att.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Content */}
                     {msg.role === 'assistant' ? (
                       <div className="space-y-3">
                         <SmartResponseRenderer
@@ -935,12 +1215,31 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                           isAr={isAr}
                           onNotify={onNotify}
                         />
+
+                        {/* Error box with explicit retry if failed */}
+                        {msg.status === 'FAILED' && (
+                          <div className="p-2.5 rounded-lg border border-rose-500/30 bg-rose-950/20 text-rose-300 text-xs flex items-center justify-between gap-2 mt-2">
+                            <div className="flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                              <span>{msg.errorCode || (isAr ? 'حدث خطأ' : 'Error')}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRetryMessage(msg)}
+                              className="px-2 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-medium flex items-center gap-1 transition-all"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>{isAr ? 'إعادة المحاولة' : 'Retry'}</span>
+                            </button>
+                          </div>
+                        )}
+
                         {/* 4 Interactive Clickable Quick Suggestions */}
                         {(msg.suggestions ||
                           msg.content.includes('أبشر! يسعدني بناء تطبيقك بالكامل') ||
                           msg.content.includes('أي نوع من التطبيقات تود أن أصمم لك اليوم')) && (
                           <div className="pt-2 flex flex-col gap-2 border-t border-white/5">
-                            <p className="text-[12px] font-semibold text-slate-300">
+                            <p className="text-[12px] font-semibold text-[#f4f1f5]">
                               {isAr ? 'اختر أحد المقترحات الجاهزة للبدء فوراً:' : 'Select a suggested application to start immediately:'}
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -985,13 +1284,13 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                                       setTimeout(() => chatTextareaRef.current?.focus(), 50);
                                     }
                                   }}
-                                  className="text-start p-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-blue-600/20 hover:border-blue-500/40 transition-all group cursor-pointer"
+                                  className="text-start p-2.5 rounded-xl border border-[#36363b] bg-[#1e1e21] hover:bg-[#252529] hover:border-[#246290] transition-all group cursor-pointer"
                                 >
-                                  <div className="text-xs font-bold text-white group-hover:text-blue-300 flex items-center justify-between">
+                                  <div className="text-xs font-bold text-[#f4f1f5] group-hover:text-[#38bdf8] flex items-center justify-between">
                                     <span>{sug.title}</span>
-                                    <span className="text-[11px] text-blue-400 group-hover:translate-x-[-2px] transition-transform">←</span>
+                                    <span className="text-[11px] text-[#246290] group-hover:translate-x-[-2px] transition-transform">←</span>
                                   </div>
-                                  <div className="text-[11px] text-zinc-400 mt-0.5">{sug.desc}</div>
+                                  <div className="text-[11px] text-[#969498] mt-0.5">{sug.desc}</div>
                                 </button>
                               ))}
                             </div>
@@ -999,28 +1298,26 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                         )}
                       </div>
                     ) : (
-                      <div className="whitespace-pre-wrap leading-relaxed select-text">
+                      <div className="whitespace-pre-wrap leading-relaxed select-text text-[#f4f1f5]">
                         {msg.content}
                       </div>
                     )}
                   </div>
                 ))}
 
-              {/* Minimal, Elegant Generating Status Pill */}
+              {/* Minimal Generating Status Pill */}
               {isGenerating && (
-                <div className="glass-card p-3 flex items-center gap-2.5 text-xs text-blue-300 shadow-sm animate-pulse">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
+                <div className="p-2.5 rounded-xl bg-[#1e1e21] border border-[#36363b] flex items-center gap-2.5 text-xs text-[#38bdf8] shadow-sm animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#38bdf8] shrink-0" />
                   <span className="flex-1 font-medium">
-                    {promptMode === 'chat'
-                      ? (isAr ? 'Engineer يكتب الرد...' : 'Engineer is responding...')
-                      : (isAr ? 'جاري بناء التعديلات وتحديث المعاينة...' : 'Generating code & updating preview...')}
+                    {isAr ? 'Engineer يعمل على طلبك وتحديث المعاينة...' : 'Engineer is executing your request & updating preview...'}
                   </span>
                   <button
                     type="button"
                     onClick={onStopGeneration}
-                    className="btn btn-danger btn-sm text-[11px]"
+                    className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold flex items-center gap-1 transition-all"
                   >
-                    <StopCircle className="w-3 h-3 stroke-[2]" />
+                    <Square className="w-3 h-3 fill-current" />
                     <span>{isAr ? 'إيقاف' : 'Stop'}</span>
                   </button>
                 </div>
@@ -1029,10 +1326,45 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Unified Floating Prompt Composer */}
-            <form onSubmit={handleSendChatMessage} className="p-3 bg-gradient-to-t from-[#090D18] via-[#090D18]/90 to-transparent border-t border-white/5 shrink-0 z-10">
-              <div className="glass-card p-3 transition-all space-y-2 focus-within:border-indigo-400/60 focus-within:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25),0_0_24px_-4px_rgba(116,107,255,0.4)]">
-                {/* Auto-expanding Textarea on Top (Clear, Spacious, and Responsive) */}
+            {/* Hidden File Input for Attachments */}
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.doc,.docx,.txt,.md,.json,.js,.ts,.tsx,.jsx,.html,.css,.py,.csv"
+              onChange={handleAttachmentFilesSelected}
+              className="hidden"
+            />
+
+            {/* Redesigned Composer: exactly 4 controls (Send/Stop, Attachments, Model Switcher, Microphone) */}
+            <form
+              onSubmit={handleSendChatMessage}
+              className="p-3 bg-[#151517] border-t border-[#252529] shrink-0 z-10"
+            >
+              <div className="rounded-xl p-2.5 bg-[#1e1e21] border border-[#36363b] focus-within:border-[#246290] focus-within:ring-1 focus-within:ring-[#1d4066] transition-all space-y-2">
+                {/* Pending attachments chips */}
+                {pendingAttachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pb-2 border-b border-[#2c2c30]">
+                    {pendingAttachments.map((att) => (
+                      <div
+                        key={att.id || att.name}
+                        className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#252529] border border-[#36363b] text-[11px] text-[#f4f1f5]"
+                      >
+                        <FileText className="w-3 h-3 text-[#96969e]" />
+                        <span className="max-w-[120px] truncate">{att.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAttachment(att.id || att.name)}
+                          className="text-[#96969e] hover:text-red-400 p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Auto-expanding Textarea */}
                 <textarea
                   ref={chatTextareaRef}
                   value={chatInput}
@@ -1047,74 +1379,136 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   placeholder={
                     editingMsgId
                       ? (isAr ? 'عدّل رسالتك ثم اضغط إرسال...' : 'Edit your message and press Send...')
-                      : promptMode === 'chat'
-                      ? (isAr ? 'اسأل سؤالاً تقنياً أو اطلب شرحاً...' : 'Ask a technical question or discuss...')
-                      : promptMode === 'build'
-                      ? (isAr ? 'صف ما تريد بناءه أو تعديله في المشروع...' : 'Describe what to build or modify in the project...')
-                      : (isAr ? 'اسأل سؤالاً أو اطلب بناء وتعديل المشروع...' : 'Ask a question or request to build/modify...')
+                      : (isAr ? 'اكتب رسالتك أو اطلب تعديلاً في التطبيق...' : 'Type a message or describe a change...')
                   }
-                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-xs leading-relaxed resize-none focus:outline-none min-h-[50px] max-h-[180px] overflow-y-auto"
+                  className="w-full bg-transparent text-[#f4f1f5] placeholder-[#9898a0] text-xs leading-relaxed resize-none focus:outline-none min-h-[44px] max-h-[160px] overflow-y-auto"
                 />
 
-                {/* Bottom Action Row: Mode Pill Selector (Auto/Chat/Build) beside newly styled Send CTA */}
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5">
-                  {/* Segmented Pill Mode Selector: Auto / Chat / Build moved to bottom toolbar */}
-                  <div className="segmented-pill-container shrink-0">
+                {/* Bottom Action Row: Exactly 4 Controls */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#2c2c30]">
+                  {/* Left Controls: Attachments + Model Switcher + Microphone */}
+                  <div className="flex items-center gap-1.5 relative">
+                    {/* Control 1: Attachments */}
                     <button
                       type="button"
-                      onClick={() => setPromptMode('auto')}
-                      title={isAr ? 'توجيه ذكي تلقائي' : 'Smart auto-routing'}
-                      className={`segmented-pill-btn ${
-                        promptMode === 'auto' ? 'segmented-pill-btn-active' : ''
-                      }`}
+                      onClick={() => attachmentInputRef.current?.click()}
+                      disabled={isUploadingAttachments}
+                      title={isAr ? 'إرفاق ملف أو صورة' : 'Attach file or image'}
+                      className="p-1.5 rounded-lg text-[#96969e] hover:text-[#f4f1f5] hover:bg-[#252529] transition-all disabled:opacity-50"
                     >
-                      {isAr ? 'تلقائي' : 'Auto'}
+                      {isUploadingAttachments ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-[#38bdf8]" />
+                      ) : (
+                        <Paperclip className="w-4 h-4 stroke-[2]" />
+                      )}
                     </button>
+
+                    {/* Control 2: Model Switcher */}
+                    <div ref={modelPickerRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowModelPicker(!showModelPicker)}
+                        title={isAr ? 'اختيار نموذج الذكاء الاصطناعي' : 'Select AI Model'}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#252529] hover:bg-[#2c2c30] text-[11px] text-[#f4f1f5] border border-[#3a3a3e] transition-all"
+                      >
+                        <Bot className="w-3.5 h-3.5 text-[#38bdf8]" />
+                        <span className="max-w-[110px] truncate font-medium">
+                          {availableModels.find((m) => m.id === selectedModel)?.name || selectedModel}
+                        </span>
+                        <ChevronDown className="w-3 h-3 text-[#96969e]" />
+                      </button>
+
+                      {showModelPicker && (
+                        <div
+                          className="absolute bottom-full mb-1.5 start-0 w-64 rounded-xl bg-[#1e1e21] border border-[#36363b] shadow-2xl p-1.5 z-50 space-y-1 text-xs"
+                          dir={isAr ? 'rtl' : 'ltr'}
+                        >
+                          <div className="px-2 py-1 text-[10px] font-semibold text-[#969498] uppercase tracking-wider border-b border-[#2c2c30]">
+                            {isAr ? 'النماذج المتاحة' : 'Available Models'}
+                          </div>
+                          <div className="max-h-56 overflow-y-auto space-y-0.5">
+                            {availableModels.length === 0 ? (
+                              <div className="px-2 py-3 text-center text-[#969498] text-[11px]">
+                                {isAr ? 'جاري تحميل النماذج...' : 'Loading models...'}
+                              </div>
+                            ) : (
+                              availableModels.map((m) => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  disabled={!m.available}
+                                  onClick={() => {
+                                    setSelectedModel(m.id);
+                                    setShowModelPicker(false);
+                                    onNotify('info', isAr ? `تم اختيار النموذج: ${m.name}` : `Selected model: ${m.name}`);
+                                  }}
+                                  className={`w-full text-start px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition-all ${
+                                    selectedModel === m.id
+                                      ? 'bg-[#183857] text-[#38bdf8] font-semibold'
+                                      : m.available
+                                      ? 'text-[#f4f1f5] hover:bg-[#252529]'
+                                      : 'text-[#706f71] cursor-not-allowed opacity-50'
+                                  }`}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="truncate">{m.name}</span>
+                                    <span className="text-[10px] text-[#969498]">{m.provider}</span>
+                                  </div>
+                                  {!m.available && (
+                                    <span className="text-[9px] bg-red-950/40 text-red-400 px-1 py-0.5 rounded border border-red-500/20">
+                                      {isAr ? 'غير مثبت' : 'Not installed'}
+                                    </span>
+                                  )}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Control 3: Microphone */}
                     <button
                       type="button"
-                      onClick={() => setPromptMode('chat')}
-                      title={isAr ? 'محادثة وشرح فقط' : 'Chat & Q&A only'}
-                      className={`segmented-pill-btn ${
-                        promptMode === 'chat' ? 'segmented-pill-btn-active' : ''
+                      onClick={handleToggleVoiceInput}
+                      title={
+                        isRecordingVoice
+                          ? (isAr ? 'إيقاف التسجيل الصوتي' : 'Stop voice recording')
+                          : (isAr ? 'تسجيل صوتي' : 'Voice input')
+                      }
+                      className={`p-1.5 rounded-lg transition-all ${
+                        isRecordingVoice
+                          ? 'bg-red-500/20 text-red-400 animate-pulse border border-red-500/40'
+                          : 'text-[#96969e] hover:text-[#f4f1f5] hover:bg-[#252529]'
                       }`}
                     >
-                      {isAr ? 'محادثة' : 'Chat'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPromptMode('build')}
-                      title={isAr ? 'بناء وتعديل الكود' : 'Build & edit code'}
-                      className={`segmented-pill-btn ${
-                        promptMode === 'build' ? 'segmented-pill-btn-active' : ''
-                      }`}
-                    >
-                      {isAr ? 'بناء' : 'Build'}
+                      {isRecordingVoice ? (
+                        <MicOff className="w-4 h-4 stroke-[2]" />
+                      ) : (
+                        <Mic className="w-4 h-4 stroke-[2]" />
+                      )}
                     </button>
                   </div>
 
-                  {/* Send or Stop Action Button (Modern High-Contrast Luminous Aesthetic) */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  {/* Control 4: Send (becomes Stop during generation) */}
+                  <div className="flex items-center shrink-0">
                     {isGenerating ? (
                       <button
                         type="button"
                         onClick={onStopGeneration}
-                        className="btn btn-danger btn-sm"
                         title={isAr ? 'إيقاف التوليد' : 'Stop Generation'}
+                        className="p-2 rounded-lg bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-all cursor-pointer shadow-sm"
                       >
-                        <StopCircle className="w-3.5 h-3.5 stroke-[2.2]" />
-                        <span>{isAr ? 'إيقاف' : 'Stop'}</span>
+                        <Square className="w-3.5 h-3.5 fill-current" />
                       </button>
                     ) : (
                       <button
                         type="submit"
-                        disabled={!chatInput.trim()}
-                        className="btn btn-primary btn-sm group"
+                        disabled={!chatInput.trim() && pendingAttachments.length === 0}
                         title={isAr ? 'إرسال الطلب (Enter)' : 'Send Request (Enter)'}
+                        className="p-2 rounded-lg bg-[#246290] hover:bg-[#2d78af] disabled:opacity-40 disabled:hover:bg-[#246290] text-white flex items-center justify-center transition-all cursor-pointer disabled:cursor-not-allowed shadow-sm"
                       >
-                        <span>{isAr ? 'إرسال' : 'Send'}</span>
-                        <div className="w-3.5 h-3.5 rounded bg-white/20 flex items-center justify-center transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 rtl:group-hover:-translate-x-0.5">
-                          <Send className="w-2.5 h-2.5 text-white stroke-[2.4]" />
-                        </div>
+                        <Send className="w-3.5 h-3.5 stroke-[2.4]" />
                       </button>
                     )}
                   </div>

@@ -8,6 +8,7 @@
 import { Project, ProjectFile, TestCaseResult } from '../types/platform';
 import { formatUserFacingResponse } from './responseFormatter';
 import { isGenericAppRequest } from './intentRouter';
+import { checkInlineScriptSyntax, inlineAssetsIntoHtml } from './previewCompiler';
 
 export type AppIntentType = 'chat' | 'new_app' | 'modify_app' | 'fix_bug' | 'publish';
 
@@ -375,6 +376,11 @@ export function generateAppFiles(
     files = buildFreestyleApplicationFiles(spec, plan);
   } else {
     files = buildNotesApplicationFiles(spec, plan);
+  }
+
+  // A new application that explicitly asks for a chart must ship a working chart.
+  if (spec.features.chart && (files['index.html'] || '').includes('account-balance')) {
+    files = applyChartFeature({ ...files });
   }
 
   // Pre-verify code syntax before committing files
@@ -2918,190 +2924,9 @@ function patchExistingFilesForModification(
   const wantsButtonColor = Boolean(spec.features.buttonColor || /(?:لون.*أزرق|زر.*أزرق|زر.*الشراء.*أزرق|أزرق|blue)/i.test(promptText));
 
   // 1. If user requested dynamic chart:
-  if (wantsChart && !result['index.html'].includes('risk-chart-canvas')) {
-    const chartSectionHtml = `
-    <!-- Dynamic Risk Relationship Chart (Injected by Engineer Modification) -->
-    <section id="risk-chart-panel" class="panel chart-panel">
-      <div class="panel-header-row">
-        <h2 class="panel-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="20" x2="18" y2="10"></line>
-            <line x1="12" y1="20" x2="12" y2="4"></line>
-            <line x1="6" y1="20" x2="6" y2="14"></line>
-          </svg>
-          <span>الرسم البياني: العلاقة بين رصيد الحساب وقيمة المخاطرة والعائد</span>
-        </h2>
-        <span id="chart-live-legend" class="badge-safe" style="font-size:11px;padding:3px 8px;">مخطط ديناميكي حي</span>
-      </div>
-      <div class="chart-container" style="position:relative;width:100%;height:220px;margin-top:12px;">
-        <canvas id="risk-chart-canvas" width="600" height="220" style="width:100%;height:100%;border-radius:8px;background:rgba(15,23,42,0.6);"></canvas>
-      </div>
-    </section>
-    `;
-
-    if (result['index.html'].includes('<div class="workspace-grid">')) {
-      result['index.html'] = result['index.html'].replace('<div class="workspace-grid">', `${chartSectionHtml}\n    <div class="workspace-grid">`);
-    } else if (result['index.html'].includes('<!-- Main Workspace')) {
-      result['index.html'] = result['index.html'].replace('<!-- Main Workspace', `${chartSectionHtml}\n    <!-- Main Workspace`);
-    } else {
-      result['index.html'] = result['index.html'].replace('</body>', `${chartSectionHtml}\n</body>`);
-    }
-
-    if (result['styles.css'] && !result['styles.css'].includes('#risk-chart-canvas')) {
-      const chartCss = `
-/* Dynamic Risk Chart Panel (Injected by Engineer Modification) */
-.chart-panel {
-  background: var(--bg-card, rgba(18, 24, 38, 0.7));
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
-  border-radius: 16px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
-}
-.chart-container {
-  width: 100%;
-  height: 220px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 12px;
-}
-#risk-chart-canvas {
-  width: 100%;
-  height: 100%;
-  max-height: 220px;
-  display: block;
-}
-`;
-      result['styles.css'] += `\n${chartCss}\n`;
-    }
-
-    if (result['app.js'] && !result['app.js'].includes('initRiskChartEngine')) {
-      const chartJs = `
-// Dynamic Risk Relationship Chart Engine (Injected by Engineer Modification)
-(function initRiskChartEngine() {
-  function drawRiskChart() {
-    const canvas = document.getElementById('risk-chart-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const balanceInput = document.getElementById('account-balance');
-    const riskInput = document.getElementById('risk-input');
-    const entryInput = document.getElementById('entry-price');
-    const slInput = document.getElementById('stop-loss-price');
-    const tpInput = document.getElementById('take-profit-price');
-
-    const balance = parseFloat(balanceInput ? balanceInput.value : '10000') || 10000;
-    const riskPct = parseFloat(riskInput ? riskInput.value : '2') || 2;
-    const riskAmount = (balance * riskPct) / 100;
-
-    const entry = parseFloat(entryInput ? entryInput.value : '100') || 100;
-    const sl = parseFloat(slInput ? slInput.value : '98') || 98;
-    const tp = parseFloat(tpInput ? tpInput.value : '105') || 105;
-
-    const slDiff = Math.abs(entry - sl);
-    const tpDiff = Math.abs(tp - entry);
-    const posSize = slDiff > 0 ? riskAmount / slDiff : 0;
-    const potentialProfit = posSize * tpDiff;
-
-    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { width: 600, height: 220 };
-    const width = rect.width > 0 ? rect.width : 600;
-    const height = rect.height > 0 ? rect.height : 220;
-
-    if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-    }
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, width, height);
-
-    // Background styling
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-    bgGrad.addColorStop(0, 'rgba(15, 23, 42, 0.85)');
-    bgGrad.addColorStop(1, 'rgba(11, 15, 25, 0.95)');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, width, height);
-
-    // Grid lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
-    ctx.lineWidth = 1;
-    for (let y = 30; y < height - 30; y += 35) {
-      ctx.beginPath();
-      ctx.moveTo(30, y);
-      ctx.lineTo(width - 30, y);
-      ctx.stroke();
-    }
-
-    // Comparison bars: [Account Balance, Potential Profit, Risk Amount]
-    const items = [
-      { label: 'رصيد الحساب ($)', val: balance, color: '#38BDF8' },
-      { label: 'العائد المتوقع ($)', val: potentialProfit, color: '#34D399' },
-      { label: 'مبلغ المخاطرة ($)', val: riskAmount, color: '#F87171' }
-    ];
-
-    const barW = Math.min(80, (width - 120) / items.length);
-    const startX = 60;
-    const gap = items.length > 1 ? (width - 120 - barW * items.length) / (items.length - 1) : 20;
-    const chartBottom = height - 40;
-    const chartHeight = height - 80;
-
-    items.forEach((item, idx) => {
-      const x = startX + idx * (barW + gap);
-      const ratio = balance > 0 ? Math.min(1, Math.max(0.04, item.val / balance)) : 0.05;
-      const barH = ratio * chartHeight;
-      const y = chartBottom - barH;
-
-      const grad = ctx.createLinearGradient(x, y, x, chartBottom);
-      grad.addColorStop(0, item.color);
-      grad.addColorStop(1, item.color + '44');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      if (typeof ctx.roundRect === 'function') {
-        ctx.roundRect(x, y, barW, barH, [6, 6, 0, 0]);
-      } else {
-        ctx.rect(x, y, barW, barH);
-      }
-      ctx.fill();
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'center';
-      const formattedVal = '$' + (item.val >= 1000 ? (item.val / 1000).toFixed(1) + 'k' : item.val.toFixed(0));
-      ctx.fillText(formattedVal, x + barW / 2, y - 6);
-
-      ctx.fillStyle = '#94A3B8';
-      ctx.font = '11px sans-serif';
-      ctx.fillText(item.label, x + barW / 2, chartBottom + 18);
-    });
-
-    ctx.restore();
-  }
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('DOMContentLoaded', () => drawRiskChart());
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      setTimeout(drawRiskChart, 50);
-    }
-    ['account-balance', 'risk-input', 'risk-slider', 'entry-price', 'stop-loss-price', 'take-profit-price'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.addEventListener('input', drawRiskChart);
-        el.addEventListener('change', drawRiskChart);
-      }
-    });
-    document.querySelectorAll('.preset-btn, .dir-btn, #reset-btn').forEach(btn => {
-      btn.addEventListener('click', () => setTimeout(drawRiskChart, 50));
-    });
-    window.drawRiskRelationshipChart = drawRiskChart;
-  }
-})();
-`;
-      result['app.js'] += `\n${chartJs}\n`;
-    }
+  // The chart engine is data-bound to the trading inputs; other app types get an honest failure in verification.
+  if (wantsChart && result['index.html'].includes('account-balance')) {
+    applyChartFeature(result);
   }
 
   // 2. If user requested button color change (e.g. #dir-long-btn to Blue):
@@ -3168,6 +2993,281 @@ function patchExistingFilesForModification(
   return result;
 }
 
+// -----------------------------------------------------------------------------
+// Dynamic Chart Feature (shared by new builds AND modifications)
+// -----------------------------------------------------------------------------
+
+const CHART_ENGINE_MARKER = '// Dynamic Risk Relationship Chart Engine (Injected by Engineer Modification)';
+const CHART_ENGINE_LEGACY_END = 'window.drawRiskRelationshipChart = drawRiskChart;\n  }\n})();';
+
+const CHART_SECTION_HTML = `
+    <!-- Dynamic Risk Relationship Chart (Injected by Engineer Modification) -->
+    <section id="risk-chart-panel" class="panel chart-panel">
+      <div class="panel-header-row">
+        <h2 class="panel-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          <span>الرسم البياني: العلاقة بين رصيد الحساب وقيمة المخاطرة والعائد</span>
+        </h2>
+        <span id="chart-live-legend" class="badge-safe" style="font-size:11px;padding:3px 8px;">مخطط ديناميكي حي</span>
+      </div>
+      <div class="chart-container" style="position:relative;width:100%;height:220px;margin-top:12px;">
+        <canvas id="risk-chart-canvas" role="img" aria-label="رسم بياني يقارن رصيد الحساب والعائد المتوقع ومبلغ المخاطرة" style="width:100%;height:100%;border-radius:8px;background:rgba(15,23,42,0.6);"></canvas>
+      </div>
+    </section>
+    `;
+
+const CHART_SECTION_CSS = `
+/* Dynamic Risk Chart Panel (Injected by Engineer Modification) */
+.chart-panel {
+  background: var(--bg-card, rgba(18, 24, 38, 0.7));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.chart-container {
+  width: 100%;
+  height: 220px;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px;
+}
+#risk-chart-canvas {
+  width: 100%;
+  height: 100%;
+  max-height: 220px;
+  display: block;
+}
+`;
+
+// NOTE: plain ES5-compatible browser JS (no template interpolation, no TypeScript).
+const CHART_ENGINE_JS = `
+${CHART_ENGINE_MARKER}
+(function initRiskChartEngine() {
+  var EMPTY_MSG = 'أدخل رصيداً ونسبة مخاطرة وأسعاراً صحيحة لعرض الرسم البياني';
+  var INPUT_IDS = ['account-balance', 'risk-input', 'risk-slider', 'entry-price', 'stop-loss-price', 'take-profit-price'];
+  var rafId = 0;
+
+  function readNumber(id) {
+    var el = document.getElementById(id);
+    if (!el) return null;
+    var v = parseFloat(String(el.value).replace(/,/g, ''));
+    return isFinite(v) ? v : NaN;
+  }
+
+  function readInputs() {
+    var balance = readNumber('account-balance');
+    var riskPct = readNumber('risk-input');
+    if (riskPct === null) riskPct = readNumber('risk-slider');
+    var entry = readNumber('entry-price');
+    var sl = readNumber('stop-loss-price');
+    var tp = readNumber('take-profit-price');
+    // Defaults apply ONLY when a field does not exist; invalid user input is never masked.
+    if (balance === null) balance = 10000;
+    if (riskPct === null) riskPct = 2;
+    if (entry === null) entry = 100;
+    if (sl === null) sl = 98;
+    if (tp === null) tp = 105;
+    return { balance: balance, riskPct: riskPct, entry: entry, sl: sl, tp: tp };
+  }
+
+  function setupCanvas(canvas) {
+    var dpr = window.devicePixelRatio || 1;
+    var rect = canvas.getBoundingClientRect();
+    var parentW = canvas.parentElement ? canvas.parentElement.clientWidth : 0;
+    var width = rect.width > 0 ? rect.width : (parentW || 600);
+    var height = rect.height > 0 ? rect.height : 220;
+    var w = Math.max(1, Math.round(width * dpr));
+    var h = Math.max(1, Math.round(height * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, width: width, height: height };
+  }
+
+  function drawBackground(ctx, width, height) {
+    var bg = ctx.createLinearGradient(0, 0, 0, height);
+    bg.addColorStop(0, 'rgba(15, 23, 42, 0.92)');
+    bg.addColorStop(1, 'rgba(11, 15, 25, 0.98)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+    ctx.lineWidth = 1;
+    for (var y = 30; y < height - 30; y += 35) {
+      ctx.beginPath();
+      ctx.moveTo(30, y);
+      ctx.lineTo(width - 30, y);
+      ctx.stroke();
+    }
+  }
+
+  function drawEmptyState(ctx, width, height) {
+    drawBackground(ctx, width, height);
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(EMPTY_MSG, width / 2, height / 2);
+  }
+
+  function drawRiskChart() {
+    rafId = 0;
+    var canvas = document.getElementById('risk-chart-canvas');
+    if (!canvas) return false;
+    var s = setupCanvas(canvas);
+    if (!s) return false;
+    var ctx = s.ctx, width = s.width, height = s.height;
+    ctx.clearRect(0, 0, width, height);
+
+    var d = readInputs();
+    var legend = document.getElementById('chart-live-legend');
+    var valid = d.balance > 0 && d.riskPct > 0 && d.riskPct <= 100 && d.entry > 0 && d.sl > 0 && d.tp > 0 && d.entry !== d.sl;
+    if (!valid) {
+      drawEmptyState(ctx, width, height);
+      canvas.setAttribute('data-chart-state', 'empty');
+      if (legend) legend.textContent = 'بانتظار بيانات صحيحة';
+      return false;
+    }
+
+    var riskAmount = (d.balance * d.riskPct) / 100;
+    var slDiff = Math.abs(d.entry - d.sl);
+    var tpDiff = Math.abs(d.tp - d.entry);
+    var posSize = slDiff > 0 ? riskAmount / slDiff : 0;
+    var potentialProfit = posSize * tpDiff;
+
+    drawBackground(ctx, width, height);
+
+    var items = [
+      { label: 'رصيد الحساب ($)', val: d.balance, color: '#38BDF8' },
+      { label: 'العائد المتوقع ($)', val: potentialProfit, color: '#34D399' },
+      { label: 'مبلغ المخاطرة ($)', val: riskAmount, color: '#F87171' }
+    ];
+    var maxVal = Math.max(d.balance, potentialProfit, riskAmount, 1);
+    var barW = Math.max(24, Math.min(80, (width - 120) / items.length));
+    var gap = items.length > 1 ? Math.max(8, (width - 120 - barW * items.length) / (items.length - 1)) : 20;
+    var chartBottom = height - 40;
+    var chartHeight = Math.max(20, height - 80);
+
+    items.forEach(function (item, idx) {
+      var x = 60 + idx * (barW + gap);
+      var ratio = Math.min(1, Math.max(0.04, item.val / maxVal));
+      var barH = ratio * chartHeight;
+      var y = chartBottom - barH;
+      var grad = ctx.createLinearGradient(x, y, x, chartBottom);
+      grad.addColorStop(0, item.color);
+      grad.addColorStop(1, item.color + '55');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y, barW, barH, [6, 6, 0, 0]);
+      } else {
+        ctx.rect(x, y, barW, barH);
+      }
+      ctx.fill();
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      var formatted = '$' + (item.val >= 1000 ? (item.val / 1000).toFixed(1) + 'k' : item.val.toFixed(0));
+      ctx.fillText(formatted, x + barW / 2, y - 6);
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(item.label, x + barW / 2, chartBottom + 18);
+    });
+
+    canvas.setAttribute('data-chart-state', 'rendered');
+    canvas.setAttribute('data-chart-values', [d.balance, potentialProfit, riskAmount].map(function (v) { return v.toFixed(2); }).join(','));
+    if (legend) legend.textContent = 'مخطط ديناميكي حي';
+    return true;
+  }
+
+  function scheduleDraw() {
+    if (rafId) return;
+    rafId = (window.requestAnimationFrame || function (cb) { return setTimeout(cb, 16); })(drawRiskChart);
+  }
+
+  function bindChart() {
+    INPUT_IDS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', scheduleDraw);
+        el.addEventListener('change', scheduleDraw);
+      }
+    });
+    document.querySelectorAll('.preset-btn, .dir-btn, #reset-btn, #calculate-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { setTimeout(drawRiskChart, 50); });
+    });
+    var canvas = document.getElementById('risk-chart-canvas');
+    if (canvas && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(scheduleDraw).observe(canvas.parentElement || canvas);
+    }
+    window.addEventListener('resize', scheduleDraw);
+    drawRiskChart();
+  }
+
+  window.drawRiskRelationshipChart = drawRiskChart;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindChart);
+  } else {
+    bindChart();
+  }
+})();
+`;
+
+/**
+ * Injects (or upgrades) the dynamic chart section, styles and drawing engine into a
+ * file map. Idempotent. Uses function replacers so user code is never re-interpreted.
+ */
+export function applyChartFeature(result: Record<string, string>): Record<string, string> {
+  if (!result['index.html']) return result;
+
+  if (!result['index.html'].includes('risk-chart-canvas')) {
+    const html = result['index.html'];
+    if (html.includes('<div class="workspace-grid">')) {
+      result['index.html'] = html.replace('<div class="workspace-grid">', () => `${CHART_SECTION_HTML}\n    <div class="workspace-grid">`);
+    } else if (html.includes('<!-- Main Workspace')) {
+      result['index.html'] = html.replace('<!-- Main Workspace', () => `${CHART_SECTION_HTML}\n    <!-- Main Workspace`);
+    } else {
+      const idx = html.toLowerCase().lastIndexOf('</body>');
+      result['index.html'] = idx === -1 ? `${html}\n${CHART_SECTION_HTML}` : `${html.slice(0, idx)}${CHART_SECTION_HTML}\n${html.slice(idx)}`;
+    }
+  } else {
+    // Older injected canvases had a fixed width/height attribute; the engine now sizes it from CSS.
+    result['index.html'] = result['index.html'].replace('<canvas id="risk-chart-canvas" width="600" height="220"', () => '<canvas id="risk-chart-canvas"');
+  }
+
+  const cssName = result['styles.css'] !== undefined ? 'styles.css' : result['style.css'] !== undefined ? 'style.css' : 'styles.css';
+  if (!(result[cssName] || '').includes('#risk-chart-canvas')) {
+    result[cssName] = `${result[cssName] || ''}\n${CHART_SECTION_CSS}\n`;
+  }
+
+  const js = result['app.js'] || '';
+  if (!js.includes('initRiskChartEngine')) {
+    result['app.js'] = `${js}\n${CHART_ENGINE_JS}\n`;
+  } else if (!js.includes('data-chart-state')) {
+    // Upgrade legacy engine (no resize observer / empty state) in place.
+    const start = js.indexOf(CHART_ENGINE_MARKER);
+    const endIdx = js.indexOf(CHART_ENGINE_LEGACY_END, start);
+    if (start !== -1 && endIdx !== -1) {
+      const end = endIdx + CHART_ENGINE_LEGACY_END.length;
+      result['app.js'] = `${js.slice(0, start)}${CHART_ENGINE_JS.trim()}${js.slice(end)}`;
+    }
+  }
+  return result;
+}
+
 function patchExistingFilesForBugFix(
   existingFiles: ProjectFile[],
   _spec: ExtractedAppSpec
@@ -3185,8 +3285,10 @@ function patchExistingFilesForBugFix(
       const saveBtn = document.getElementById('save-note-btn');
       if (saveBtn && !saveBtn.onclick) {
         saveBtn.addEventListener('click', function() {
-          const title = (document.getElementById('note-title') as HTMLInputElement | null)?.value || '';
-          const content = (document.getElementById('note-content') as HTMLTextAreaElement | null)?.value || '';
+          var titleEl = document.getElementById('note-title');
+          var contentEl = document.getElementById('note-content');
+          const title = (titleEl && titleEl.value) || '';
+          const content = (contentEl && contentEl.value) || '';
           if (title || content) {
             console.log('[Engineer] Note saved successfully via repaired handler');
           }
@@ -3206,7 +3308,8 @@ function patchExistingFilesForBugFix(
 
 export function verifyGeneratedApp(
   files: Record<string, string>,
-  _plan: InternalAppPlan
+  _plan: InternalAppPlan,
+  options: { expectChart?: boolean } = {}
 ): { testResults: TestCaseResult[]; allPassed: boolean } {
   const testResults: TestCaseResult[] = [];
   const html = files['index.html'] || '';
@@ -3339,20 +3442,49 @@ export function verifyGeneratedApp(
     ],
   });
 
-  // 5. Zero Unhandled Console Errors Check
-  const hasSafeSyntax = !js.includes('undefined()') && !js.includes('null.');
+  // 5. Real Runtime Readiness: compile the exact preview document the user will see and
+  //    PARSE every inline script (a single SyntaxError blanks the whole app), then check
+  //    that a requested chart is actually wired (canvas + data-bound drawing engine).
+  const cssSources = Object.entries(files).filter(([n]) => n.endsWith('.css')).map(([, c]) => c);
+  const jsSources = Object.entries(files).filter(([n]) => n.endsWith('.js') && !n.endsWith('.config.js')).map(([, c]) => c);
+  const compiledPreview = inlineAssetsIntoHtml({
+    html,
+    css: cssSources,
+    js: jsSources,
+    localAssetNames: Object.keys(files).filter((n) => n.endsWith('.css') || n.endsWith('.js')),
+    includeHealthProbe: true,
+  });
+  const syntax = checkInlineScriptSyntax(compiledPreview);
+  const chartRequested = Boolean(options.expectChart);
+  const hasCanvas = html.includes('risk-chart-canvas') || /<canvas\b/i.test(html);
+  const chartEngineReady = js.includes('getContext') && (js.includes('data-chart-state') || js.includes('drawRiskChart'));
+  const chartPassed = !chartRequested || (hasCanvas && chartEngineReady);
+  const runtimePassed = syntax.ok && chartPassed;
 
   testResults.push({
     id: 'test-console-errors',
-    name: 'Zero Runtime Console Errors',
+    name: chartRequested ? 'Runtime Script Syntax & Chart Rendering Readiness' : 'Runtime Script Syntax (Compiled Preview)',
     category: 'regression',
     targetFile: 'app.js',
-    status: hasSafeSyntax ? 'passed' : 'failed',
+    status: runtimePassed ? 'passed' : 'failed',
     durationMs: 3,
-    assertionCount: 1,
-    evidenceLog: ['Console unhandled exceptions: 0 detected'],
+    assertionCount: chartRequested ? 3 : 1,
+    evidenceLog: [
+      `Inline scripts parsed: ${syntax.scripts} (${syntax.issues.length} syntax error(s))`,
+      ...syntax.issues.map((i) => `Script #${i.index}: ${i.message}`),
+      ...(chartRequested
+        ? [
+            `Chart canvas present: ${hasCanvas ? 'yes' : 'no'}`,
+            `Chart drawing engine bound to data: ${chartEngineReady ? 'yes' : 'no'}`,
+            'Visible-pixel verification runs in the live preview (ENGINEER_PREVIEW_HEALTH).',
+          ]
+        : []),
+    ],
     traceSteps: [
-      { timestamp: new Date().toISOString(), action: 'audit_console_stream', domTarget: 'window', status: 'ok', latencyMs: 1 },
+      { timestamp: new Date().toISOString(), action: 'parse_compiled_preview_scripts', domTarget: 'window', status: syntax.ok ? 'ok' : 'fail', latencyMs: 1 },
+      ...(chartRequested
+        ? [{ timestamp: new Date().toISOString(), action: 'verify_chart_wiring', domTarget: '#risk-chart-canvas', status: (chartPassed ? 'ok' : 'fail') as 'ok' | 'fail', latencyMs: 1 }]
+        : []),
     ],
   });
 

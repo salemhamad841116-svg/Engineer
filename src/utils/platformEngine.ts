@@ -14,6 +14,7 @@ import {
   DatabaseEngine,
   DeployTarget,
 } from '../types/platform';
+import { inlineAssetsIntoHtml, insertBeforeClosingTag } from './previewCompiler';
 
 export function inferLanguageFromFilename(name: string): ProjectFile['language'] {
   const lower = name.toLowerCase();
@@ -494,37 +495,18 @@ export function compileProjectToPreviewHtml(project: Project): string {
 
   // 1. If project contains an index.html file, compile and render the real application
   if (htmlFile && htmlFile.content.trim()) {
-    let doc = htmlFile.content;
-    const combinedCss = cssFiles.map((c) => c.content).join('\n');
-    const combinedJs = jsFiles.map((j) => j.content).join('\n');
-
-    if (!doc.includes('<!DOCTYPE html>') && !doc.includes('<html')) {
-      doc = `<!DOCTYPE html>\n<html lang="${project.language || 'ar'}" dir="${project.direction || 'rtl'}">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${project.name}</title>\n</head>\n<body>\n${doc}\n</body>\n</html>`;
-    }
-
-    if (!doc.includes('dir=')) {
-      doc = doc.replace('<html', `<html dir="${project.direction || 'rtl'}"`);
-    }
-
-    // Inline CSS into <head>
-    if (combinedCss && !doc.includes(combinedCss.slice(0, 30))) {
-      const styleBlock = `<style>\n${combinedCss}\n</style>`;
-      if (doc.includes('</head>')) {
-        doc = doc.replace('</head>', `${styleBlock}\n</head>`);
-      } else {
-        doc = `${styleBlock}\n${doc}`;
-      }
-    }
-
-    // Inline JS before </body>
-    if (combinedJs && !doc.includes(combinedJs.slice(0, 30))) {
-      const scriptBlock = `<script>\n${combinedJs}\n</script>`;
-      if (doc.includes('</body>')) {
-        doc = doc.replace('</body>', `${scriptBlock}\n</body>`);
-      } else {
-        doc = `${doc}\n${scriptBlock}`;
-      }
-    }
+    // SAFE inlining: never pass user code as a String.replace replacement string
+    // (`$'`, `$&`… would be expanded and corrupt the script). See previewCompiler.ts.
+    let doc = inlineAssetsIntoHtml({
+      html: htmlFile.content,
+      css: cssFiles.map((c) => c.content),
+      js: jsFiles.map((j) => j.content),
+      localAssetNames: [...cssFiles, ...jsFiles].map((f) => f.name),
+      lang: project.language || 'ar',
+      dir: project.direction || 'rtl',
+      title: project.name,
+      includeHealthProbe: true,
+    });
 
     const inspectorScript = `<script id="engineer-inspector-runtime">
 (function() {
@@ -584,11 +566,7 @@ export function compileProjectToPreviewHtml(project: Project): string {
 })();
 </script>`;
 
-    if (doc.includes('</body>')) {
-      doc = doc.replace('</body>', `${inspectorScript}\n</body>`);
-    } else {
-      doc = `${doc}\n${inspectorScript}`;
-    }
+    doc = insertBeforeClosingTag(doc, '</body>', inspectorScript);
 
     return doc;
   }
