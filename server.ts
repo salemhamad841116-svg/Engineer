@@ -115,6 +115,40 @@ function compileProjectFilesToPreviewHtml(project: Project): string {
   return html;
 }
 
+function createEphemeralProject(input: Partial<Project> & { id: string; name?: string; description?: string }): Project {
+  const seeded = createNewProjectFromSpec({
+    name: String(input.name || 'Untitled Workspace').trim() || 'Untitled Workspace',
+    description: String(input.description || 'Auto-created workspace project').trim(),
+    category: input.category || 'app',
+    appType: input.appType || 'Full-Stack Web App',
+    techStack: input.techStack || 'react-ts-vite',
+    template: input.template || 'blank',
+    language: input.language || 'ar',
+    direction: input.direction || 'rtl',
+    databaseEngine: input.databaseEngine || 'sqlite',
+    deployTarget: input.deployTarget || 'cloud-run-eu',
+  });
+  return {
+    ...seeded,
+    ...input,
+    id: input.id,
+    files: Array.isArray(input.files) ? input.files : seeded.files,
+    chatThreads: Array.isArray(input.chatThreads) ? input.chatThreads : seeded.chatThreads,
+    activeChatId: input.activeChatId || seeded.activeChatId,
+    activeFileId: input.activeFileId || seeded.activeFileId,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function findOrCreateProject(state: PersistedPlatformState, projectId: string, fallback: Partial<Project> = {}): { project: Project; created: boolean } {
+  const existing = state.projects.find((p) => p.id === projectId);
+  if (existing) return { project: existing, created: false };
+  const created = createEphemeralProject({ id: projectId, ...fallback });
+  state.projects.unshift(created);
+  saveState(state);
+  return { project: created, created: true };
+}
+
 interface PersistedPlatformState {
   projects: Project[];
   agents: AIAgentProfile[];
@@ -305,38 +339,43 @@ async function startServer() {
     res.json(state);
   });
 
+  app.get('/api/projects', (_req, res) => {
+    res.json({ projects: state.projects });
+  });
+
+  app.get('/api/projects/:id', (req, res) => {
+    const body = (req.body || {}) as Partial<Project>;
+    const { project, created } = findOrCreateProject(state, req.params.id, body);
+    if (created) logActivity('Auto-created missing project', project.name, 'Public Workspace');
+    res.json({ project, created });
+  });
+
   // 2. Create New Project
   app.post('/api/projects', (req, res) => {
     const body = req.body || {};
-    if (!body.name || !String(body.name).trim()) {
-      res.status(400).json({ error: 'Project name is required / اسم المشروع مطلوب' });
-      return;
-    }
-    const newProj = createNewProjectFromSpec({
-      name: String(body.name).trim(),
+    const explicitId = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `proj-${Date.now()}`;
+    const { project, created } = findOrCreateProject(state, explicitId, {
+      name: String(body.name || 'Untitled Workspace').trim(),
       description: String(body.description || 'Full-stack cloud application').trim(),
       category: body.category || 'app',
       appType: body.appType || 'Full-Stack Web App',
       techStack: body.techStack || 'react-ts-vite',
-      template: body.template || 'saas-starter',
+      template: body.template || 'blank',
       language: body.language || state.settings.language,
       direction: body.direction || (body.language === 'en' ? 'ltr' : 'rtl'),
-      databaseEngine: body.databaseEngine || 'postgresql',
+      databaseEngine: body.databaseEngine || 'sqlite',
       deployTarget: body.deployTarget || 'cloud-run-eu',
+      files: Array.isArray(body.files) ? body.files : undefined,
+      chatThreads: Array.isArray(body.chatThreads) ? body.chatThreads : undefined,
+      activeChatId: body.activeChatId,
+      activeFileId: body.activeFileId,
     });
-
-    state.projects.unshift(newProj);
-    logActivity('Created new project', newProj.name);
-    res.status(201).json({ project: newProj });
+    logActivity(created ? 'Created new project' : 'Upserted existing project', project.name);
+    res.status(created ? 201 : 200).json({ project, created });
   });
 
   // 3. Update / Sync Project
   app.put('/api/projects/:id', (req, res) => {
-    const idx = state.projects.findIndex((p) => p.id === req.params.id);
-    if (idx === -1) {
-      res.status(404).json({ error: 'Project not found' });
-      return;
-    }
     const ALLOWED_PROJECT_FIELDS = [
       'name', 'description', 'category', 'appType', 'techStack', 'template',
       'language', 'direction', 'databaseEngine', 'deployTarget', 'status',
@@ -344,17 +383,19 @@ async function startServer() {
       'buttonRegistry', 'tests'
     ];
     const safeBody = pickAllowed(req.body, ALLOWED_PROJECT_FIELDS);
+    const { project: baseProject, created } = findOrCreateProject(state, req.params.id, req.body || {});
+    const idx = state.projects.findIndex((p) => p.id === baseProject.id);
     const updated: Project = {
-      ...state.projects[idx],
+      ...baseProject,
       ...safeBody,
-      id: state.projects[idx].id,
+      id: baseProject.id,
       updatedAt: new Date().toISOString(),
     };
     updated.storageUsedBytes = updated.files.reduce((acc, f) => acc + (f.size || f.content.length), 0);
     updated.diagnostics = analyzeCodeDiagnostics(updated.files);
     state.projects[idx] = updated;
-    logActivity('Updated project state', updated.name);
-    res.json({ project: updated });
+    logActivity(created ? 'Auto-created & synced project state' : 'Updated project state', updated.name);
+    res.json({ project: updated, created });
   });
 
   // 4. Duplicate Project
@@ -570,7 +611,10 @@ async function startServer() {
     try {
       registerDbBackedProviders();
       const data = await workspaceModelRouter.listModels({ force: req.query.refresh === '1' });
-      res.json(data);
+      res.json({
+        ...data,
+        models: (data.models || []).filter((m: { local?: boolean; provider?: string }) => !m.local && ['openai', 'gemini', 'claude', 'anthropic'].includes(String(m.provider || '').toLowerCase())),
+      });
     } catch (err: unknown) {
       res.status(500).json({ error: 'MODELS_UNAVAILABLE', message: err instanceof Error ? err.message.slice(0, 200) : 'error' });
     }
@@ -597,11 +641,7 @@ async function startServer() {
   // Attachments: validated upload (type/size/content sniffing), linked to messages by id.
   app.post('/api/ai/attachments', (req, res) => {
     const { projectId, files } = req.body || {};
-    const project = state.projects.find((p) => p.id === projectId);
-    if (!project) {
-      res.status(404).json({ status: 'FAILED', errorCode: 'PROJECT_NOT_FOUND', userMessage: 'المشروع غير موجود على الخادم.' });
-      return;
-    }
+    const { project } = findOrCreateProject(state, String(projectId || `proj-${Date.now()}`), req.body?.project || {});
     try {
       const saved = workspaceAttachments.saveAttachments(DATA_DIR, project.id, files);
       res.status(201).json({ attachments: saved });
@@ -681,11 +721,7 @@ async function startServer() {
 
   // Live preview runtime health reported by the in-iframe probe (errors + canvas pixels).
   app.post('/api/projects/:id/preview-health', (req, res) => {
-    const project = state.projects.find((p) => p.id === req.params.id);
-    if (!project) {
-      res.status(404).json({ error: 'Project not found' });
-      return;
-    }
+    const { project } = findOrCreateProject(state, req.params.id, req.body?.project || {});
     const body = req.body || {};
     const errors: string[] = Array.isArray(body.errors) ? body.errors.slice(0, 8).map((e: unknown) => String(e).slice(0, 300)) : [];
     const ok = Boolean(body.ok);
@@ -761,7 +797,7 @@ async function startServer() {
       }
     };
 
-    const { projectId, prompt, model, thinkingMode, agentId, clientMessageId, attachmentIds } = req.body || {};
+    const { projectId, prompt, model, thinkingMode, agentId, clientMessageId, attachmentIds, project: incomingProject } = req.body || {};
     mark('received');
     const cleanPrompt = String(prompt || '').trim();
     const isArPrompt = /[\u0600-\u06FF]/.test(cleanPrompt);
@@ -777,10 +813,11 @@ async function startServer() {
       fail(400, 'PROJECT_REQUIRED', 'لم يتم تحديد المشروع. افتح مشروعاً ثم أعد المحاولة.');
       return;
     }
-    const project = state.projects.find((p) => p.id === projectId);
-    if (!project) {
-      fail(404, 'PROJECT_NOT_FOUND', 'المشروع غير موجود على الخادم. حدّث الصفحة ثم أعد المحاولة.');
-      return;
+    const ensured = findOrCreateProject(state, String(projectId), incomingProject || {});
+    const project = ensured.project;
+    if (ensured.created) {
+      mark('project', `auto-created ${project.id}`);
+      logActivity('Auto-created missing project for chat/build request', project.name, 'Public Workspace');
     }
 
     const workspaceReq = req as express.Request & { workspaceUser?: { id: string; role: string; email?: string } };

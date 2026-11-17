@@ -28,6 +28,13 @@ const PROTECTED_API_PREFIXES = [
   '/api/sqlite/',
 ];
 
+const PUBLIC_WORKSPACE_PREFIXES = [
+  '/api/state',
+  '/api/projects',
+  '/api/ai/execute',
+  '/api/ai/attachments',
+];
+
 function isLoopback(req) {
   const ip = String(req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : '');
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
@@ -59,7 +66,7 @@ function createWorkspaceAuth({ authService, extractToken }) {
   function isPublicWorkspacePath(req) {
     const p = String(req.path || '');
     if (req.method === 'GET' && (p === '/api/ai/models' || p === '/api/ai/routing-config')) return true;
-    if (p === '/api/ai/execute') return true;
+    if (PUBLIC_WORKSPACE_PREFIXES.some((pre) => p === pre || p.startsWith(`${pre}/`))) return true;
     return false;
   }
 

@@ -150,7 +150,7 @@ export default function App() {
       .then((data) => {
         if (cancelled || !data?.defaultModelId) return;
         if (Array.isArray(data.models)) {
-          setAvailableAiModels(data.models);
+          setAvailableAiModels(data.models.filter((m: { local?: boolean; provider?: string }) => !m.local && ['openai', 'gemini', 'claude', 'anthropic'].includes(String(m.provider || '').toLowerCase())));
         }
         const persistedModel = typeof window !== 'undefined' ? window.localStorage.getItem(MODEL_SELECTION_STORAGE_KEY) : null;
         setSettings((prev) => ({
@@ -491,6 +491,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
         body: JSON.stringify({
           projectId,
+          project,
           prompt: text,
           model: options.model,
           thinkingMode: options.thinkingMode,
