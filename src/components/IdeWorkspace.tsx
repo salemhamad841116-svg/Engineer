@@ -73,6 +73,7 @@ import { SmartResponseRenderer } from './SmartResponseRenderer';
 interface IdeWorkspaceProps {
   language: Language;
   project: Project;
+  defaultModel?: string;
   agents: AIAgentProfile[];
   isGenerating: boolean;
   pipelineStages: ExecutionPipelineStage[];
@@ -97,6 +98,7 @@ interface IdeWorkspaceProps {
 export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   language,
   project,
+  defaultModel = '',
   agents: _agents,
   isGenerating,
   pipelineStages: _pipelineStages,
@@ -115,6 +117,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('');
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string; provider: string; available: boolean; local?: boolean }[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachmentMeta[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
@@ -252,9 +255,18 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
 
   // Fetch available real models from server
   useEffect(() => {
+    if (defaultModel) {
+      setSelectedModel((prev) => prev || defaultModel);
+    }
+  }, [defaultModel]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setModelsLoading(true);
     fetch('/api/ai/models')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
+        if (cancelled) return;
         if (data?.models && Array.isArray(data.models)) {
           setAvailableModels(data.models);
           if (data.defaultModelId) {
@@ -266,10 +278,20 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             const firstAvailable = data.models.find((m: { available: boolean }) => m.available);
             if (firstAvailable) setSelectedModel(firstAvailable.id);
           }
+        } else {
+          setAvailableModels([]);
         }
       })
-      .catch(() => { });
-  }, []);
+      .catch(() => {
+        if (!cancelled) setAvailableModels([]);
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [defaultModel, selectedModel]);
 
   // Activate the live preview once the project has a real, non-empty HTML page.
   useEffect(() => {
@@ -1421,7 +1443,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       >
                         <Bot className="w-3.5 h-3.5 text-[#38bdf8]" />
                         <span className="max-w-[110px] truncate font-medium">
-                          {availableModels.find((m) => m.id === selectedModel)?.name || selectedModel}
+                          {availableModels.find((m) => m.id === selectedModel)?.name || selectedModel || (isAr ? 'اختر نموذجاً' : 'Select model')}
                         </span>
                         <ChevronDown className="w-3 h-3 text-[#96969e]" />
                       </button>
@@ -1435,9 +1457,13 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                             {isAr ? 'النماذج المتاحة' : 'Available Models'}
                           </div>
                           <div className="max-h-56 overflow-y-auto space-y-0.5">
-                            {availableModels.length === 0 ? (
+                            {modelsLoading ? (
                               <div className="px-2 py-3 text-center text-[#969498] text-[11px]">
                                 {isAr ? 'جاري تحميل النماذج...' : 'Loading models...'}
+                              </div>
+                            ) : availableModels.length === 0 ? (
+                              <div className="px-2 py-3 text-center text-[#969498] text-[11px]">
+                                {isAr ? 'لا توجد نماذج مفعلة حالياً' : 'No active models available'}
                               </div>
                             ) : (
                               availableModels.map((m) => (

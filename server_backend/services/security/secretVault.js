@@ -14,6 +14,8 @@ const crypto = require('crypto');
 const { getDb } = require('../../db/database');
 const { nowIso } = require('../../utils/clock');
 
+const MOCK_KEY_RE = /^(sk-seed-|seed-|mock|test-|placeholder|demo)/i;
+
 // 32-byte master key derived deterministically or from env
 function getMasterKey() {
   const rawKey = process.env.ENCRYPTION_MASTER_KEY || process.env.ADMIN_JWT_SECRET || 'engineer-enterprise-secret-vault-master-key-2026';
@@ -71,6 +73,25 @@ function decryptSecret({ ciphertext, iv, tag }) {
   return plain;
 }
 
+function isSeedSecret(secret) {
+  const clean = String(secret || '').trim();
+  return !clean || MOCK_KEY_RE.test(clean) || /mock|placeholder|dummy/i.test(clean);
+}
+
+function decryptProviderKey(provider) {
+  if (!provider || !provider.key_ciphertext || !provider.key_iv || !provider.key_tag) return null;
+  try {
+    const plain = decryptSecret({
+      ciphertext: provider.key_ciphertext,
+      iv: provider.key_iv,
+      tag: provider.key_tag,
+    });
+    return isSeedSecret(plain) ? null : plain;
+  } catch (_) {
+    return null;
+  }
+}
+
 /**
  * Tests live connectivity to an AI provider.
  * Supports OpenAI, Anthropic, Gemini, Mistral, Cohere, DeepSeek, OpenRouter, and Custom.
@@ -88,9 +109,17 @@ async function testProviderConnection(provider) {
     }
 
     // In offline test environment or if key is mock/empty, simulate realistic deterministic latency test
+    const decryptedKey = decryptProviderKey(provider);
+    if (!decryptedKey && process.env.NODE_ENV !== 'test') {
+      return {
+        success: false,
+        latencyMs: Date.now() - startTime,
+        status: 'error',
+        error: 'Provider does not have a valid non-seed API key',
+      };
+    }
+
     if (
-      !provider.key_ciphertext ||
-      provider.key_prefix?.includes('mock') ||
       process.env.NODE_ENV === 'test' ||
       provider.api_endpoint.includes('localhost')
     ) {
@@ -104,21 +133,7 @@ async function testProviderConnection(provider) {
     }
 
     // Decrypt key for live test
-    let apiKey = '';
-    try {
-      apiKey = decryptSecret({
-        ciphertext: provider.key_ciphertext,
-        iv: provider.key_iv,
-        tag: provider.key_tag,
-      });
-    } catch (decErr) {
-      return {
-        success: false,
-        latencyMs: Date.now() - startTime,
-        status: 'error',
-        error: `Decryption failed: ${decErr.message}`,
-      };
-    }
+    const apiKey = decryptedKey;
 
     // Minimal lightweight HTTP check (e.g. GET /models or /v1/models with abort timeout)
     const testUrl = provider.api_endpoint.endsWith('/models')
@@ -219,7 +234,7 @@ function rotateProviderKey(providerId, newRawKey, adminActorId) {
       ip: '127.0.0.1',
       details: { providerId, providerName: provider.name, keyPrefix: enc.prefix },
     });
-  } catch (_) {}
+  } catch (_) { }
 
   return { success: true, keyPrefix: enc.prefix, rotatedAt: now };
 }
@@ -250,7 +265,7 @@ function revokeProviderKey(providerId, adminActorId) {
       ip: '127.0.0.1',
       details: { providerId, providerName: provider.name },
     });
-  } catch (_) {}
+  } catch (_) { }
 
   return { success: true, revokedAt: now };
 }
@@ -259,6 +274,8 @@ module.exports = {
   maskApiKey,
   encryptSecret,
   decryptSecret,
+  decryptProviderKey,
+  isSeedSecret,
   testProviderConnection,
   rotateProviderKey,
   revokeProviderKey,

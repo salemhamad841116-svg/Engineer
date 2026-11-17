@@ -141,6 +141,23 @@ export default function App() {
   // Toast Notification
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/ai/models')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.defaultModelId) return;
+        setSettings((prev) => ({
+          ...prev,
+          defaultModel: prev.defaultModel || data.defaultModelId,
+        }));
+      })
+      .catch(() => { });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const notify = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     setToast({ type, message });
     setTimeout(() => {
@@ -875,8 +892,8 @@ export default function App() {
                   onClick={item.onClick}
                   title={isAr ? item.labelAr : item.labelEn}
                   className={`w-full flex items-center transition-all duration-200 relative cursor-pointer ${sidebarOpen
-                      ? 'px-4 py-3 gap-3.5 rounded-xl text-[15px] leading-6 font-semibold'
-                      : 'p-0 justify-center w-10 h-10 mx-auto rounded-xl text-xs'
+                    ? 'px-4 py-3 gap-3.5 rounded-xl text-[15px] leading-6 font-semibold'
+                    : 'p-0 justify-center w-10 h-10 mx-auto rounded-xl text-xs'
                     } ${item.active
                       ? 'bg-blue-600/25 border border-blue-400/50 text-white font-bold shadow-sm border-s-4 border-s-blue-400'
                       : 'text-[#F1F5F9] hover:bg-white/10 hover:text-white'
@@ -899,8 +916,8 @@ export default function App() {
               onClick={() => setInfoDrawer(infoDrawer === 'help' ? null : 'help')}
               title={isAr ? 'مركز المساعدة والدليل' : 'Help & Docs'}
               className={`w-full flex items-center transition-colors cursor-pointer rounded-xl ${sidebarOpen
-                  ? 'px-4 py-2.5 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
-                  : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
+                ? 'px-4 py-2.5 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
+                : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
                 }`}
             >
               <BookOpen className={`shrink-0 text-sky-400 stroke-[2.2] ${sidebarOpen ? 'w-5 h-5' : 'w-4 h-4'}`} />
@@ -921,8 +938,8 @@ export default function App() {
             }
             title={language === 'ar' ? 'Switch to English (LTR)' : 'التبديل إلى العربية (RTL)'}
             className={`w-full flex items-center transition-colors cursor-pointer border border-white/5 rounded-xl ${sidebarOpen
-                ? 'px-4 py-3 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
-                : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
+              ? 'px-4 py-3 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
+              : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
               }`}
           >
             <Globe2 className={`shrink-0 text-sky-400 stroke-[2.2] ${sidebarOpen ? 'w-5 h-5' : 'w-4 h-4'}`} />
@@ -947,8 +964,8 @@ export default function App() {
             }}
             title={isAr ? 'الإعدادات والحساب' : 'Settings'}
             className={`w-full flex items-center transition-colors cursor-pointer border border-white/5 rounded-xl ${sidebarOpen
-                ? 'px-4 py-3 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
-                : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
+              ? 'px-4 py-3 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
+              : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
               }`}
           >
             <SettingsIcon className={`shrink-0 text-blue-400 stroke-[2.2] ${sidebarOpen ? 'w-5 h-5' : 'w-4 h-4'}`} />
@@ -1078,6 +1095,7 @@ export default function App() {
         <IdeWorkspace
           language={language}
           project={activeProject}
+          defaultModel={settings.defaultModel}
           agents={agents}
           isGenerating={isGenerating}
           pipelineStages={pipelineStages}
@@ -1213,10 +1231,10 @@ export default function App() {
           role="status"
           aria-live="polite"
           className={`fixed bottom-5 end-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl border shadow-2xl text-xs font-semibold transition-all ${toast.type === 'error'
-              ? 'bg-rose-950/95 border-rose-500/50 text-rose-200'
-              : toast.type === 'info'
-                ? 'bg-slate-900/95 border-sky-500/40 text-sky-200'
-                : 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200'
+            ? 'bg-rose-950/95 border-rose-500/50 text-rose-200'
+            : toast.type === 'info'
+              ? 'bg-slate-900/95 border-sky-500/40 text-sky-200'
+              : 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200'
             }`}
         >
           {toast.type === 'error' ? (

@@ -3,7 +3,6 @@
 const { getDb } = require('../../db/database');
 const secretVault = require('../security/secretVault');
 
-const MOCK_KEY_RE = /^(sk-seed-|seed-|mock|test-|placeholder|demo)/i;
 const OPENAI_COMPAT_TYPES = new Set(['openai', 'openrouter', 'deepseek', 'mistral', 'xai', 'groq', 'custom']);
 
 function parseModels(raw) {
@@ -16,21 +15,11 @@ function parseModels(raw) {
 }
 
 function isSeedKey(key) {
-    const clean = String(key || '').trim();
-    return !clean || MOCK_KEY_RE.test(clean) || /mock/i.test(clean);
+    return secretVault.isSeedSecret(key);
 }
 
 function decryptProviderKey(row) {
-    if (!row || !row.key_ciphertext || !row.key_iv || !row.key_tag) return null;
-    try {
-        return secretVault.decryptSecret({
-            ciphertext: row.key_ciphertext,
-            iv: row.key_iv,
-            tag: row.key_tag,
-        });
-    } catch (_) {
-        return null;
-    }
+    return secretVault.decryptProviderKey(row);
 }
 
 function normalizeProvider(row) {
@@ -52,6 +41,7 @@ function normalizeProvider(row) {
         keyPrefix: row.key_prefix || null,
         apiKey: validKey ? apiKey : null,
         hasRealKey: Boolean(validKey),
+        available: row.status === 'active' && Boolean(validKey),
     };
 }
 

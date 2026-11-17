@@ -26,12 +26,22 @@ function normalizeProviderName(name) {
   return String(name || '').trim().toLowerCase();
 }
 
+function dedupeModels(models) {
+  const seen = new Map();
+  for (const model of models) {
+    if (!model || !model.id) continue;
+    const current = seen.get(model.id);
+    if (!current || (!current.available && model.available)) {
+      seen.set(model.id, model);
+    }
+  }
+  return [...seen.values()];
+}
+
 function getDbBackedCloudEntries() {
   const routing = providerRegistry.getRoutingDefaults();
   const models = [];
   for (const provider of routing.providers) {
-    const adapter = cloudAdapters.get(normalizeProviderName(provider.type));
-    if (!adapter) continue;
     for (const id of provider.models) {
       models.push({
         id,
@@ -205,34 +215,50 @@ async function listModels({ force = false } = {}) {
     }
   }
 
+  models = dedupeModels(models);
+
   const preferred = dbCloud.routing.defaultChatModel || modelProvider.getModel();
   const defaultModel =
-    models.find((m) => m.id === preferred && m.available) || models.find((m) => m.available && m.local) || models.find((m) => m.available) || null;
+    models.find((m) => m.id === preferred && m.available) ||
+    models.find((m) => m.available && !m.local) ||
+    models.find((m) => m.available && m.local) ||
+    models.find((m) => m.available) || null;
 
   const data = {
     models,
     defaultModelId: defaultModel ? defaultModel.id : null,
-    provider,
+    provider: defaultModel?.provider || provider,
     localError,
     cloudFallbackAllowed: modelProvider.isCloudFallbackAllowed(),
+    routing: {
+      primaryProvider: dbCloud.routing.primary?.type || null,
+      fallbackProvider: dbCloud.routing.fallback?.type || null,
+      defaultChatModel: dbCloud.routing.defaultChatModel || null,
+      defaultCodingModel: dbCloud.routing.defaultCodingModel || null,
+      defaultResearchModel: dbCloud.routing.defaultResearchModel || null,
+    },
   };
   listCache = { at: Date.now(), data };
   return data;
 }
 
-function resolveSmartFallback(requestedId, models, defaultModelId) {
+function resolveSmartFallback(requestedId, models, defaultModelId, usage = 'chat') {
   const requested = String(requestedId || '').trim();
   const entry = requested ? models.find((m) => m.id === requested) : null;
   if (entry && entry.available) return entry;
   const matchedProvider = providerRegistry.findProviderByModel(requested);
   if (matchedProvider) {
-    const providerDefault = matchedProvider.defaultChatModel || matchedProvider.models[0] || null;
+    const providerDefault = usage === 'coding'
+      ? matchedProvider.defaultCodingModel || matchedProvider.defaultChatModel || matchedProvider.models[0] || null
+      : matchedProvider.defaultChatModel || matchedProvider.defaultCodingModel || matchedProvider.models[0] || null;
     const candidate = models.find((m) => m.id === providerDefault && m.available);
     if (candidate) return candidate;
   }
   if (requested) {
     const primary = providerRegistry.getPrimaryProvider();
-    const providerDefault = primary?.defaultChatModel || defaultModelId;
+    const providerDefault = usage === 'coding'
+      ? primary?.defaultCodingModel || primary?.defaultChatModel || defaultModelId
+      : primary?.defaultChatModel || primary?.defaultCodingModel || defaultModelId;
     const candidate = models.find((m) => m.id === providerDefault && m.available);
     if (candidate) return candidate;
   }
@@ -240,9 +266,12 @@ function resolveSmartFallback(requestedId, models, defaultModelId) {
 }
 
 /** Resolves a requested model id to a listed, available model with smart provider fallback. */
-async function resolveModel(requestedId) {
-  const { models, defaultModelId } = await listModels();
-  const id = requestedId && String(requestedId).trim() ? String(requestedId).trim() : defaultModelId;
+async function resolveModel(requestedId, usage = 'chat') {
+  const { models, defaultModelId, routing } = await listModels();
+  const effectiveDefault = usage === 'coding'
+    ? routing?.defaultCodingModel || routing?.defaultChatModel || defaultModelId
+    : routing?.defaultChatModel || routing?.defaultCodingModel || defaultModelId;
+  const id = requestedId && String(requestedId).trim() ? String(requestedId).trim() : effectiveDefault;
   if (!id) throw new WorkspaceModelError('MODEL_UNREACHABLE', 'No model is available');
   let entry = models.find((m) => m.id === id);
   if (!entry) {
@@ -251,7 +280,7 @@ async function resolveModel(requestedId) {
     entry = fresh.models.find((m) => m.id === id);
   }
   if (!entry || !entry.available) {
-    const fallback = resolveSmartFallback(id, models, defaultModelId);
+    const fallback = resolveSmartFallback(id, models, effectiveDefault, usage);
     if (fallback) return fallback;
   }
   if (!entry) throw new WorkspaceModelError('MODEL_NOT_INSTALLED', `Unknown model ${id}`);
@@ -409,7 +438,7 @@ async function runMock({ entry, messages, onDelta, signal }) {
  * @param {{modelId?: string, messages: Array<{role:string,content:string}>, timeoutMs?: number, signal?: AbortSignal, onDelta?: (t:string)=>void, maxTokens?: number}} o
  */
 async function chat({ modelId, messages, timeoutMs = DEFAULT_TIMEOUT_MS, signal, onDelta, maxTokens = 1500 }) {
-  const entry = await resolveModel(modelId);
+  const entry = await resolveModel(modelId, 'chat');
   if (entry.provider === 'mock') return runMock({ entry, messages, onDelta, signal });
   if (!entry.local) {
     const adapter = cloudAdapters.get(entry.provider);
@@ -542,7 +571,7 @@ async function openAiCompatibleWithTools({ entry, messages, tools, timeoutMs, si
  * @returns {Promise<{text:string, toolCalls:Array<{id:string,name:string,arguments:any}>, usage:object, latencyMs:number, model:string, provider:string}>}
  */
 async function chatWithTools({ modelId, messages, tools = [], timeoutMs = DEFAULT_TIMEOUT_MS * 2, signal, maxTokens = 8192 }) {
-  const entry = await resolveModel(modelId);
+  const entry = await resolveModel(modelId, 'coding');
   if (entry.provider === 'mock') {
     if (!mockAllowed()) throw new WorkspaceModelError('MODEL_UNAVAILABLE', 'The mock provider is disabled in production');
     if (signal && signal.aborted) throw new WorkspaceModelError('CANCELLED', 'Client disconnected');

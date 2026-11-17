@@ -428,11 +428,15 @@ async function startServer() {
     },
   });
 
-  for (const provider of providerRegistry.listUsableProviders()) {
-    if (providerRegistry.isOpenAiCompatibleProvider(provider.type)) {
-      workspaceModelRouter.registerCloudAdapter(provider.type, buildOpenAiCompatAdapter(provider.type));
+  const registerDbBackedProviders = () => {
+    for (const provider of providerRegistry.listUsableProviders()) {
+      if (providerRegistry.isOpenAiCompatibleProvider(provider.type)) {
+        workspaceModelRouter.registerCloudAdapter(provider.type, buildOpenAiCompatAdapter(provider.type));
+      }
     }
-  }
+  };
+
+  registerDbBackedProviders();
 
   workspaceModelRouter.registerCloudAdapter('gemini', {
     models: () =>
@@ -533,6 +537,7 @@ async function startServer() {
 
   app.get('/api/ai/models', async (req, res) => {
     try {
+      registerDbBackedProviders();
       const data = await workspaceModelRouter.listModels({ force: req.query.refresh === '1' });
       res.json(data);
     } catch (err: unknown) {
@@ -856,6 +861,7 @@ RULES:
         { role: 'user', content: attachmentContext ? `${cleanPrompt}\n\n${attachmentContext}` : cleanPrompt },
       ];
       mark('model', `requesting ${requestedModelId || 'default'}`);
+      registerDbBackedProviders();
       let streamedChars = 0;
       try {
         const out = await workspaceModelRouter.chat({
