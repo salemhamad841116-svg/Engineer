@@ -14,12 +14,42 @@
 'use strict';
 
 const { modelProvider } = require('./modelProviderInterface');
+const providerRegistry = require('./providerRegistry');
 
 const LIST_CACHE_MS = 15000;
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.WORKSPACE_CHAT_TIMEOUT_MS || '', 10) || 45000;
 
 const cloudAdapters = new Map(); // provider -> { models: () => [{id,name}], chat: async fn }
 let listCache = { at: 0, data: null };
+
+function normalizeProviderName(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+function getDbBackedCloudEntries() {
+  const routing = providerRegistry.getRoutingDefaults();
+  const models = [];
+  for (const provider of routing.providers) {
+    const adapter = cloudAdapters.get(normalizeProviderName(provider.type));
+    if (!adapter) continue;
+    for (const id of provider.models) {
+      models.push({
+        id,
+        name: prettyName(id),
+        provider: normalizeProviderName(provider.type),
+        available: true,
+        local: false,
+        providerLabel: provider.name,
+      });
+    }
+  }
+  return { routing, models };
+}
+
+function withDbProviderContext(entry, fn) {
+  const provider = providerRegistry.listUsableProviders().find((p) => normalizeProviderName(p.type) === normalizeProviderName(entry.provider) && p.models.includes(entry.id));
+  return fn(provider || null);
+}
 
 const ERROR_MESSAGES = {
   MODEL_TIMEOUT: {
@@ -157,7 +187,13 @@ async function listModels({ force = false } = {}) {
     }
   }
 
+  const dbCloud = getDbBackedCloudEntries();
+  for (const m of dbCloud.models) {
+    models.push(m);
+  }
+
   for (const [cloudProvider, adapter] of cloudAdapters) {
+    if (dbCloud.models.some((m) => m.provider === cloudProvider)) continue;
     let rows = [];
     try {
       rows = adapter.models() || [];
@@ -169,7 +205,7 @@ async function listModels({ force = false } = {}) {
     }
   }
 
-  const preferred = modelProvider.getModel();
+  const preferred = dbCloud.routing.defaultChatModel || modelProvider.getModel();
   const defaultModel =
     models.find((m) => m.id === preferred && m.available) || models.find((m) => m.available && m.local) || models.find((m) => m.available) || null;
 
@@ -184,7 +220,26 @@ async function listModels({ force = false } = {}) {
   return data;
 }
 
-/** Resolves a requested model id to a listed, available model (no silent substitution). */
+function resolveSmartFallback(requestedId, models, defaultModelId) {
+  const requested = String(requestedId || '').trim();
+  const entry = requested ? models.find((m) => m.id === requested) : null;
+  if (entry && entry.available) return entry;
+  const matchedProvider = providerRegistry.findProviderByModel(requested);
+  if (matchedProvider) {
+    const providerDefault = matchedProvider.defaultChatModel || matchedProvider.models[0] || null;
+    const candidate = models.find((m) => m.id === providerDefault && m.available);
+    if (candidate) return candidate;
+  }
+  if (requested) {
+    const primary = providerRegistry.getPrimaryProvider();
+    const providerDefault = primary?.defaultChatModel || defaultModelId;
+    const candidate = models.find((m) => m.id === providerDefault && m.available);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+/** Resolves a requested model id to a listed, available model with smart provider fallback. */
 async function resolveModel(requestedId) {
   const { models, defaultModelId } = await listModels();
   const id = requestedId && String(requestedId).trim() ? String(requestedId).trim() : defaultModelId;
@@ -194,6 +249,10 @@ async function resolveModel(requestedId) {
     // Selection may be stale (cache) — refresh once before rejecting.
     const fresh = await listModels({ force: true });
     entry = fresh.models.find((m) => m.id === id);
+  }
+  if (!entry || !entry.available) {
+    const fallback = resolveSmartFallback(id, models, defaultModelId);
+    if (fallback) return fallback;
   }
   if (!entry) throw new WorkspaceModelError('MODEL_NOT_INSTALLED', `Unknown model ${id}`);
   if (!entry.available) {
@@ -220,9 +279,12 @@ function classifyFetchError(err, { timeoutSignal, clientSignal }) {
 
 async function streamOpenAiCompatible({ entry, messages, timeoutMs, signal, onDelta, maxTokens }) {
   const t0 = Date.now();
-  const baseUrl = modelProvider.getBaseUrl();
+  const endpoint = withDbProviderContext(entry, (provider) => ({
+    baseUrl: provider?.endpoint || modelProvider.getBaseUrl(),
+    key: provider?.apiKey || modelProvider.getApiKey(),
+  }));
   const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
-  const key = modelProvider.getApiKey();
+  const key = endpoint.key;
   if (key && !/your_|_here|placeholder/i.test(key)) headers.Authorization = `Bearer ${key}`;
 
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -238,7 +300,7 @@ async function streamOpenAiCompatible({ entry, messages, timeoutMs, signal, onDe
 
   let res;
   try {
-    res = await fetch(`${baseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal: combined });
+    res = await fetch(`${endpoint.baseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal: combined });
   } catch (err) {
     throw classifyFetchError(err, { timeoutSignal, clientSignal: signal });
   }
@@ -257,7 +319,7 @@ async function streamOpenAiCompatible({ entry, messages, timeoutMs, signal, onDe
   let buffer = '';
   try {
     const reader = res.body.getReader();
-    for (;;) {
+    for (; ;) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
@@ -414,9 +476,12 @@ function toOpenAiTools(tools) {
 
 async function openAiCompatibleWithTools({ entry, messages, tools, timeoutMs, signal, maxTokens }) {
   const t0 = Date.now();
-  const baseUrl = modelProvider.getBaseUrl();
+  const endpoint = withDbProviderContext(entry, (provider) => ({
+    baseUrl: provider?.endpoint || modelProvider.getBaseUrl(),
+    key: provider?.apiKey || modelProvider.getApiKey(),
+  }));
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
-  const key = modelProvider.getApiKey();
+  const key = endpoint.key;
   if (key && !/your_|_here|placeholder/i.test(key)) headers.Authorization = `Bearer ${key}`;
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
@@ -428,7 +493,7 @@ async function openAiCompatibleWithTools({ entry, messages, tools, timeoutMs, si
   if (entry.provider === 'ollama') body.options = { num_ctx: parseInt(process.env.OLLAMA_NUM_CTX || '', 10) || 16384 };
   let res;
   try {
-    res = await fetch(`${baseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal: combined });
+    res = await fetch(`${endpoint.baseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal: combined });
   } catch (err) {
     throw classifyFetchError(err, { timeoutSignal, clientSignal: signal });
   }

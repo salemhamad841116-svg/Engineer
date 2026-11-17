@@ -91,7 +91,7 @@ export default function App() {
     planName: 'Cloud Studio Pro — Enterprise Tier',
     aiTokensUsed: 148200,
     aiTokensLimit: 2000000,
-    defaultModel: 'gemini-3.8-flash',
+    defaultModel: '',
     thinkingMode: 'standard' as 'standard' | 'deep' | 'plan',
     language: 'en' as Language,
     theme: 'dark' as 'dark' | 'light',
@@ -168,7 +168,7 @@ export default function App() {
           setCurrentUser(data.user);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Load persisted state from server on mount
@@ -476,7 +476,7 @@ export default function App() {
         const decoder = new TextDecoder();
         let buffer = '';
         let streamed = '';
-        for (;;) {
+        for (; ;) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
@@ -684,9 +684,8 @@ export default function App() {
       {/* Collapsible Left Sidebar with Premium Glass Styling */}
       <aside
         aria-label="Workspace Sidebar Navigation"
-        className={`${
-          sidebarOpen ? 'w-[272px] min-w-[272px]' : 'w-14 min-w-[56px]'
-        } shrink-0 bg-[#0B0F19] border-e border-white/15 flex flex-col justify-between transition-all duration-200 z-30 select-none`}
+        className={`${sidebarOpen ? 'w-[272px] min-w-[272px]' : 'w-14 min-w-[56px]'
+          } shrink-0 bg-[#0B0F19] border-e border-white/15 flex flex-col justify-between transition-all duration-200 z-30 select-none`}
       >
         {/* Top Brand, Search ⌘K, Collapse Toggle & User Profile */}
         <div className="p-3 space-y-3">
@@ -729,8 +728,8 @@ export default function App() {
                     ? 'طي الشريط الجانبي'
                     : 'Collapse sidebar'
                   : isAr
-                  ? 'توسيع الشريط الجانبي'
-                  : 'Expand sidebar'
+                    ? 'توسيع الشريط الجانبي'
+                    : 'Expand sidebar'
               }
               title={
                 sidebarOpen
@@ -738,8 +737,8 @@ export default function App() {
                     ? 'طي الشريط الجانبي'
                     : 'Collapse sidebar'
                   : isAr
-                  ? 'توسيع الشريط الجانبي'
-                  : 'Expand sidebar'
+                    ? 'توسيع الشريط الجانبي'
+                    : 'Expand sidebar'
               }
               className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
             >
@@ -875,20 +874,17 @@ export default function App() {
                   type="button"
                   onClick={item.onClick}
                   title={isAr ? item.labelAr : item.labelEn}
-                  className={`w-full flex items-center transition-all duration-200 relative cursor-pointer ${
-                    sidebarOpen
+                  className={`w-full flex items-center transition-all duration-200 relative cursor-pointer ${sidebarOpen
                       ? 'px-4 py-3 gap-3.5 rounded-xl text-[15px] leading-6 font-semibold'
                       : 'p-0 justify-center w-10 h-10 mx-auto rounded-xl text-xs'
-                  } ${
-                    item.active
+                    } ${item.active
                       ? 'bg-blue-600/25 border border-blue-400/50 text-white font-bold shadow-sm border-s-4 border-s-blue-400'
                       : 'text-[#F1F5F9] hover:bg-white/10 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <Icon
-                    className={`shrink-0 ${
-                      sidebarOpen ? 'w-5 h-5 stroke-[2.2]' : 'w-4 h-4 stroke-[2]'
-                    } ${item.active ? 'text-blue-400' : 'text-slate-200'}`}
+                    className={`shrink-0 ${sidebarOpen ? 'w-5 h-5 stroke-[2.2]' : 'w-4 h-4 stroke-[2]'
+                      } ${item.active ? 'text-blue-400' : 'text-slate-200'}`}
                   />
                   {sidebarOpen && <span className="truncate">{isAr ? item.labelAr : item.labelEn}</span>}
                 </button>
@@ -902,11 +898,10 @@ export default function App() {
               type="button"
               onClick={() => setInfoDrawer(infoDrawer === 'help' ? null : 'help')}
               title={isAr ? 'مركز المساعدة والدليل' : 'Help & Docs'}
-              className={`w-full flex items-center transition-colors cursor-pointer rounded-xl ${
-                sidebarOpen
+              className={`w-full flex items-center transition-colors cursor-pointer rounded-xl ${sidebarOpen
                   ? 'px-4 py-2.5 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
                   : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
-              }`}
+                }`}
             >
               <BookOpen className={`shrink-0 text-sky-400 stroke-[2.2] ${sidebarOpen ? 'w-5 h-5' : 'w-4 h-4'}`} />
               {sidebarOpen && <span>{isAr ? 'مركز المساعدة والدليل' : 'Help & Docs'}</span>}
@@ -925,11 +920,10 @@ export default function App() {
               })
             }
             title={language === 'ar' ? 'Switch to English (LTR)' : 'التبديل إلى العربية (RTL)'}
-            className={`w-full flex items-center transition-colors cursor-pointer border border-white/5 rounded-xl ${
-              sidebarOpen
+            className={`w-full flex items-center transition-colors cursor-pointer border border-white/5 rounded-xl ${sidebarOpen
                 ? 'px-4 py-3 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
                 : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
-            }`}
+              }`}
           >
             <Globe2 className={`shrink-0 text-sky-400 stroke-[2.2] ${sidebarOpen ? 'w-5 h-5' : 'w-4 h-4'}`} />
             {sidebarOpen && (
@@ -952,11 +946,10 @@ export default function App() {
               setUserProfileModalOpen(true);
             }}
             title={isAr ? 'الإعدادات والحساب' : 'Settings'}
-            className={`w-full flex items-center transition-colors cursor-pointer border border-white/5 rounded-xl ${
-              sidebarOpen
+            className={`w-full flex items-center transition-colors cursor-pointer border border-white/5 rounded-xl ${sidebarOpen
                 ? 'px-4 py-3 gap-3.5 text-[15px] font-semibold text-[#F1F5F9] hover:text-white hover:bg-white/10'
                 : 'p-0 justify-center w-10 h-10 mx-auto text-slate-300'
-            }`}
+              }`}
           >
             <SettingsIcon className={`shrink-0 text-blue-400 stroke-[2.2] ${sidebarOpen ? 'w-5 h-5' : 'w-4 h-4'}`} />
             {sidebarOpen && <span>{isAr ? 'الإعدادات والحساب' : 'Settings'}</span>}
@@ -1219,13 +1212,12 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className={`fixed bottom-5 end-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl border shadow-2xl text-xs font-semibold transition-all ${
-            toast.type === 'error'
+          className={`fixed bottom-5 end-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl border shadow-2xl text-xs font-semibold transition-all ${toast.type === 'error'
               ? 'bg-rose-950/95 border-rose-500/50 text-rose-200'
               : toast.type === 'info'
-              ? 'bg-slate-900/95 border-sky-500/40 text-sky-200'
-              : 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200'
-          }`}
+                ? 'bg-slate-900/95 border-sky-500/40 text-sky-200'
+                : 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200'
+            }`}
         >
           {toast.type === 'error' ? (
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />

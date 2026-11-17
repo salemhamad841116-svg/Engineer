@@ -113,7 +113,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [showChatSearch, setShowChatSearch] = useState(false);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
+  const [selectedModel, setSelectedModel] = useState('');
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string; provider: string; available: boolean; local?: boolean }[]>([]);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachmentMeta[]>([]);
@@ -248,7 +248,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [selectedModel]);
 
   // Fetch available real models from server
   useEffect(() => {
@@ -259,13 +259,16 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           setAvailableModels(data.models);
           if (data.defaultModelId) {
             setSelectedModel((prev) => {
-              const currentAvailable = data.models.some((m: { id: string; available: boolean }) => m.id === prev && m.available);
+              const currentAvailable = prev && data.models.some((m: { id: string; available: boolean }) => m.id === prev && m.available);
               return currentAvailable ? prev : data.defaultModelId;
             });
+          } else if (!selectedModel) {
+            const firstAvailable = data.models.find((m: { available: boolean }) => m.available);
+            if (firstAvailable) setSelectedModel(firstAvailable.id);
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Activate the live preview once the project has a real, non-empty HTML page.
@@ -369,13 +372,13 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
     const updatedFiles = project.files.map((f) =>
       f.id === activeFile.id
         ? {
-            ...f,
-            previousContent: f.previousContent ?? f.content,
-            content: newContent,
-            size: new Blob([newContent]).size,
-            updatedAt: new Date().toISOString(),
-            isDirty: markDirty,
-          }
+          ...f,
+          previousContent: f.previousContent ?? f.content,
+          content: newContent,
+          size: new Blob([newContent]).size,
+          updatedAt: new Date().toISOString(),
+          isDirty: markDirty,
+        }
         : f
     );
     onUpdateProject({ ...project, files: updatedFiles });
@@ -443,8 +446,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
           ? 'تم حفظ جميع ملفات المشروع وتحديث المعاينة الحية'
           : 'Saved all project files & synchronized live preview'
         : isAr
-        ? `تم حفظ الملف ${activeFile?.name}`
-        : `Saved ${activeFile?.name}`
+          ? `تم حفظ الملف ${activeFile?.name}`
+          : `Saved ${activeFile?.name}`
     );
     setPreviewRefreshKey((k) => k + 1);
   };
@@ -506,8 +509,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
       newFileModal.type === 'folder'
         ? cleanPath
         : parts.length > 1
-        ? '/' + parts.slice(0, -1).join('/')
-        : '/src';
+          ? '/' + parts.slice(0, -1).join('/')
+          : '/src';
     const fullPath = newFileModal.type === 'folder' ? `${cleanPath}/index.ts` : cleanPath;
 
     const initialContent = `// ${fullPath} — Created in ${project.name}\nexport const moduleReady = true;\n`;
@@ -693,8 +696,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             ? 'تمت إعادة تشغيل التطبيق وتحديث المعاينة'
             : 'Application restarted cleanly'
           : isAr
-          ? `تم تشغيل المشروع ببيئة ${project.techStack}`
-          : `Started ${project.techStack} runtime`
+            ? `تم تشغيل المشروع ببيئة ${project.techStack}`
+            : `Started ${project.techStack} runtime`
       );
     }, 180);
   };
@@ -977,9 +980,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             data-testid="toggle-dev-mode-btn"
             onClick={() => setIsEditMode(!isEditMode)}
             title={isAr ? 'الوضع المتقدم / محرر الأكواد والملفات' : 'Developer Mode (Code Editor & Files)'}
-            className={`btn btn-sm ${
-              isEditMode ? 'btn-primary' : 'btn-secondary'
-            }`}
+            className={`btn btn-sm ${isEditMode ? 'btn-primary' : 'btn-secondary'
+              }`}
           >
             <Code2 className="w-3.5 h-3.5 stroke-[2]" />
             <span>{isEditMode ? (isAr ? 'عرض المعاينة' : 'Show Preview') : (isAr ? 'الوضع المتقدم' : 'Developer Mode')}</span>
@@ -996,9 +998,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
               setMobileActiveView('preview');
               setIsEditMode(false);
             }}
-            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${
-              mobileActiveView === 'preview' && !isEditMode ? 'segmented-pill-btn-active' : ''
-            }`}
+            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${mobileActiveView === 'preview' && !isEditMode ? 'segmented-pill-btn-active' : ''
+              }`}
           >
             <Eye className="w-3.5 h-3.5" />
             <span>{isAr ? 'المعاينة' : 'Preview'}</span>
@@ -1008,9 +1009,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
             onClick={() => {
               setMobileActiveView('chat');
             }}
-            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${
-              mobileActiveView === 'chat' ? 'segmented-pill-btn-active' : ''
-            }`}
+            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${mobileActiveView === 'chat' ? 'segmented-pill-btn-active' : ''
+              }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>{isAr ? 'المحادثة' : 'Chat'}</span>
@@ -1021,9 +1021,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
               setMobileActiveView('preview');
               setIsEditMode(true);
             }}
-            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${
-              isEditMode ? 'segmented-pill-btn-active' : ''
-            }`}
+            className={`segmented-pill-btn flex-1 flex items-center justify-center gap-1.5 ${isEditMode ? 'segmented-pill-btn-active' : ''
+              }`}
           >
             <Code2 className="w-3.5 h-3.5" />
             <span>{isAr ? 'الكود' : 'Code'}</span>
@@ -1040,9 +1039,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
         {!isFullscreenPreview && (
           <aside
             dir={isAr ? 'rtl' : 'ltr'}
-            className={`w-[390px] min-w-[360px] lg:w-[32%] lg:max-w-[440px] shrink-0 border-e border-[#252529] bg-[#151517] flex flex-col min-h-0 h-full overflow-hidden ${
-              mobileActiveView === 'chat' ? 'flex' : 'hidden lg:flex'
-            }`}
+            className={`w-[390px] min-w-[360px] lg:w-[32%] lg:max-w-[440px] shrink-0 border-e border-[#252529] bg-[#151517] flex flex-col min-h-0 h-full overflow-hidden ${mobileActiveView === 'chat' ? 'flex' : 'hidden lg:flex'
+              }`}
           >
             {/* Clean Chat Header (Bolt-inspired minimal aesthetic) */}
             <div className="px-3.5 py-2.5 border-b border-[#252529] bg-[#171719] flex items-center justify-between gap-2 shrink-0">
@@ -1064,9 +1062,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   type="button"
                   onClick={() => setShowChatSearch(!showChatSearch)}
                   title={isAr ? 'بحث في الرسائل' : 'Search Messages'}
-                  className={`p-1.5 rounded-lg text-[#96969e] hover:text-[#f4f1f5] hover:bg-[#252529] transition-all ${
-                    showChatSearch ? 'text-[#38bdf8] bg-[#252529]' : ''
-                  }`}
+                  className={`p-1.5 rounded-lg text-[#96969e] hover:text-[#f4f1f5] hover:bg-[#252529] transition-all ${showChatSearch ? 'text-[#38bdf8] bg-[#252529]' : ''
+                    }`}
                 >
                   <Search className="w-3.5 h-3.5" />
                 </button>
@@ -1109,11 +1106,10 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 .map((msg) => (
                   <div
                     key={msg.id}
-                    className={`text-xs leading-relaxed transition-all ${
-                      msg.role === 'user'
-                        ? 'bg-[#1e1e21] border border-[#2c2c30] text-[#f4f1f5] rounded-xl px-3.5 py-2.5 max-w-[88%] self-end ms-auto shadow-sm group relative'
-                        : 'text-[#f4f1f5] px-1 py-1.5 max-w-full group relative'
-                    }`}
+                    className={`text-xs leading-relaxed transition-all ${msg.role === 'user'
+                      ? 'bg-[#1e1e21] border border-[#2c2c30] text-[#f4f1f5] rounded-xl px-3.5 py-2.5 max-w-[88%] self-end ms-auto shadow-sm group relative'
+                      : 'text-[#f4f1f5] px-1 py-1.5 max-w-full group relative'
+                      }`}
                   >
                     {/* Header line for each message */}
                     <div className="flex items-center justify-between text-[11px] text-[#969498] mb-1.5 pb-1 border-b border-white/5">
@@ -1250,64 +1246,64 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                         {(msg.suggestions ||
                           msg.content.includes('أبشر! يسعدني بناء تطبيقك بالكامل') ||
                           msg.content.includes('أي نوع من التطبيقات تود أن أصمم لك اليوم')) && (
-                          <div className="pt-2 flex flex-col gap-2 border-t border-white/5">
-                            <p className="text-[12px] font-semibold text-[#f4f1f5]">
-                              {isAr ? 'اختر أحد المقترحات الجاهزة للبدء فوراً:' : 'Select a suggested application to start immediately:'}
-                            </p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {[
-                                {
-                                  id: 'trading',
-                                  title: isAr ? 'منصة تداول وتحليل مالي' : 'Trading Risk Platform',
-                                  desc: isAr ? 'حاسبة نسبة المخاطرة والعقود' : 'Risk & Position Sizing Calc',
-                                  prompt: 'اصنع لي تطبيق حاسبة نسبة المخاطرة في التداول',
-                                  action: 'execute' as const,
-                                },
-                                {
-                                  id: 'store',
-                                  title: isAr ? 'متجر إلكتروني متكامل' : 'Full E-Commerce Store',
-                                  desc: isAr ? 'منتجات رقمية وسداد وسلة' : 'Digital goods, cart & checkout',
-                                  prompt: 'اصنع لي متجر إلكتروني متكامل للمنتجات الرقمية مع سلة وسداد',
-                                  action: 'execute' as const,
-                                },
-                                {
-                                  id: 'crm',
-                                  title: isAr ? 'نظام إدارة ومبيعات' : 'Sales & CRM System',
-                                  desc: isAr ? 'فواتير وتقارير ولوحة تحكم' : 'Invoices, reports & dashboard',
-                                  prompt: 'اصنع لي نظام إدارة مبيعات وفواتير متكامل',
-                                  action: 'execute' as const,
-                                },
-                                {
-                                  id: 'custom',
-                                  title: isAr ? 'تطبيق مخصص بفكرتي' : 'Custom App Idea',
-                                  desc: isAr ? 'اكتب مواصفات فكرتك' : 'Type your custom requirements',
-                                  prompt: isAr ? 'اصنع لي تطبيق ' : 'Build me an app ',
-                                  action: 'input' as const,
-                                },
-                              ].map((sug) => (
-                                <button
-                                  key={sug.id}
-                                  type="button"
-                                  onClick={() => {
-                                    if (sug.action === 'execute') {
-                                      handleExecuteSuggestion(sug.prompt);
-                                    } else {
-                                      setChatInput(sug.prompt);
-                                      setTimeout(() => chatTextareaRef.current?.focus(), 50);
-                                    }
-                                  }}
-                                  className="text-start p-2.5 rounded-xl border border-[#36363b] bg-[#1e1e21] hover:bg-[#252529] hover:border-[#246290] transition-all group cursor-pointer"
-                                >
-                                  <div className="text-xs font-bold text-[#f4f1f5] group-hover:text-[#38bdf8] flex items-center justify-between">
-                                    <span>{sug.title}</span>
-                                    <span className="text-[11px] text-[#246290] group-hover:translate-x-[-2px] transition-transform">←</span>
-                                  </div>
-                                  <div className="text-[11px] text-[#969498] mt-0.5">{sug.desc}</div>
-                                </button>
-                              ))}
+                            <div className="pt-2 flex flex-col gap-2 border-t border-white/5">
+                              <p className="text-[12px] font-semibold text-[#f4f1f5]">
+                                {isAr ? 'اختر أحد المقترحات الجاهزة للبدء فوراً:' : 'Select a suggested application to start immediately:'}
+                              </p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {[
+                                  {
+                                    id: 'trading',
+                                    title: isAr ? 'منصة تداول وتحليل مالي' : 'Trading Risk Platform',
+                                    desc: isAr ? 'حاسبة نسبة المخاطرة والعقود' : 'Risk & Position Sizing Calc',
+                                    prompt: 'اصنع لي تطبيق حاسبة نسبة المخاطرة في التداول',
+                                    action: 'execute' as const,
+                                  },
+                                  {
+                                    id: 'store',
+                                    title: isAr ? 'متجر إلكتروني متكامل' : 'Full E-Commerce Store',
+                                    desc: isAr ? 'منتجات رقمية وسداد وسلة' : 'Digital goods, cart & checkout',
+                                    prompt: 'اصنع لي متجر إلكتروني متكامل للمنتجات الرقمية مع سلة وسداد',
+                                    action: 'execute' as const,
+                                  },
+                                  {
+                                    id: 'crm',
+                                    title: isAr ? 'نظام إدارة ومبيعات' : 'Sales & CRM System',
+                                    desc: isAr ? 'فواتير وتقارير ولوحة تحكم' : 'Invoices, reports & dashboard',
+                                    prompt: 'اصنع لي نظام إدارة مبيعات وفواتير متكامل',
+                                    action: 'execute' as const,
+                                  },
+                                  {
+                                    id: 'custom',
+                                    title: isAr ? 'تطبيق مخصص بفكرتي' : 'Custom App Idea',
+                                    desc: isAr ? 'اكتب مواصفات فكرتك' : 'Type your custom requirements',
+                                    prompt: isAr ? 'اصنع لي تطبيق ' : 'Build me an app ',
+                                    action: 'input' as const,
+                                  },
+                                ].map((sug) => (
+                                  <button
+                                    key={sug.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (sug.action === 'execute') {
+                                        handleExecuteSuggestion(sug.prompt);
+                                      } else {
+                                        setChatInput(sug.prompt);
+                                        setTimeout(() => chatTextareaRef.current?.focus(), 50);
+                                      }
+                                    }}
+                                    className="text-start p-2.5 rounded-xl border border-[#36363b] bg-[#1e1e21] hover:bg-[#252529] hover:border-[#246290] transition-all group cursor-pointer"
+                                  >
+                                    <div className="text-xs font-bold text-[#f4f1f5] group-hover:text-[#38bdf8] flex items-center justify-between">
+                                      <span>{sug.title}</span>
+                                      <span className="text-[11px] text-[#246290] group-hover:translate-x-[-2px] transition-transform">←</span>
+                                    </div>
+                                    <div className="text-[11px] text-[#969498] mt-0.5">{sug.desc}</div>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
                       </div>
                     ) : (
                       <div className="whitespace-pre-wrap leading-relaxed select-text text-[#f4f1f5]">
@@ -1454,13 +1450,12 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                                     setShowModelPicker(false);
                                     onNotify('info', isAr ? `تم اختيار النموذج: ${m.name}` : `Selected model: ${m.name}`);
                                   }}
-                                  className={`w-full text-start px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition-all ${
-                                    selectedModel === m.id
-                                      ? 'bg-[#183857] text-[#38bdf8] font-semibold'
-                                      : m.available
+                                  className={`w-full text-start px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition-all ${selectedModel === m.id
+                                    ? 'bg-[#183857] text-[#38bdf8] font-semibold'
+                                    : m.available
                                       ? 'text-[#f4f1f5] hover:bg-[#252529]'
                                       : 'text-[#706f71] cursor-not-allowed opacity-50'
-                                  }`}
+                                    }`}
                                 >
                                   <div className="flex flex-col">
                                     <span className="truncate">{m.name}</span>
@@ -1488,11 +1483,10 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                           ? (isAr ? 'إيقاف التسجيل الصوتي' : 'Stop voice recording')
                           : (isAr ? 'تسجيل صوتي' : 'Voice input')
                       }
-                      className={`p-1.5 rounded-lg transition-all ${
-                        isRecordingVoice
-                          ? 'bg-red-500/20 text-red-400 animate-pulse border border-red-500/40'
-                          : 'text-[#96969e] hover:text-[#f4f1f5] hover:bg-[#252529]'
-                      }`}
+                      className={`p-1.5 rounded-lg transition-all ${isRecordingVoice
+                        ? 'bg-red-500/20 text-red-400 animate-pulse border border-red-500/40'
+                        : 'text-[#96969e] hover:text-[#f4f1f5] hover:bg-[#252529]'
+                        }`}
                     >
                       {isRecordingVoice ? (
                         <MicOff className="w-4 h-4 stroke-[2]" />
@@ -1550,18 +1544,16 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                 <button
                   type="button"
                   onClick={() => setCenterTab('editor')}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                    centerTab === 'editor' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
-                  }`}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${centerTab === 'editor' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
+                    }`}
                 >
                   {isAr ? 'محرر الأكواد (Code Editor)' : 'Code Editor'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setCenterTab('files')}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                    centerTab === 'files' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
-                  }`}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${centerTab === 'files' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
+                    }`}
                 >
                   {isAr ? `مدير الملفات والتخزين (${project.files.length})` : `File Manager (${project.files.length})`}
                 </button>
@@ -1667,8 +1659,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       ? 'اسم الملف الجديد:'
                       : 'New file path:'
                     : isAr
-                    ? 'اسم المجلد الجديد:'
-                    : 'New folder path:'}
+                      ? 'اسم المجلد الجديد:'
+                      : 'New folder path:'}
                 </span>
                 <input
                   autoFocus
@@ -1701,11 +1693,10 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                         key={f.id}
                         type="button"
                         onClick={() => onUpdateProject({ ...project, activeFileId: f.id })}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer whitespace-nowrap ${
-                          isActive
-                            ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
-                        }`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer whitespace-nowrap ${isActive
+                          ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                          }`}
                       >
                         <FileText className="w-3 h-3" />
                         <span>{f.name}</span>
@@ -1827,9 +1818,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     type="button"
                     onClick={() => setShowDiffView(!showDiffView)}
                     title={isAr ? 'مقارنة الإصدارات (Diff)' : 'Compare Versions Diff'}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded cursor-pointer ${
-                      showDiffView ? 'bg-violet-600 text-white' : 'hover:bg-white/10 text-zinc-300'
-                    }`}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded cursor-pointer ${showDiffView ? 'bg-violet-600 text-white' : 'hover:bg-white/10 text-zinc-300'
+                      }`}
                   >
                     <GitCompare className="w-3 h-3" />
                     <span>{isAr ? 'مقارنة' : 'Diff'}</span>
@@ -1838,9 +1828,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     type="button"
                     onClick={() => setShowSymbolsDrawer(!showSymbolsDrawer)}
                     title={isAr ? 'الانتقال إلى تعريف الدوال' : 'Go to Function Definitions'}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded cursor-pointer ${
-                      showSymbolsDrawer ? 'bg-blue-600 text-white' : 'hover:bg-white/10 text-zinc-300'
-                    }`}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded cursor-pointer ${showSymbolsDrawer ? 'bg-blue-600 text-white' : 'hover:bg-white/10 text-zinc-300'
+                      }`}
                   >
                     <Code2 className="w-3 h-3" />
                     <span>{isAr ? 'الدوال' : 'Symbols'} ({functionDefs.length})</span>
@@ -1941,13 +1930,12 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       {computeLineDiff(activeFile.previousContent || activeFile.content, activeFile.content).map((d, i) => (
                         <div
                           key={i}
-                          className={`px-2 py-0.5 rounded flex gap-3 ${
-                            d.type === 'added'
-                              ? 'bg-emerald-500/15 text-emerald-300'
-                              : d.type === 'removed'
+                          className={`px-2 py-0.5 rounded flex gap-3 ${d.type === 'added'
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : d.type === 'removed'
                               ? 'bg-rose-500/15 text-rose-300 line-through'
                               : 'text-zinc-400'
-                          }`}
+                            }`}
                         >
                           <span className="w-8 text-zinc-600 select-none text-end">{d.lineNo}</span>
                           <span>{d.type === 'added' ? '+' : d.type === 'removed' ? '-' : ' '}</span>
@@ -2196,15 +2184,14 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                   {project.serverLogs.map((log, i) => (
                     <div
                       key={i}
-                      className={`${
-                        log.level === 'error'
-                          ? 'text-rose-400'
-                          : log.level === 'warn'
+                      className={`${log.level === 'error'
+                        ? 'text-rose-400'
+                        : log.level === 'warn'
                           ? 'text-amber-300'
                           : log.level === 'success'
-                          ? 'text-emerald-400'
-                          : 'text-zinc-400'
-                      }`}
+                            ? 'text-emerald-400'
+                            : 'text-zinc-400'
+                        }`}
                     >
                       <span className="text-zinc-600 me-2">[{new Date(log.time).toLocaleTimeString()}]</span>
                       <span>{log.message}</span>
@@ -2219,11 +2206,9 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
         {/* RIGHT/LEFT PANE: Live Interactive Preview (Active by default, clean 68% viewport) */}
         <section
           dir={isAr ? 'rtl' : 'ltr'}
-          className={`${
-            isFullscreenPreview ? 'w-full' : isEditMode ? 'hidden' : 'flex-1'
-          } min-w-0 bg-[#090D18] flex flex-col min-h-0 ${
-            mobileActiveView === 'preview' ? 'flex' : 'hidden lg:flex'
-          }`}
+          className={`${isFullscreenPreview ? 'w-full' : isEditMode ? 'hidden' : 'flex-1'
+            } min-w-0 bg-[#090D18] flex flex-col min-h-0 ${mobileActiveView === 'preview' ? 'flex' : 'hidden lg:flex'
+            }`}
         >
           {!isAppServerRunning ? (
             /* Blank-Until-Live Specification: Deep black #09090B with ZERO buttons, ZERO words, ZERO toolbars */
@@ -2252,11 +2237,10 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     type="button"
                     onClick={handleToggleInspector}
                     title={isInspectorActive ? (isAr ? 'إلغاء وضع فحص وتعديل العناصر' : 'Cancel Inspector') : (isAr ? 'فحص وتعديل العنصر مرئياً' : 'Visual Click-to-Edit Inspector')}
-                    className={`btn btn-sm shrink-0 flex items-center gap-1.5 ${
-                      isInspectorActive
-                        ? 'btn-primary shadow-[0_0_12px_rgba(59,130,246,0.5)]'
-                        : 'btn-secondary text-slate-200'
-                    }`}
+                    className={`btn btn-sm shrink-0 flex items-center gap-1.5 ${isInspectorActive
+                      ? 'btn-primary shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+                      : 'btn-secondary text-slate-200'
+                      }`}
                   >
                     <MousePointerClick className="w-3.5 h-3.5 stroke-[2]" />
                     <span className="hidden sm:inline">{isInspectorActive ? (isAr ? 'إلغاء الفحص' : 'Cancel') : (isAr ? 'تعديل العنصر' : 'Inspector')}</span>
@@ -2284,9 +2268,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       onClick={() => setPreviewDevice('desktop')}
                       aria-label="Desktop Preview"
                       title={isAr ? 'معاينة سطح المكتب' : 'Desktop Viewport'}
-                      className={`segmented-pill-btn !p-1.5 ${
-                        previewDevice === 'desktop' ? 'segmented-pill-btn-active' : ''
-                      }`}
+                      className={`segmented-pill-btn !p-1.5 ${previewDevice === 'desktop' ? 'segmented-pill-btn-active' : ''
+                        }`}
                     >
                       <Monitor className="w-3.5 h-3.5 stroke-[2]" />
                     </button>
@@ -2295,9 +2278,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       onClick={() => setPreviewDevice('tablet')}
                       aria-label="Tablet Preview"
                       title={isAr ? 'معاينة التابلت' : 'Tablet Viewport (768px)'}
-                      className={`segmented-pill-btn !p-1.5 ${
-                        previewDevice === 'tablet' ? 'segmented-pill-btn-active' : ''
-                      }`}
+                      className={`segmented-pill-btn !p-1.5 ${previewDevice === 'tablet' ? 'segmented-pill-btn-active' : ''
+                        }`}
                     >
                       <Tablet className="w-3.5 h-3.5 stroke-[2]" />
                     </button>
@@ -2306,9 +2288,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                       onClick={() => setPreviewDevice('mobile')}
                       aria-label="Mobile Preview"
                       title={isAr ? 'معاينة الهاتف' : 'Mobile Viewport (390px)'}
-                      className={`segmented-pill-btn !p-1.5 ${
-                        previewDevice === 'mobile' ? 'segmented-pill-btn-active' : ''
-                      }`}
+                      className={`segmented-pill-btn !p-1.5 ${previewDevice === 'mobile' ? 'segmented-pill-btn-active' : ''
+                        }`}
                     >
                       <Smartphone className="w-3.5 h-3.5 stroke-[2]" />
                     </button>
@@ -2372,13 +2353,12 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
               {/* Live Application Preview Canvas */}
               <div className="flex-1 bg-[#090D18] flex items-center justify-center p-2 sm:p-4 overflow-hidden relative">
                 <div
-                  className={`h-full transition-all duration-300 rounded-2xl overflow-hidden glass-card shadow-2xl bg-[#090D18] ${
-                    previewDevice === 'mobile'
-                      ? 'w-[390px] max-w-full'
-                      : previewDevice === 'tablet'
+                  className={`h-full transition-all duration-300 rounded-2xl overflow-hidden glass-card shadow-2xl bg-[#090D18] ${previewDevice === 'mobile'
+                    ? 'w-[390px] max-w-full'
+                    : previewDevice === 'tablet'
                       ? 'w-[768px] max-w-full'
                       : 'w-full'
-                  }`}
+                    }`}
                 >
                   <iframe
                     key={`${previewRefreshKey}:${previewEntry}`}

@@ -185,6 +185,17 @@ function getGeminiClient(): GoogleGenAI | null {
   });
 }
 
+function getDbBackedCloudClient(providerType: string) {
+  const registry = serverRequire('./server_backend/services/ai/providerRegistry.js');
+  const provider = registry.listUsableProviders().find((p: { type: string }) => p.type === providerType);
+  if (!provider) return null;
+  return {
+    provider,
+    apiKey: provider.apiKey,
+    baseUrl: provider.endpoint,
+  };
+}
+
 interface AdminPortalRequest extends express.Request {
   isAdminPortal?: boolean;
 }
@@ -352,17 +363,80 @@ async function startServer() {
   //    with canned text: they return status FAILED + errorCode + a clear user message.
   const workspaceModelRouter = serverRequire('./server_backend/services/ai/workspaceModelRouter.js');
   const workspaceAttachments = serverRequire('./server_backend/services/ai/workspaceAttachments.js');
+  const providerRegistry = serverRequire('./server_backend/services/ai/providerRegistry.js');
+  const openaiCompatClient = serverRequire('./server_backend/services/ai/openaiCompatClient.js');
 
-  // Explicit, opt-in cloud adapter: listed only when a real Gemini key exists. It is used
-  // exclusively when the user SELECTS it — never as a silent fallback.
-  workspaceModelRouter.registerCloudAdapter('google', {
+  const buildOpenAiCompatAdapter = (providerType: string) => ({
+    models: () => [],
+    chat: async ({ model, messages, onDelta, maxTokens }: {
+      model: string;
+      messages: { role: string; content: string }[];
+      onDelta?: (t: string) => void;
+      maxTokens?: number;
+    }) => {
+      const provider = providerRegistry.listUsableProviders().find((p: { type: string; models: string[] }) => p.type === providerType && p.models.includes(model));
+      if (!provider) throw new Error(`${providerType} is not configured`);
+      const text = await openaiCompatClient.chat({
+        target: 'cloud',
+        model,
+        messages,
+        maxTokens,
+        key: provider.apiKey,
+        baseUrl: provider.endpoint,
+        label: `workspace:${providerType}`,
+      });
+      if (text) onDelta?.(text);
+      return {
+        text,
+        usage: {
+          promptTokens: Math.round(JSON.stringify(messages).length / 4),
+          completionTokens: Math.round(String(text || '').length / 4),
+          totalTokens: Math.round((JSON.stringify(messages).length + String(text || '').length) / 4),
+          estimated: true,
+        },
+        latencyMs: 0,
+      };
+    },
+    chatWithTools: async ({ model, messages, tools: _tools, maxTokens }: {
+      model: string;
+      messages: { role: string; content: string }[];
+      tools?: Array<{ name: string; description: string; parameters: object }>;
+      maxTokens?: number;
+    }) => {
+      const provider = providerRegistry.listUsableProviders().find((p: { type: string; models: string[] }) => p.type === providerType && p.models.includes(model));
+      if (!provider) throw new Error(`${providerType} is not configured`);
+      const text = await openaiCompatClient.chat({
+        target: 'cloud',
+        model,
+        messages,
+        maxTokens,
+        key: provider.apiKey,
+        baseUrl: provider.endpoint,
+        label: `workspace-tools:${providerType}`,
+      });
+      return {
+        text,
+        toolCalls: [],
+        usage: {
+          promptTokens: Math.round(JSON.stringify(messages).length / 4),
+          completionTokens: Math.round(String(text || '').length / 4),
+          totalTokens: Math.round((JSON.stringify(messages).length + String(text || '').length) / 4),
+          estimated: true,
+        },
+        latencyMs: 0,
+      };
+    },
+  });
+
+  for (const provider of providerRegistry.listUsableProviders()) {
+    if (providerRegistry.isOpenAiCompatibleProvider(provider.type)) {
+      workspaceModelRouter.registerCloudAdapter(provider.type, buildOpenAiCompatAdapter(provider.type));
+    }
+  }
+
+  workspaceModelRouter.registerCloudAdapter('gemini', {
     models: () =>
-      getGeminiClient()
-        ? [
-            { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
-            { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite' },
-          ]
-        : [],
+      [],
     chat: async ({ model, messages, onDelta, signal, maxTokens }: {
       model: string;
       messages: { role: string; content: string }[];
@@ -370,7 +444,8 @@ async function startServer() {
       signal?: AbortSignal;
       maxTokens?: number;
     }) => {
-      const ai = getGeminiClient();
+      const dbClient = getDbBackedCloudClient('gemini');
+      const ai = dbClient?.apiKey ? new GoogleGenAI({ apiKey: dbClient.apiKey }) : getGeminiClient();
       if (!ai) throw new Error('Gemini is not configured');
       const t0 = Date.now();
       const systemInstruction = messages.find((m) => m.role === 'system')?.content;
@@ -411,7 +486,8 @@ async function startServer() {
       signal?: AbortSignal;
       maxTokens?: number;
     }) => {
-      const ai = getGeminiClient();
+      const dbClient = getDbBackedCloudClient('gemini');
+      const ai = dbClient?.apiKey ? new GoogleGenAI({ apiKey: dbClient.apiKey }) : getGeminiClient();
       if (!ai) throw new Error('Gemini is not configured');
       const t0 = Date.now();
       const systemInstruction = messages.find((m) => m.role === 'system')?.content;
@@ -1228,7 +1304,7 @@ RULES:
     const firstChangedFile = proposedChanges ? Object.keys(proposedChanges)[0] || '' : '';
     const impact = calculateSymbolImpact('', firstChangedFile, project.files);
     const plan = createModificationPlan(prompt || 'Update Code', project, impact, proposedChanges || {});
-    
+
     if (plan.requiresUserApproval && !forceOverwriteDirty) {
       return res.status(409).json({
         error: 'Requires user approval before proceeding',
