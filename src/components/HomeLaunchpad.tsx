@@ -330,11 +330,8 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
   const handlePromptSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (isGenerating) return;
-    const text =
-      prompt.trim() ||
-      (isAr
-        ? `بناء تطبيق ${selectedCategory} متكامل باستخدام ${selectedModel} مع قاعدة بيانات ولوحة تحكم`
-        : `Build a complete ${selectedCategory} application using ${selectedModel} with database and analytics dashboard`);
+    const text = prompt.trim();
+    if (!text) return;
     await onExecutePrompt(text, {
       model: selectedModel,
       thinkingMode: effectiveThinkingMode,

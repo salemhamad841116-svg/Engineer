@@ -1006,19 +1006,6 @@ async function startServer() {
         replyDeterministic(tr('أكيد، ما التعديل الذي تريد إجراءه على التطبيق الحالي؟', 'Sure, what modification would you like to make to the current application?'), editSuggestions);
         return;
       }
-      if (intentResult.subIntent === 'create_conflict') {
-        const requested = analyzeAppRequest(cleanPrompt).appTitle || tr('تطبيق جديد', 'New application');
-        replyDeterministic(
-          tr(
-            `هل تريد إنشاء مشروع جديد (${requested}) أم تعديل المشروع الحالي (${project.name})؟`,
-            `Do you want to create a new project (${requested}) or modify the current project (${project.name})?`
-          ),
-          isAr
-            ? [`أنشئ مشروعاً جديداً: ${cleanPrompt}`, `عدّل المشروع الحالي: ${cleanPrompt}`]
-            : [`Create a new project: ${cleanPrompt}`, `Modify the current project: ${cleanPrompt}`]
-        );
-        return;
-      }
       if (isGeneric || (intentResult.subIntent === 'clarification' && /(تطبيق|موقع|برنامج|منصة|app|website)/i.test(cleanPrompt))) {
         replyDeterministic(
           tr(
@@ -1050,7 +1037,7 @@ async function startServer() {
       let spec = analyzeAppRequest(cleanPrompt, targetProject);
 
       // The builder concluded this is conversation, not code → answer with the model, never regenerate files.
-      if (spec.intent === 'chat' && !intentResult.createNewProject) {
+      if (spec.intent === 'chat' && !intentResult.createNewProject && intentResult.subIntent !== 'build_new') {
         mark('reroute', 'builder classified as chat');
         await runModelChat();
         return;

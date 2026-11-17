@@ -8,7 +8,6 @@ export type SubIntent =
   | 'qa'
   | 'clarification'
   | 'ambiguous_edit'
-  | 'create_conflict'
   | 'build_new'
   | 'modify_code';
 
@@ -151,8 +150,8 @@ export function detectIntent(
       subIntent: GREETING_REGEX.test(prompt)
         ? 'greeting'
         : QA_PREFIX_REGEX.test(prompt)
-        ? 'qa'
-        : 'clarification',
+          ? 'qa'
+          : 'clarification',
       confidence: 1.0,
       reason: 'Forced by user mode selector (Chat Mode)',
     };
@@ -200,10 +199,10 @@ export function detectIntent(
     }
     if (hasActiveProject && !mentionsCurrentProject(prompt)) {
       return {
-        intent: 'chat',
-        subIntent: 'create_conflict',
-        confidence: 0.9,
-        reason: 'New-application request while a project is open: ask whether to create a new project or edit the current one',
+        intent: 'build',
+        subIntent: 'build_new',
+        confidence: 0.94,
+        reason: 'Explicit new application request executes directly in the active project workspace',
       };
     }
     if (!hasActiveProject) {

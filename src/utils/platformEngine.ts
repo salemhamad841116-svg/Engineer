@@ -735,14 +735,14 @@ export function compileProjectToPreviewHtml(project: Project, options: PreviewCo
       </thead>
       <tbody>
         ${rowsPreview
-          .map(
-            (r, idx) => `<tr>
+      .map(
+        (r, idx) => `<tr>
           <td style="font-family:monospace">${r.id || idx + 1}</td>
           <td>${r.name || r.title || r.email || 'Item #' + (idx + 1)}</td>
           <td style="color:#38bdf8">${r.status || r.role || 'Active'}</td>
         </tr>`
-          )
-          .join('')}
+      )
+      .join('')}
       </tbody>
     </table>
   </div>
@@ -1408,8 +1408,8 @@ CREATE INDEX idx_project_records_status ON project_records(status);
             role: 'assistant',
             content:
               spec.language === 'ar'
-                ? `مرحباً بك في مساحة عمل **${spec.name}**. جميع الوكلاء العشرة ومحررات الأكواد وقواعد البيانات وخط النشر السحابي جاهزة للعمل الفعلي.`
-                : `Welcome to **${spec.name}**. All 10 specialist AI engineering agents, full-stack files, database tables, and Cloud Run deployment pipelines are active.`,
+                ? `تم إنشاء مساحة عمل ${spec.name}. أرسل طلب البناء أو التعديل للبدء فوراً.`
+                : `Workspace ${spec.name} is ready. Send your build or modification request to begin immediately.`,
             timestamp: now,
             model: 'gemini-3.8-flash',
             thinkingMode: 'standard',
