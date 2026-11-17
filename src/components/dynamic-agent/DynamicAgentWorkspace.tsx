@@ -111,6 +111,28 @@ export const DynamicAgentWorkspace: React.FC = () => {
   const [statusToast, setStatusToast] = useState<string | null>(null);
   const [liveRecords, setLiveRecords] = useState<Record<string, unknown>[]>([]);
 
+  const pushPreviewToLiveFrame = (payload: UiPayload) => {
+    if (typeof window === 'undefined') return;
+    const iframe = document.getElementById('live-app-preview-frame') as HTMLIFrameElement | null;
+    if (!iframe) return;
+
+    const title = payload.meta?.title || 'Live Executive Preview';
+    const description = payload.meta?.description || '';
+    const cards = (payload.kpis || []).map((kpi) => `
+      <div class="kpi-card"><div class="kpi-label">${kpi.label}</div><div class="kpi-value">${kpi.value}</div><div class="kpi-change">${kpi.change || ''}</div></div>
+    `).join('');
+    const fields = (payload.fields || []).map((field) => `
+      <div class="field-card"><div class="field-label">${field.label}</div><div class="field-name">${field.name}</div><div class="field-type">${field.type}</div></div>
+    `).join('');
+
+    iframe.srcdoc = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><style>
+      body{margin:0;font-family:Inter,system-ui,sans-serif;background:#090d18;color:#e2e8f0;padding:24px}
+      .wrap{max-width:1200px;margin:0 auto}.hero{padding:24px;border:1px solid rgba(255,255,255,.08);border-radius:20px;background:linear-gradient(135deg,#0f172a,#111827)}
+      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:20px}.kpi-card,.field-card{background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px}
+      .kpi-label,.field-name,.field-type{color:#94a3b8;font-size:12px}.kpi-value{font-size:28px;font-weight:800;margin:8px 0}.section{margin-top:24px}
+    </style></head><body><div class="wrap"><section class="hero"><h1>${title}</h1><p>${description}</p></section><section class="section"><div class="grid">${cards}</div></section><section class="section"><div class="grid">${fields}</div></section></div></body></html>`;
+  };
+
   // Chat conversation
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -135,6 +157,10 @@ export const DynamicAgentWorkspace: React.FC = () => {
       setViewMode(currentPayload.meta.viewType);
     }
   }, [currentPayload.meta.screenId]);
+
+  useEffect(() => {
+    pushPreviewToLiveFrame(currentPayload);
+  }, [currentPayload]);
 
   const showToast = (msg: string) => {
     setStatusToast(msg);
@@ -372,11 +398,10 @@ export const DynamicAgentWorkspace: React.FC = () => {
             <button
               type="button"
               onClick={() => setUserRole('business_owner')}
-              className={`py-1.5 px-2 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                userRole === 'business_owner'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={`py-1.5 px-2 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 ${userRole === 'business_owner'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+                }`}
             >
               <Briefcase className="w-3.5 h-3.5" />
               <span>صاحب عمل</span>
@@ -384,11 +409,10 @@ export const DynamicAgentWorkspace: React.FC = () => {
             <button
               type="button"
               onClick={() => setUserRole('employee')}
-              className={`py-1.5 px-2 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                userRole === 'employee'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={`py-1.5 px-2 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 ${userRole === 'employee'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+                }`}
             >
               <UserCheck className="w-3.5 h-3.5" />
               <span>موظف</span>
@@ -396,11 +420,10 @@ export const DynamicAgentWorkspace: React.FC = () => {
             <button
               type="button"
               onClick={() => setUserRole('developer')}
-              className={`py-1.5 px-2 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                userRole === 'developer'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={`py-1.5 px-2 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 ${userRole === 'developer'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+                }`}
             >
               <Code2 className="w-3.5 h-3.5" />
               <span>مبرمج</span>
@@ -540,33 +563,30 @@ export const DynamicAgentWorkspace: React.FC = () => {
           <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-900 border border-slate-800 text-xs">
             <button
               onClick={() => setViewMode('FORM')}
-              className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
-                viewMode === 'FORM'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition-all ${viewMode === 'FORM'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+                }`}
             >
               <Layout className="w-3.5 h-3.5" />
               <span>النموذج (FORM)</span>
             </button>
             <button
               onClick={() => setViewMode('TABLE')}
-              className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
-                viewMode === 'TABLE'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition-all ${viewMode === 'TABLE'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+                }`}
             >
               <TableIcon className="w-3.5 h-3.5" />
               <span>الجدول (TABLE)</span>
             </button>
             <button
               onClick={() => setViewMode('DASHBOARD')}
-              className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
-                viewMode === 'DASHBOARD'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition-all ${viewMode === 'DASHBOARD'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+                }`}
             >
               <LayoutDashboard className="w-3.5 h-3.5" />
               <span>لوحة المؤشرات (DASHBOARD)</span>
@@ -600,22 +620,20 @@ export const DynamicAgentWorkspace: React.FC = () => {
               <button
                 onClick={() => handleFeedback(1)}
                 title="تقييم إيجابي (حفظ كنموذج مرجعي)"
-                className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
-                  feedbackRating === 1
-                    ? 'bg-emerald-600 border-emerald-500 text-white'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-emerald-400 hover:bg-slate-800'
-                }`}
+                className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${feedbackRating === 1
+                  ? 'bg-emerald-600 border-emerald-500 text-white'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-emerald-400 hover:bg-slate-800'
+                  }`}
               >
                 <ThumbsUp className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => handleFeedback(-1)}
                 title="تقييم سلبي"
-                className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
-                  feedbackRating === -1
-                    ? 'bg-rose-600 border-rose-500 text-white'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-rose-400 hover:bg-slate-800'
-                }`}
+                className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${feedbackRating === -1
+                  ? 'bg-rose-600 border-rose-500 text-white'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-rose-400 hover:bg-slate-800'
+                  }`}
               >
                 <ThumbsDown className="w-3.5 h-3.5" />
               </button>

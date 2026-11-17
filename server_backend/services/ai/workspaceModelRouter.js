@@ -16,7 +16,6 @@
 const { modelProvider } = require('./modelProviderInterface');
 const providerRegistry = require('./providerRegistry');
 
-const LIST_CACHE_MS = 15000;
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.WORKSPACE_CHAT_TIMEOUT_MS || '', 10) || 45000;
 
 const cloudAdapters = new Map(); // provider -> { models: () => [{id,name}], chat: async fn }
@@ -172,7 +171,7 @@ async function fetchInstalledLocalModels(timeoutMs = 3000) {
  * @returns {Promise<{models: Array, defaultModelId: string|null, provider: string, localError: string|null, cloudFallbackAllowed: boolean}>}
  */
 async function listModels({ force = false } = {}) {
-  if (!force && listCache.data && Date.now() - listCache.at < LIST_CACHE_MS) return listCache.data;
+  if (!force && listCache.data && process.env.NODE_ENV === 'test') return listCache.data;
 
   const provider = localProvider();
   const configured = configuredLocalModels();

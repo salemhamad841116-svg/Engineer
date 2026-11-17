@@ -197,10 +197,10 @@ router.get('/users', requireAdminAuth(), (req, res) => {
       let projectCount = 0;
       try {
         queryCount = db.prepare('SELECT COUNT(*) as c FROM research_sessions WHERE tenant_id = ?').get(u.id)?.c || 0;
-      } catch (_) {}
+      } catch (_) { }
       try {
         projectCount = db.prepare('SELECT COUNT(*) as c FROM app_projects WHERE user_id = ?').get(u.id)?.c || 0;
-      } catch (_) {}
+      } catch (_) { }
 
       return {
         ...u,
@@ -286,10 +286,10 @@ router.post('/users/:id/inspect-private', requireAdminAuth(), (req, res) => {
     let userSessions = [];
     try {
       userProjects = db.prepare('SELECT id, name, description, status, created_at FROM app_projects WHERE user_id = ?').all(userId);
-    } catch (_) {}
+    } catch (_) { }
     try {
       userSessions = db.prepare('SELECT id, title, query, status, created_at FROM research_sessions WHERE user_id = ? OR tenant_id = ?').all(userId, userId);
-    } catch (_) {}
+    } catch (_) { }
 
     res.json({
       success: true,
@@ -1168,7 +1168,7 @@ router.get('/ai-providers', requireAdminAuth(), (_req, res) => {
       let models = [];
       try {
         models = JSON.parse(p.supported_models_json || '[]');
-      } catch (_) {}
+      } catch (_) { }
       return {
         ...p,
         supported_models: models,
@@ -1347,6 +1347,25 @@ router.post('/ai-providers/:id/test', requireAdminAuth(), async (req, res) => {
     const provider = db.prepare('SELECT * FROM ai_providers WHERE id = ?').get(id);
     if (!provider) return res.status(404).json({ success: false, error: 'Provider not found' });
 
+    const configState = secretVault.syncProviderConfigurationState(id);
+    if (configState && !configState.validKey) {
+      return res.status(400).json({
+        success: false,
+        code: 'PROVIDER_UNCONFIGURED',
+        error: configState.reason,
+        message: configState.label,
+        messageAr: configState.labelAr,
+        testResult: {
+          success: false,
+          latencyMs: 0,
+          status: configState.status,
+          error: configState.reason,
+          userMessage: configState.label,
+          userMessageAr: configState.labelAr,
+        },
+      });
+    }
+
     const result = await secretVault.testProviderConnection(provider);
     const now = nowIso();
 
@@ -1368,6 +1387,22 @@ router.post('/ai-providers/:id/toggle', requireAdminAuth(), requireAdminRole('su
     const db = getDb();
     const provider = db.prepare('SELECT status FROM ai_providers WHERE id = ?').get(id);
     if (!provider) return res.status(404).json({ success: false, error: 'Provider not found' });
+
+    const fullProvider = db.prepare('SELECT * FROM ai_providers WHERE id = ?').get(id);
+    const configState = secretVault.getProviderConfigurationState(fullProvider);
+    if (!configState.validKey) {
+      const now = nowIso();
+      db.prepare('UPDATE ai_providers SET status = ?, last_test_status = ?, last_test_latency_ms = 0, updated_at = ? WHERE id = ?')
+        .run(configState.status, configState.status, now, id);
+      return res.status(400).json({
+        success: false,
+        code: 'PROVIDER_UNCONFIGURED',
+        error: configState.reason,
+        message: configState.label,
+        messageAr: configState.labelAr,
+        status: configState.status,
+      });
+    }
 
     const nextStatus = provider.status === 'active' ? 'disabled' : 'active';
     const now = nowIso();
@@ -1411,7 +1446,7 @@ router.get('/ai-providers/:id/models', requireAdminAuth(), (req, res) => {
     let models = [];
     try {
       models = JSON.parse(provider.supported_models_json || '[]');
-    } catch (_) {}
+    } catch (_) { }
 
     res.json({ success: true, models });
   } catch (err) {

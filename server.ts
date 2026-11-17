@@ -15,17 +15,17 @@ import {
   buildDeployment17Steps,
 } from './src/utils/platformEngine';
 import { getInitialButtonRegistry, runAutomatedRegistryVerification } from './src/utils/buttonRegistry';
-import { AIAgentProfile, ButtonRegistryEntry, Project, ProjectFile } from './src/types/platform';
+import { AIAgentProfile, ButtonRegistryEntry, Project } from './src/types/platform';
 import { attachBackendAndDatabase } from './src/backendBridge';
 import { detectIntent, isGenericAppRequest } from './src/utils/intentRouter';
 import { formatUserFacingResponse } from './src/utils/responseFormatter';
 import {
   analyzeAppRequest,
   generateInternalPlan,
-  generateAppFiles,
   verifyGeneratedApp,
   formatCustomerLifecycleResponse,
 } from './src/utils/autonomousAppBuilder';
+import type { TestCaseResult } from './src/types/platform';
 import {
   calculateSymbolImpact,
   buildProjectDependencyGraph,
@@ -74,6 +74,8 @@ const serverRequire = createRequire(import.meta.url);
 const { subdomainRouterMiddleware } = serverRequire('./server_backend/middleware/subdomainRouter.js');
 const adminRoutes = serverRequire('./server_backend/routes/adminRoutes.js');
 const { bootstrapAdminUsers } = serverRequire('./server_backend/auth/adminAuthService.js');
+const { buildSystemPrompt: buildUnifiedConstitutionPrompt, workspaceRoleForAccount } = serverRequire('./server_backend/services/ai/constitution.js');
+const { defaultEngineerAgent } = serverRequire('./server_backend/services/agent/engineerAgent.js');
 
 dotenv.config();
 
@@ -83,6 +85,35 @@ const __dirname = path.dirname(__filename);
 
 const DATA_DIR = path.resolve(__dirname, '.data');
 const DB_FILE = path.join(DATA_DIR, 'platform-db.json');
+
+function compileProjectFilesToPreviewHtml(project: Project): string {
+  const files = Array.isArray(project?.files) ? project.files : [];
+  const indexFile = files.find((f) => f.name === 'index.html' || f.path === '/index.html');
+  if (!indexFile) return '';
+  const cssBundle = files
+    .filter((f) => String(f.name || f.path).endsWith('.css'))
+    .map((f) => String(f.content || ''))
+    .join('\n\n');
+  const jsBundle = files
+    .filter((f) => String(f.name || f.path).endsWith('.js'))
+    .map((f) => String(f.content || ''))
+    .join('\n\n');
+
+  let html = String(indexFile.content || '');
+  html = html.replace(/<link[^>]+href=["'][^"']+\.css["'][^>]*>/gi, '');
+  html = html.replace(/<script[^>]+src=["'][^"']+\.js["'][^>]*><\/script>/gi, '');
+  if (cssBundle) {
+    html = html.includes('</head>')
+      ? html.replace('</head>', `<style data-origin="server-preview">${cssBundle}</style></head>`)
+      : `<style data-origin="server-preview">${cssBundle}</style>${html}`;
+  }
+  if (jsBundle) {
+    html = html.includes('</body>')
+      ? html.replace('</body>', `<script data-origin="server-preview">${jsBundle}</script></body>`)
+      : `${html}<script data-origin="server-preview">${jsBundle}</script>`;
+  }
+  return html;
+}
 
 interface PersistedPlatformState {
   projects: Project[];
@@ -545,6 +576,24 @@ async function startServer() {
     }
   });
 
+  app.get('/api/ai/routing-config', async (req, res) => {
+    try {
+      registerDbBackedProviders();
+      const data = await workspaceModelRouter.listModels({ force: true });
+      res.json({
+        success: true,
+        routing: data.routing,
+        defaultModelId: data.defaultModelId,
+        models: data.models,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({
+        error: 'ROUTING_CONFIG_UNAVAILABLE',
+        message: err instanceof Error ? err.message.slice(0, 200) : 'error',
+      });
+    }
+  });
+
   // Attachments: validated upload (type/size/content sniffing), linked to messages by id.
   app.post('/api/ai/attachments', (req, res) => {
     const { projectId, files } = req.body || {};
@@ -734,6 +783,13 @@ async function startServer() {
       return;
     }
 
+    const workspaceReq = req as express.Request & { workspaceUser?: { id: string; role: string; email?: string } };
+    const derivedWorkspaceRole = workspaceRoleForAccount(workspaceReq.workspaceUser?.role);
+    const derivedWorkspaceUser = {
+      id: workspaceReq.workspaceUser?.id || state.settings.userEmail || 'workspace-user',
+      role: derivedWorkspaceRole,
+      account: workspaceReq.workspaceUser?.role || 'viewer',
+    };
     const isAr = isArPrompt || project.language === 'ar';
     const tr = (ar: string, en: string) => (isAr ? ar : en);
     const now = new Date().toISOString();
@@ -847,14 +903,13 @@ async function startServer() {
       const attachmentContext = attachments
         .map((a) => (a.text ? `--- ATTACHMENT ${a.name} (${a.kind}) ---\n${a.text.slice(0, 20000)}` : `--- ATTACHMENT ${a.name} (${a.kind}, ${a.size} bytes, binary: content not readable as text) ---`))
         .join('\n\n');
-      const systemPrompt = `You are Engineer, a senior AI software engineering assistant inside the Engineer workspace.
-Reply in the user's language (${isAr ? 'Arabic' : 'English'}), concisely and helpfully.
-Current project: "${project.name}" (${project.category}). Files: ${fileList || 'none'}.
-RULES:
-- Greetings/casual messages: short, warm, natural. No forced lists.
-- Technical questions: bold headline, numbered sections with bold titles, bullets, fenced code blocks with language ids.
-- Never claim you modified files, ran builds or tests in this conversational reply.
-- Never mention internal roles or pipeline steps.`;
+      const systemPrompt = buildUnifiedConstitutionPrompt({
+        mode: 'chat',
+        role: derivedWorkspaceRole,
+        project,
+        language: isAr ? 'ar' : 'en',
+        extra: `Current project category: ${project.category}. Files: ${fileList || 'none'}. Greetings/casual messages should remain brief and natural.`,
+      });
       const messages = [
         { role: 'system', content: systemPrompt },
         ...history,
@@ -997,50 +1052,62 @@ RULES:
       if (!targetHasFiles && spec.appTitle && spec.appTitle !== 'تطبيق ذكي' && spec.appTitle !== 'Smart Application') {
         targetProject.name = spec.appTitle;
       }
+      registerDbBackedProviders();
       const wantsChart = Boolean(spec.features.chart);
       const plan = generateInternalPlan(spec, targetProject);
-      mark('tools', `autonomous_app_builder.${spec.intent}`);
-      const generatedFiles = generateAppFiles(spec, plan, targetProject.files);
-      toolsInvoked.push(spec.intent === 'modify_app' ? 'autonomous_app_builder.patch_existing_files' : spec.intent === 'fix_bug' ? 'autonomous_app_builder.bug_repair' : 'autonomous_app_builder.generate_app');
-      if (wantsChart) toolsInvoked.push('chart_feature.apply');
-
-      const modifiedFilePaths: string[] = [];
-      for (const [fileName, fileContent] of Object.entries(generatedFiles)) {
-        const existingFile = targetProject.files.find((f) => f.name === fileName || f.path === '/' + fileName);
-        if (existingFile) {
-          if (existingFile.content === fileContent) continue;
-          existingFile.previousContent = existingFile.content;
-          existingFile.content = fileContent;
-          existingFile.size = fileContent.length;
-          existingFile.updatedAt = now;
-          modifiedFilePaths.push(existingFile.path);
-        } else {
-          const newFile: ProjectFile = {
-            id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            name: fileName,
-            path: '/' + fileName,
-            folder: 'root',
-            content: fileContent,
-            language: fileName.endsWith('.html') ? 'html' : fileName.endsWith('.css') ? 'css' : 'javascript',
-            size: fileContent.length,
-            updatedAt: now,
-          };
-          targetProject.files.push(newFile);
-          modifiedFilePaths.push(newFile.path);
-        }
+      mark('tools', `engineer_agent.${spec.intent}`);
+      const agentResult = await defaultEngineerAgent.run({
+        prompt: cleanPrompt,
+        project: targetProject,
+        user: derivedWorkspaceUser,
+        mode: 'build',
+        modelId: requestedModelId,
+        signal: clientAbort.signal,
+        history,
+        attachments,
+        createProjectHandler: (name: string, description: string) => {
+          const created = createNewProjectFromSpec({
+            name,
+            description: description || cleanPrompt.slice(0, 200),
+            category: project.category || 'app',
+            appType: 'Full-Stack Web App',
+            techStack: 'react-ts-vite',
+            template: 'blank',
+            language: project.language || state.settings.language,
+            direction: project.direction || (isAr ? 'rtl' : 'ltr'),
+            databaseEngine: 'sqlite',
+            deployTarget: project.deployTarget || 'cloud-run-eu',
+          });
+          created.files = [];
+          created.chatThreads = [{ id: `chat-${Date.now()}`, title: isAr ? 'محادثة' : 'Chat', updatedAt: now, messages: [] }];
+          created.activeChatId = created.chatThreads[0].id;
+          state.projects.unshift(created);
+          return created;
+        },
+        compilePreview: () => compileProjectFilesToPreviewHtml(targetProject),
+      });
+      toolsInvoked.push(...agentResult.toolCalls.map((t: { name: string }) => `engineer_agent.${t.name}`));
+      if (agentResult.newProjectId) newProjectId = agentResult.newProjectId;
+      if (agentResult.status === 'approval_required') {
+        fail(409, 'APPROVAL_REQUIRED', agentResult.text || tr('هذا الإجراء يحتاج موافقة صريحة قبل التنفيذ.', 'This action requires explicit approval before execution.'), { approvalToken: agentResult.approvalToken, pendingTool: agentResult.pendingTool, userMessageId: userMsgId, retryable: true });
+        return;
       }
+      if (agentResult.status === 'ask_user') {
+        replyDeterministic(agentResult.text || tr('أحتاج توضيحاً إضافياً قبل المتابعة.', 'I need clarification before continuing.'), agentResult.options);
+        return;
+      }
+      const generatedFiles = Object.fromEntries((targetProject.files || []).map((f) => [f.name, f.content || '']));
+      const modifiedFilePaths: string[] = Array.isArray(agentResult.filesModified) ? agentResult.filesModified.map((p: string) => p.startsWith('/') ? p : `/${p}`) : [];
+      const verification: { allPassed: boolean; testResults: TestCaseResult[] } = agentResult.verification || verifyGeneratedApp(generatedFiles, plan, { expectChart: wantsChart });
+      toolsInvoked.push('build_verifier.compiled_preview');
       const indexFile = targetProject.files.find((f) => f.name === 'index.html');
       if (indexFile) targetProject.activeFileId = indexFile.id;
-
-      // Verification on the exact compiled preview (script syntax + chart wiring).
-      const verification = verifyGeneratedApp(generatedFiles, plan, { expectChart: wantsChart });
-      toolsInvoked.push('build_verifier.compiled_preview');
       targetProject.tests = verification.testResults;
       targetProject.status = verification.allPassed ? 'ready' : 'building';
-      mark('verify', verification.allPassed ? 'passed' : `failed: ${verification.testResults.filter((t) => t.status !== 'passed').map((t) => t.id).join(',')}`);
+      mark('verify', verification.allPassed ? 'passed' : `failed: ${verification.testResults.filter((t: TestCaseResult) => t.status !== 'passed').map((t: TestCaseResult) => t.id).join(',')}`);
 
-      const passed = verification.testResults.filter((t) => t.status === 'passed').length;
-      const failedFeatures = verification.testResults.filter((t) => t.status !== 'passed').map((t) => t.name);
+      const passed = verification.testResults.filter((t: TestCaseResult) => t.status === 'passed').length;
+      const failedFeatures = verification.testResults.filter((t: TestCaseResult) => t.status !== 'passed').map((t: TestCaseResult) => t.name);
       const isModification = spec.intent === 'modify_app';
       let aiReplyText: string;
       if (spec.intent === 'fix_bug') {
@@ -1085,8 +1152,8 @@ RULES:
       logActivity(`AI Engineer built feature on ${targetProject.name}`, cleanPrompt.slice(0, 48), 'Engineer');
 
       const assistantExtra = {
-        model: 'autonomous-app-builder',
-        provider: 'engine',
+        model: agentResult.model || requestedModelId || 'db-backed-llm',
+        provider: agentResult.provider || 'workspace-model-router',
         modifiedFiles: modifiedFilePaths,
         verification: { passed: verification.allPassed, expectChart: wantsChart },
         ...(newProjectId ? { newProjectId } : {}),
@@ -1109,9 +1176,9 @@ RULES:
         subIntent: intentResult.subIntent,
         filesModified: modifiedFilePaths,
         tokensUsed: state.settings.aiTokensUsed,
-        modelUsed: { id: 'autonomous-app-builder', provider: 'engine', note: 'Deterministic code generation engine' },
-        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, estimated: false },
-        verification: { allPassed: verification.allPassed, expectChart: wantsChart, tests: verification.testResults.map((t) => ({ id: t.id, name: t.name, status: t.status, evidence: t.evidenceLog })) },
+        modelUsed: { id: agentResult.model || requestedModelId || 'db-backed-llm', provider: agentResult.provider || 'workspace-model-router', note: 'Active database-backed provider with live tool-calling loop' },
+        usage: agentResult.usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0, estimated: false },
+        verification: { allPassed: verification.allPassed, expectChart: wantsChart, tests: verification.testResults.map((t: TestCaseResult) => ({ id: t.id, name: t.name, status: t.status, evidence: t.evidenceLog })) },
         toolsInvoked,
         userMessageId: userMsgId,
         assistantMessageId: assistantMsg.id,

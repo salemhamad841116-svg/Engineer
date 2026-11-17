@@ -15,6 +15,7 @@ const { getDb } = require('../../db/database');
 const { nowIso } = require('../../utils/clock');
 
 const MOCK_KEY_RE = /^(sk-seed-|seed-|mock|test-|placeholder|demo)/i;
+const UNCONFIGURED_PROVIDER_STATUS = 'unconfigured';
 
 // 32-byte master key derived deterministically or from env
 function getMasterKey() {
@@ -92,6 +93,68 @@ function decryptProviderKey(provider) {
   }
 }
 
+function getProviderConfigurationState(provider) {
+  if (!provider) {
+    return {
+      configured: false,
+      validKey: false,
+      status: UNCONFIGURED_PROVIDER_STATUS,
+      reason: 'Provider record is missing',
+      label: 'Unconfigured / No Valid Key',
+      labelAr: 'غير مفعل - يحتاج مفتاح حقيقي',
+    };
+  }
+  const apiKey = decryptProviderKey(provider);
+  if (!apiKey) {
+    return {
+      configured: false,
+      validKey: false,
+      status: UNCONFIGURED_PROVIDER_STATUS,
+      reason: 'Provider does not have a valid non-seed API key',
+      label: 'Unconfigured / No Valid Key',
+      labelAr: 'غير مفعل - يحتاج مفتاح حقيقي',
+    };
+  }
+  const rawStatus = String(provider.status || '').trim().toLowerCase();
+  if (rawStatus === 'disabled' || rawStatus === 'inactive') {
+    return {
+      configured: false,
+      validKey: true,
+      status: 'inactive',
+      reason: 'Provider is disabled by admin policy',
+      label: 'Inactive',
+      labelAr: 'غير نشط',
+    };
+  }
+  return {
+    configured: true,
+    validKey: true,
+    status: 'active',
+    reason: null,
+    label: 'Active',
+    labelAr: 'نشط',
+  };
+}
+
+function syncProviderConfigurationState(providerId) {
+  const db = getDb();
+  const provider = db.prepare('SELECT * FROM ai_providers WHERE id = ?').get(providerId);
+  if (!provider) return null;
+  const config = getProviderConfigurationState(provider);
+  const now = nowIso();
+  if (!config.configured) {
+    db.prepare(`
+      UPDATE ai_providers
+      SET status = ?,
+          last_test_status = ?,
+          last_test_latency_ms = 0,
+          updated_at = ?
+      WHERE id = ?
+    `).run(config.status, config.status, now, providerId);
+  }
+  return { ...config, providerId };
+}
+
 /**
  * Tests live connectivity to an AI provider.
  * Supports OpenAI, Anthropic, Gemini, Mistral, Cohere, DeepSeek, OpenRouter, and Custom.
@@ -109,13 +172,16 @@ async function testProviderConnection(provider) {
     }
 
     // In offline test environment or if key is mock/empty, simulate realistic deterministic latency test
-    const decryptedKey = decryptProviderKey(provider);
-    if (!decryptedKey && process.env.NODE_ENV !== 'test') {
+    const config = getProviderConfigurationState(provider);
+    const decryptedKey = config.validKey ? decryptProviderKey(provider) : null;
+    if (!config.validKey) {
       return {
         success: false,
         latencyMs: Date.now() - startTime,
-        status: 'error',
-        error: 'Provider does not have a valid non-seed API key',
+        status: UNCONFIGURED_PROVIDER_STATUS,
+        error: config.reason || 'Provider does not have a valid non-seed API key',
+        userMessage: 'Unconfigured / No Valid Key',
+        userMessageAr: 'غير مفعل - يحتاج مفتاح حقيقي',
       };
     }
 
@@ -216,11 +282,12 @@ function rotateProviderKey(providerId, newRawKey, adminActorId) {
   const enc = encryptSecret(newRawKey);
   const now = nowIso();
 
+  const nextStatus = isSeedSecret(newRawKey) ? UNCONFIGURED_PROVIDER_STATUS : 'active';
   db.prepare(`
     UPDATE ai_providers
-    SET key_ciphertext = ?, key_iv = ?, key_tag = ?, key_prefix = ?, status = 'active', updated_at = ?
+    SET key_ciphertext = ?, key_iv = ?, key_tag = ?, key_prefix = ?, status = ?, last_test_status = 'pending', last_test_latency_ms = 0, updated_at = ?
     WHERE id = ?
-  `).run(enc.ciphertext, enc.iv, enc.tag, enc.prefix, now, providerId);
+  `).run(enc.ciphertext, enc.iv, enc.tag, enc.prefix, nextStatus, now, providerId);
 
   // Record audit event
   try {
@@ -275,6 +342,8 @@ module.exports = {
   encryptSecret,
   decryptSecret,
   decryptProviderKey,
+  getProviderConfigurationState,
+  syncProviderConfigurationState,
   isSeedSecret,
   testProviderConnection,
   rotateProviderKey,

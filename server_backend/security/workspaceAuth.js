@@ -19,7 +19,6 @@ const PROTECTED_API_PREFIXES = [
   '/api/state',
   '/api/projects',
   '/api/settings',
-  '/api/ai/',
   '/api/tools/',
   '/api/orchestrator/',
   '/api/engineering/',
@@ -57,6 +56,13 @@ function createWorkspaceAuth({ authService, extractToken }) {
     console.warn('[workspaceAuth] ⚠️  E2E auth bypass is ENABLED for loopback requests only. Never use in production.');
   }
 
+  function isPublicWorkspacePath(req) {
+    const p = String(req.path || '');
+    if (req.method === 'GET' && (p === '/api/ai/models' || p === '/api/ai/routing-config')) return true;
+    if (p === '/api/ai/execute') return true;
+    return false;
+  }
+
   function attachIdentity(req, user) {
     req.user = user;
     req.workspaceUser = {
@@ -70,6 +76,7 @@ function createWorkspaceAuth({ authService, extractToken }) {
 
   /** Requires an authenticated session on every protected workspace API route. */
   function requireWorkspaceAuth(req, res, next) {
+    if (isPublicWorkspacePath(req)) return next();
     if (!isProtectedPath(req.path)) return next();
     if (req.workspaceUser) return next();
 

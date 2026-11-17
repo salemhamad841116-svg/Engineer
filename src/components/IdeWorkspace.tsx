@@ -11,7 +11,6 @@ import {
   FlaskConical,
   Database,
   GitBranch,
-  Rocket,
   FolderPlus,
   FilePlus,
   Trash2,
@@ -74,6 +73,8 @@ interface IdeWorkspaceProps {
   language: Language;
   project: Project;
   defaultModel?: string;
+  availableModels?: Array<{ id: string; name: string; provider: string; available: boolean; local?: boolean; providerLabel?: string; configured?: boolean; statusLabel?: string; statusLabelAr?: string }>;
+  onSelectModel?: (modelId: string) => void;
   agents: AIAgentProfile[];
   isGenerating: boolean;
   pipelineStages: ExecutionPipelineStage[];
@@ -99,6 +100,8 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   language,
   project,
   defaultModel = '',
+  availableModels: externalAvailableModels = [],
+  onSelectModel,
   agents: _agents,
   isGenerating,
   pipelineStages: _pipelineStages,
@@ -116,7 +119,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   const [showChatSearch, setShowChatSearch] = useState(false);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('');
-  const [availableModels, setAvailableModels] = useState<{ id: string; name: string; provider: string; available: boolean; local?: boolean }[]>([]);
+  const [availableModels, setAvailableModels] = useState<{ id: string; name: string; provider: string; available: boolean; local?: boolean; providerLabel?: string; configured?: boolean; statusLabel?: string; statusLabelAr?: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachmentMeta[]>([]);
@@ -261,9 +264,15 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
   }, [defaultModel]);
 
   useEffect(() => {
+    if (externalAvailableModels.length > 0) {
+      setAvailableModels(externalAvailableModels);
+    }
+  }, [externalAvailableModels]);
+
+  useEffect(() => {
     let cancelled = false;
     setModelsLoading(true);
-    fetch('/api/ai/models')
+    fetch('/api/ai/models?refresh=1')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
@@ -1473,6 +1482,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                                   disabled={!m.available}
                                   onClick={() => {
                                     setSelectedModel(m.id);
+                                    onSelectModel?.(m.id);
                                     setShowModelPicker(false);
                                     onNotify('info', isAr ? `تم اختيار النموذج: ${m.name}` : `Selected model: ${m.name}`);
                                   }}
@@ -1485,11 +1495,11 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                                 >
                                   <div className="flex flex-col">
                                     <span className="truncate">{m.name}</span>
-                                    <span className="text-[10px] text-[#969498]">{m.provider}</span>
+                                    <span className="text-[10px] text-[#969498]">{m.providerLabel || m.provider}</span>
                                   </div>
                                   {!m.available && (
                                     <span className="text-[9px] bg-red-950/40 text-red-400 px-1 py-0.5 rounded border border-red-500/20">
-                                      {isAr ? 'غير مثبت' : 'Not installed'}
+                                      {isAr ? (m.statusLabelAr || 'غير مفعل - يحتاج مفتاح حقيقي') : (m.statusLabel || 'Unconfigured / No Valid Key')}
                                     </span>
                                   )}
                                 </button>
@@ -2361,18 +2371,7 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     <span>{isAr ? '</> تحرير' : '</> Edit'}</span>
                   </button>
 
-                  {/* Glowing Deploy CTA Button */}
-                  <button
-                    type="button"
-                    id="preview-deploy-btn"
-                    data-testid="preview-deploy-btn"
-                    onClick={() => onOpenModal('deploy')}
-                    title={isAr ? 'نشر التطبيق' : 'Deploy Application'}
-                    className="btn btn-primary btn-sm shrink-0 font-bold shadow-[0_0_15px_rgba(59,130,246,0.5)] flex items-center gap-1.5"
-                  >
-                    <Rocket className="w-3.5 h-3.5 stroke-[2]" />
-                    <span>{isAr ? 'نشر' : 'Deploy'}</span>
-                  </button>
+                  {/* Single publish CTA intentionally removed here; primary deploy flow remains in the main app shell/modal trigger. */}
                 </div>
               </div>
 

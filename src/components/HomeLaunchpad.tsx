@@ -90,6 +90,9 @@ interface HomeLaunchpadProps {
   onOpenModal: (modal: string, payload?: unknown) => void;
   onSwitchView: (view: 'home' | 'ide' | 'published' | 'registry') => void;
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
+  defaultModel?: string;
+  availableModels?: Array<{ id: string; name: string; provider: string; available: boolean; configured?: boolean; statusLabel?: string; statusLabelAr?: string; providerLabel?: string }>;
+  onSelectModel?: (modelId: string) => void;
 }
 
 const AI_MODELS = [
@@ -265,11 +268,14 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
   onOpenModal,
   onSwitchView,
   onNotify,
+  defaultModel = '',
+  availableModels = [],
+  onSelectModel,
 }) => {
   const isAr = language === 'ar';
   const [prompt, setPrompt] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ProjectCategory>('app');
-  const [selectedModel, setSelectedModel] = useState<string>('Gemini 2.5 Pro');
+  const [selectedModel, setSelectedModel] = useState<string>(defaultModel || availableModels.find((m) => m.available)?.id || '');
   const [deepThink32k, setDeepThink32k] = useState<boolean>(false);
   const [planMode, setPlanMode] = useState<boolean>(false);
   const [designStyle, setDesignStyle] = useState<'cosmic-dark' | 'clean-slate' | 'enterprise-blue'>('cosmic-dark');
@@ -295,11 +301,31 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [cloningProjectId, setCloningProjectId] = useState<string | null>(null);
 
+  const modelMenuItems = availableModels.length > 0 ? availableModels : AI_MODELS.map((m) => ({
+    id: m.id,
+    name: isAr ? m.nameAr : m.nameEn,
+    provider: m.nameEn.split(' ')[0].toLowerCase(),
+    available: true,
+    configured: true,
+    statusLabel: 'Connected',
+    statusLabelAr: 'متصل',
+    providerLabel: m.badge,
+  }));
+
+  React.useEffect(() => {
+    const fallback = modelMenuItems.find((m) => m.available)?.id || modelMenuItems[0]?.id || '';
+    if (defaultModel) {
+      setSelectedModel(defaultModel);
+      return;
+    }
+    setSelectedModel((prev) => prev || fallback);
+  }, [defaultModel, modelMenuItems]);
+
   const effectiveThinkingMode: 'standard' | 'deep' | 'plan' = planMode
     ? 'plan'
     : deepThink32k
-    ? 'deep'
-    : 'standard';
+      ? 'deep'
+      : 'standard';
 
   const handlePromptSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -374,14 +400,13 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
       setVoiceStatusText(null);
       setPrompt((prev) =>
         prev
-          ? `${prev} — ${
-              isAr
-                ? 'مع ربط قاعدة البيانات والاختبارات الآلية (Web Speech API)'
-                : 'with connected database and automated tests (Web Speech API)'
-            }`
+          ? `${prev} — ${isAr
+            ? 'مع ربط قاعدة البيانات والاختبارات الآلية (Web Speech API)'
+            : 'with connected database and automated tests (Web Speech API)'
+          }`
           : isAr
-          ? 'أنشئ منصة إدارة مشاريع سحابية متكاملة مع قاعدة بيانات ولوحة تحكم تفاعلية'
-          : 'Create a full-stack cloud project management platform with database and live analytics'
+            ? 'أنشئ منصة إدارة مشاريع سحابية متكاملة مع قاعدة بيانات ولوحة تحكم تفاعلية'
+            : 'Create a full-stack cloud project management platform with database and live analytics'
       );
       onNotify(
         'success',
@@ -474,8 +499,8 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
             designStyle === 'cosmic-dark'
               ? 'radial-gradient(ellipse 75% 58% at 50% 34%, rgba(29, 78, 216, 0.36) 0%, rgba(14, 42, 128, 0.22) 42%, rgba(8, 9, 13, 0.96) 78%)'
               : designStyle === 'enterprise-blue'
-              ? 'radial-gradient(ellipse 75% 58% at 50% 34%, rgba(14, 116, 144, 0.34) 0%, rgba(15, 23, 42, 0.85) 65%, rgba(8, 9, 13, 0.98) 85%)'
-              : 'radial-gradient(ellipse 75% 58% at 50% 34%, rgba(71, 85, 105, 0.26) 0%, rgba(8, 9, 13, 0.96) 78%)',
+                ? 'radial-gradient(ellipse 75% 58% at 50% 34%, rgba(14, 116, 144, 0.34) 0%, rgba(15, 23, 42, 0.85) 65%, rgba(8, 9, 13, 0.98) 85%)'
+                : 'radial-gradient(ellipse 75% 58% at 50% 34%, rgba(71, 85, 105, 0.26) 0%, rgba(8, 9, 13, 0.96) 78%)',
         }}
       />
 
@@ -885,29 +910,34 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
                     <div className="px-2.5 py-1 text-[11px] font-semibold text-zinc-400 border-b border-white/8">
                       {isAr ? 'اختر نموذج الذكاء الاصطناعي' : 'Select AI Model'}
                     </div>
-                    {AI_MODELS.map((m) => (
+                    {modelMenuItems.map((m) => (
                       <button
                         key={m.id}
                         type="button"
+                        disabled={!m.available}
                         onClick={() => {
                           setSelectedModel(m.id);
+                          onSelectModel?.(m.id);
                           setShowModelMenu(false);
                           onNotify(
                             'info',
-                            isAr ? `تم اختيار النموذج: ${m.nameAr}` : `Selected model: ${m.nameEn}`
+                            isAr ? `تم اختيار النموذج: ${m.name}` : `Selected model: ${m.name}`
                           );
                         }}
-                        className="w-full text-start px-2.5 py-1.5 rounded-lg hover:bg-white/8 flex items-start justify-between gap-2 text-zinc-200 cursor-pointer"
+                        className={`w-full text-start px-2.5 py-1.5 rounded-lg flex items-start justify-between gap-2 text-zinc-200 ${m.available ? 'hover:bg-white/8 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
                       >
                         <div>
                           <div className="font-semibold text-white flex items-center gap-2 text-xs">
-                            <span>{isAr ? m.nameAr : m.nameEn}</span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className={`w-2 h-2 rounded-full ${m.available ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                              <span>{m.name}</span>
+                            </span>
                             <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300">
-                              {m.badge}
+                              {m.providerLabel || m.provider}
                             </span>
                           </div>
                           <div className="text-[10px] text-zinc-400 mt-0.5">
-                            {isAr ? m.descAr : m.descEn}
+                            {m.available ? (isAr ? 'متصل وجاهز للاستخدام' : 'Connected and ready') : (isAr ? (m.statusLabelAr || 'غير مفعل - يحتاج مفتاح حقيقي') : (m.statusLabel || 'Unconfigured / No Valid Key'))}
                           </div>
                         </div>
                         {selectedModel === m.id && (
@@ -956,16 +986,15 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
                         ? 'تم تفعيل وضع التفكير العميق'
                         : 'Enabled Deep Think 32k mode'
                       : isAr
-                      ? 'تم إيقاف وضع التفكير العميق'
-                      : 'Disabled Deep Think 32k mode'
+                        ? 'تم إيقاف وضع التفكير العميق'
+                        : 'Disabled Deep Think 32k mode'
                   );
                 }}
                 aria-pressed={deepThink32k}
-                className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer border ${
-                  deepThink32k
-                    ? 'bg-purple-500/20 text-purple-200 border-purple-500/45 shadow-[0_0_12px_rgba(168,85,247,0.25)]'
-                    : 'bg-white/[0.04] border-white/10 text-zinc-300 hover:text-white hover:bg-white/[0.08]'
-                }`}
+                className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer border ${deepThink32k
+                  ? 'bg-purple-500/20 text-purple-200 border-purple-500/45 shadow-[0_0_12px_rgba(168,85,247,0.25)]'
+                  : 'bg-white/[0.04] border-white/10 text-zinc-300 hover:text-white hover:bg-white/[0.08]'
+                  }`}
               >
                 <BrainCircuit className="w-3 h-3 text-purple-400" />
                 <span>{isAr ? 'التفكير العميق' : 'Deep Think 32k'}</span>
@@ -1041,16 +1070,15 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
                         ? 'تم تفعيل وضع الخطة المعمارية'
                         : 'Enabled Architectural Plan mode'
                       : isAr
-                      ? 'تم إيقاف وضع الخطة المعمارية'
-                      : 'Disabled Architectural Plan mode'
+                        ? 'تم إيقاف وضع الخطة المعمارية'
+                        : 'Disabled Architectural Plan mode'
                   );
                 }}
                 aria-pressed={planMode}
-                className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer border ${
-                  planMode
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                    : 'bg-white/[0.04] border-white/10 text-zinc-300 hover:text-white hover:bg-white/[0.08]'
-                }`}
+                className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer border ${planMode
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-white/[0.04] border-white/10 text-zinc-300 hover:text-white hover:bg-white/[0.08]'
+                  }`}
               >
                 <Lightbulb className="w-3 h-3 text-amber-400" />
                 <span>{isAr ? 'الخطة المعمارية' : 'Plan'}</span>
@@ -1061,11 +1089,10 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
                 type="button"
                 onClick={toggleVoiceRecording}
                 aria-label={isAr ? 'التسجيل الصوتي' : 'Voice Recording'}
-                className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer border ${
-                  isRecordingVoice
-                    ? 'bg-rose-500/25 text-rose-200 border-rose-500/45'
-                    : 'bg-white/[0.04] border-white/10 text-zinc-300 hover:text-white hover:bg-white/[0.08]'
-                }`}
+                className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer border ${isRecordingVoice
+                  ? 'bg-rose-500/25 text-rose-200 border-rose-500/45'
+                  : 'bg-white/[0.04] border-white/10 text-zinc-300 hover:text-white hover:bg-white/[0.08]'
+                  }`}
               >
                 <Mic className="w-3 h-3 text-rose-400" />
                 <span>
@@ -1074,8 +1101,8 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
                       ? 'إيقاف التسجيل'
                       : 'Stop Mic'
                     : isAr
-                    ? 'صوتي'
-                    : 'Voice'}
+                      ? 'صوتي'
+                      : 'Voice'}
                 </span>
               </button>
             </div>
@@ -1135,11 +1162,10 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
                   type="button"
                   onClick={() => handleQuickCategorySelect(item.id, item.promptEn, item.promptAr)}
                   aria-label={isAr ? item.labelAr : item.labelEn}
-                  className={`relative w-16 h-16 rounded-2xl flex items-center justify-center border transition-all cursor-pointer ${
-                    active
-                      ? 'bg-blue-600/20 border-blue-500/60 text-white shadow-[0_0_25px_rgba(37,99,235,0.25)]'
-                      : 'bg-[#12141c]/90 border-white/10 text-zinc-300 hover:border-white/25 hover:text-white'
-                  }`}
+                  className={`relative w-16 h-16 rounded-2xl flex items-center justify-center border transition-all cursor-pointer ${active
+                    ? 'bg-blue-600/20 border-blue-500/60 text-white shadow-[0_0_25px_rgba(37,99,235,0.25)]'
+                    : 'bg-[#12141c]/90 border-white/10 text-zinc-300 hover:border-white/25 hover:text-white'
+                    }`}
                 >
                   {item.isNew && (
                     <span className="absolute -top-2 -end-2 bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow">
@@ -1446,11 +1472,10 @@ export const HomeLaunchpad: React.FC<HomeLaunchpadProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setBlueprintCategoryFilter(tab.id as typeof blueprintCategoryFilter)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    blueprintCategoryFilter === tab.id
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${blueprintCategoryFilter === tab.id
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+                    }`}
                 >
                   {isAr ? tab.labelAr : tab.labelEn}
                 </button>

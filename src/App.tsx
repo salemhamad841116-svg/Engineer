@@ -52,6 +52,7 @@ import { DynamicAgentWorkspace } from './components/dynamic-agent/DynamicAgentWo
 
 /** Client-side hard ceiling for one chat request (server model timeout is shorter). */
 const CHAT_REQUEST_TIMEOUT_MS = 120_000;
+const MODEL_SELECTION_STORAGE_KEY = 'engineer:selected-model';
 
 export interface ExecutePromptResult {
   status: 'COMPLETED' | 'FAILED' | 'CANCELLED';
@@ -140,6 +141,7 @@ export default function App() {
 
   // Toast Notification
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [availableAiModels, setAvailableAiModels] = useState<Array<{ id: string; name: string; provider: string; available: boolean; local?: boolean; providerLabel?: string; configured?: boolean; statusLabel?: string; statusLabelAr?: string }>>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,15 +149,27 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data?.defaultModelId) return;
+        if (Array.isArray(data.models)) {
+          setAvailableAiModels(data.models);
+        }
+        const persistedModel = typeof window !== 'undefined' ? window.localStorage.getItem(MODEL_SELECTION_STORAGE_KEY) : null;
         setSettings((prev) => ({
           ...prev,
-          defaultModel: prev.defaultModel || data.defaultModelId,
+          defaultModel: persistedModel || prev.defaultModel || data.defaultModelId,
         }));
       })
       .catch(() => { });
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const handleSelectedModelChange = useCallback((modelId: string) => {
+    if (!modelId) return;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(MODEL_SELECTION_STORAGE_KEY, modelId);
+    }
+    setSettings((prev) => ({ ...prev, defaultModel: modelId }));
   }, []);
 
   const notify = useCallback((type: 'success' | 'error' | 'info', message: string) => {
@@ -1088,6 +1102,9 @@ export default function App() {
           onOpenModal={handleOpenModal}
           onSwitchView={setActiveView}
           onNotify={notify}
+          defaultModel={settings.defaultModel}
+          availableModels={availableAiModels}
+          onSelectModel={handleSelectedModelChange}
         />
       )}
 
@@ -1096,6 +1113,8 @@ export default function App() {
           language={language}
           project={activeProject}
           defaultModel={settings.defaultModel}
+          availableModels={availableAiModels}
+          onSelectModel={handleSelectedModelChange}
           agents={agents}
           isGenerating={isGenerating}
           pipelineStages={pipelineStages}

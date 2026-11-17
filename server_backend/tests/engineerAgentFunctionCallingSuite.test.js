@@ -149,6 +149,20 @@ console.log('================================================================\n'
   assert.ok(agentRunResult.filesModified.includes('app.js'), 'filesModified must report app.js');
   console.log('   ✅ Agent executed write_file tool call and verified modification truthfully.');
 
+  // 6.1 Live test tool execution using the actual workspace tool registry
+  console.log('▶️ [Test 06.1] Verifying live run_tests workspace tool execution...');
+  const testOutcome = await guard.execute({
+    name: 'run_tests',
+    arguments: { checks: [{ action: 'exists', selector: 'h1' }] }
+  }, {
+    user: adminUser,
+    mode: 'build',
+    projectId: agentProject.id,
+    project: agentProject
+  });
+  assert.strictEqual(testOutcome.ok, true, 'run_tests tool must execute successfully');
+  console.log('   ✅ Live workspace run_tests tool execution verified.');
+
   // 7. Truthful Diff Reporting: 0 files modified
   console.log('▶️ [Test 07] Verifying Truthful Reporting for 0 Diffs...');
   const diffs = computeFilesDiff(

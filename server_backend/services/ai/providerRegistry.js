@@ -24,6 +24,7 @@ function decryptProviderKey(row) {
 
 function normalizeProvider(row) {
     const apiKey = decryptProviderKey(row);
+    const configState = secretVault.getProviderConfigurationState(row);
     const models = parseModels(row.supported_models_json);
     const validKey = apiKey && !isSeedKey(apiKey);
     return {
@@ -31,7 +32,7 @@ function normalizeProvider(row) {
         name: row.name,
         type: row.provider_type,
         endpoint: row.api_endpoint,
-        status: row.status,
+        status: configState.status,
         priority: Number(row.priority || 999),
         fallbackProviderId: row.fallback_provider_id || null,
         defaultCodingModel: row.default_model_coding || null,
@@ -41,7 +42,11 @@ function normalizeProvider(row) {
         keyPrefix: row.key_prefix || null,
         apiKey: validKey ? apiKey : null,
         hasRealKey: Boolean(validKey),
-        available: row.status === 'active' && Boolean(validKey),
+        available: configState.status === 'active' && Boolean(validKey),
+        configured: configState.configured,
+        statusLabel: configState.label,
+        statusLabelAr: configState.labelAr,
+        configurationError: configState.reason,
     };
 }
 
