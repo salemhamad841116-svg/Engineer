@@ -34,13 +34,14 @@ ENV PORT=3001
 COPY package*.json ./
 
 # Install only production dependencies and globally install tsx to run server.ts
-RUN npm install --legacy-peer-deps --omit=dev && npm install -g tsx
+RUN npm pkg delete scripts.prepare && npm install --legacy-peer-deps --omit=dev && npm install -g tsx
 
 # Copy compiled frontend assets from builder stage
 COPY --from=builder /app/dist ./dist
 
 # Copy backend files and application logic
 COPY server.ts ./
+COPY server ./server
 COPY server_backend ./server_backend
 COPY src ./src
 COPY public ./public
