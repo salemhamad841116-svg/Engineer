@@ -17,7 +17,7 @@
     "typecheck:strict": "tsc --noEmit",
     "test:docker:live": "node scripts/verify-docker-live.mjs",
     "verify:build": "node scripts/verify-build.mjs",
-    "prepare": "node -e \"import('fs').then(f => f.existsSync('scripts/setup-git-hooks.mjs') && import('./scripts/setup-git-hooks.mjs'))\""
+    "prepare": "node -e \"try { import('node:fs').then(f => f.existsSync('scripts/setup-git-hooks.mjs') && import('./scripts/setup-git-hooks.mjs')).catch(()=>{}); } catch {}\""
   },
   "dependencies": {
     "@google/genai": "^2.32.0",

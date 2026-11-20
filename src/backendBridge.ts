@@ -32,7 +32,14 @@ export function attachBackendAndDatabase(app: Express) {
     // 1. الاتصال بقاعدة بيانات SQLite الأصلية
     const { getDb } = require('../server_backend/db/database.js');
     const db = getDb();
-    console.log('[Engineer Backend] ✅ تم الاتصال بقاعدة بيانات SQLite: data/app.db (22 جدولاً موثقاً)');
+    let tableCount = 0;
+    try {
+      const tableCountRow = db.prepare("SELECT COUNT(*) as c FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get();
+      tableCount = (tableCountRow && typeof tableCountRow.c === 'number') ? tableCountRow.c : 0;
+    } catch {
+      tableCount = 0;
+    }
+    console.log(`[Engineer Backend] ✅ تم الاتصال بقاعدة بيانات SQLite: data/app.db (${tableCount} جدولاً موثقاً)`);
 
     // 2. تحميل خدمات ومحرك المهندس الذكي (Engineer V2)
     const { orchestrateProject } = require('../server_backend/services/engineer/orchestrator.js');
@@ -49,9 +56,9 @@ export function attachBackendAndDatabase(app: Express) {
         let user = db.prepare('SELECT id FROM users LIMIT 1').get();
         if (!user) {
           db.prepare(`
-            INSERT OR IGNORE INTO users (id, email, password_hash, full_name, role, created_at, updated_at)
+            INSERT OR IGNORE INTO users (id, email, password_hash, name, role, status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run('usr_test_admin', 'admin@platform.local', 'bootstrap_hash', 'Test Admin', 'admin', now, now);
+          `).run('usr_test_admin', 'admin@platform.local', 'bootstrap_hash', 'Test Admin', 'admin', 'active', now);
           user = { id: 'usr_test_admin' };
         }
 

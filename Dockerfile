@@ -12,7 +12,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies required for client compilation
-RUN npm install --legacy-peer-deps
+RUN npm pkg delete scripts.prepare && npm install --legacy-peer-deps
 
 # Copy application source code and configuration
 COPY . .
@@ -45,6 +45,7 @@ COPY server ./server
 COPY server_backend ./server_backend
 COPY src ./src
 COPY public ./public
+COPY content ./content
 
 # Ensure directory for SQLite databases and storage exists
 RUN mkdir -p /app/.data /app/data
