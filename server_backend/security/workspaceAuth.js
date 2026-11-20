@@ -26,6 +26,11 @@ const PROTECTED_API_PREFIXES = [
   '/api/agent/',
   '/api/engineer/',
   '/api/sqlite/',
+  '/api/media/',
+  '/api/cards/',
+  '/api/anim/',
+  '/api/video/',
+  '/api/analysis/',
 ];
 
 const PUBLIC_WORKSPACE_PREFIXES = [

@@ -222,6 +222,22 @@ runStep('Autonomous Coding Agent Comprehensive Suite & Adversarial Hardening (25
 });
 
 // ----------------------------------------------------
+// Step 8b: Semantic Project Index — Phase A (AST parsing, incremental freshness,
+// project isolation, read-only queries, cross-layer tracing, agent integration)
+// ----------------------------------------------------
+runStep('Semantic Project Index Suite (Phase A — 12 Tests)', () => {
+  execSync('node server_backend/tests/projectIndexSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 8c: AI Feature Pack (Personalization, Recommendations, Predictive Risk,
+// Vision/Screenshot analysis, Reasoning & Planning — 11 Tests)
+// ----------------------------------------------------
+runStep('AI Feature Pack Suite (11 Tests)', () => {
+  execSync('node server_backend/tests/aiFeaturePackSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
 // Step 9: Deep Research & Book Intelligence Engine Comprehensive Suite (11 Tests & Golden Dataset)
 // ----------------------------------------------------
 runStep('Deep Research & Book Intelligence Engine Comprehensive Suite (11 Tests & Golden Dataset)', () => {
@@ -382,6 +398,35 @@ runStep('Engineer Master System Prompt v1.0 & Tool Registry Gate (Tests T01–T1
 // ----------------------------------------------------
 runStep('Real 8B Model Fleet, Security Hardening & Production Audit Gate (7 Mandates)', () => {
   execSync('node server_backend/tests/realModelAndProductionAudit.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 31: Phase 18 Media Studio Engine & Flashcard SM-2 Spaced Repetition Gate
+// ----------------------------------------------------
+runStep('Phase 18 Media Studio Engine & Flashcard SM-2 Spaced Repetition Gate (16 Acceptance Tests)', () => {
+  execSync('node server_backend/tests/mediaAndFlashcardsSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 32: Phase 19 Animation & Video Engine Gate
+// ----------------------------------------------------
+runStep('Phase 19 Animation & Video Engine Gate (16 Acceptance Tests)', () => {
+  execSync('node server_backend/tests/animAndVideoSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 33: Phase 20 P0 Fixes & ToolGuard Extension Coverage Gate
+// ----------------------------------------------------
+runStep('Phase 20 P0 Fixes & ToolGuard Extension Coverage Gate (29 Acceptance Tests)', () => {
+  execSync('node scripts/verify_toolguard_extensions.mjs', { stdio: 'inherit', cwd: projectRoot });
+  execSync('node server_backend/tests/buildPipeline.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 34: Phase 21 Binary Analysis Module & AI Model Integration Gate (6 Tests)
+// ----------------------------------------------------
+runStep('Phase 21 Binary Analysis Module & AI Model Integration Gate (6 Acceptance Tests)', () => {
+  execSync('node server_backend/tests/binaryAnalysisSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
 printSummaryAndExit(0);

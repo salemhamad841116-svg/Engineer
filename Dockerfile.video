@@ -1,0 +1,17 @@
+# صورة حاوية تركيب الفيديو المعزولة
+# البناء على السيرفر:  docker build -f Dockerfile.video -t engineer-video .
+FROM python:3.12-slim
+
+# ffmpeg للتركيب والفحص، وخطوط Noto (تشمل Noto Naskh Arabic) لعرض النص العربي
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ffmpeg fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir Pillow arabic-reshaper python-bidi
+
+COPY compose_video.py /opt/compose_video.py
+
+RUN useradd -m video
+USER video
+WORKDIR /work
+ENTRYPOINT ["sh", "-lc"]

@@ -116,7 +116,14 @@ try {
     'engineering_evaluations',
     'custom_screens',
     'dynamic_records',
-    'ai_feedback'
+    'ai_feedback',
+    'media_jobs',
+    'media_usage',
+    'media_events',
+    'card_decks',
+    'cards',
+    'card_reviews',
+    'card_events'
   ];
 
   for (const t of requiredTables) {

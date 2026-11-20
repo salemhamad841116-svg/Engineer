@@ -68,6 +68,12 @@ import { ToolAuditService } from './src/services/toolEngine/toolAuditService';
 import { initializeCoreTools } from './src/services/toolEngine/tools';
 
 initializeCoreTools();
+import { mediaRoutes } from './server/media/mediaRoutes.js';
+import { cardsRoutes } from './server/cards/cardsRoutes.js';
+import { animRoutes } from './server/anim/animRoutes.js';
+import { videoRoutes } from './server/video/videoRoutes.js';
+import { analysisRouter } from './server/analysis/analysisRoutes.ts';
+import { aiAssistantRouter } from './server/analysis/aiAssistantRoutes.ts';
 import { createRequire } from 'module';
 
 const serverRequire = createRequire(import.meta.url);
@@ -309,6 +315,15 @@ async function startServer() {
 
   const agentRoutes = serverRequire('./server_backend/routes/agentRoutes.js');
   app.use('/api/agent', agentRoutes);
+
+  const { getDb: getPlatformDb } = serverRequire('./server_backend/db/database.js');
+  const platformDb = getPlatformDb();
+  app.use('/api/media', mediaRoutes(platformDb, workspaceAuth.requireWorkspaceAuth));
+  app.use('/api/cards', cardsRoutes(platformDb, workspaceAuth.requireWorkspaceAuth));
+  app.use('/api/anim', animRoutes(platformDb, workspaceAuth.requireWorkspaceAuth));
+  app.use('/api/video', videoRoutes(platformDb, workspaceAuth.requireWorkspaceAuth));
+  app.use('/api/analysis', workspaceAuth.requireWorkspaceAuth, analysisRouter);
+  app.use('/api/analysis', workspaceAuth.requireWorkspaceAuth, aiAssistantRouter);
 
   const state = loadOrCreateState();
 

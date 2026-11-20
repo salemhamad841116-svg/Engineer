@@ -11,6 +11,7 @@ import {
   FlaskConical,
   Database,
   GitBranch,
+  Rocket,
   FolderPlus,
   FilePlus,
   Trash2,
@@ -2371,7 +2372,18 @@ export const IdeWorkspace: React.FC<IdeWorkspaceProps> = ({
                     <span>{isAr ? '</> تحرير' : '</> Edit'}</span>
                   </button>
 
-                  {/* Single publish CTA intentionally removed here; primary deploy flow remains in the main app shell/modal trigger. */}
+                  {/* Glowing Deploy CTA Button */}
+                  <button
+                    type="button"
+                    id="preview-deploy-btn"
+                    data-testid="preview-deploy-btn"
+                    onClick={() => onOpenModal('deploy')}
+                    title={isAr ? 'نشر التطبيق' : 'Deploy Application'}
+                    className="btn btn-primary btn-sm shrink-0 font-bold shadow-[0_0_15px_rgba(59,130,246,0.5)] flex items-center gap-1.5"
+                  >
+                    <Rocket className="w-3.5 h-3.5 stroke-[2]" />
+                    <span>{isAr ? 'نشر' : 'Deploy'}</span>
+                  </button>
                 </div>
               </div>
 

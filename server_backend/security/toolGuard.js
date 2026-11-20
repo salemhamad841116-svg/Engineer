@@ -15,8 +15,24 @@
 // ==============================================================================
 'use strict';
 
+const path = require('path');
 const crypto = require('crypto');
 const { POLICY, isToolAllowed, toolsForRole } = require('../services/ai/constitution');
+
+/* الامتدادات المسموحة في مشاريع مساحة العمل وتطبيقات react-ts-vite */
+const ALLOWED_EXTENSIONS = new Set([
+  // التطبيقات المولّدة (القائمة الأصلية)
+  '.html', '.css', '.js', '.json', '.md', '.txt', '.svg',
+  // مشاريع react-ts-vite في مساحة العمل
+  '.ts', '.tsx', '.jsx', '.mjs', '.cjs',
+  // الأنماط والبيانات والإعدادات
+  '.scss', '.less', '.sql', '.yml', '.yaml',
+]);
+
+/* ملفات بلا امتداد شائعة وآمنة في جذر المشاريع */
+const ALLOWED_EXTENSIONLESS = new Set([
+  'Dockerfile', '.gitignore', '.npmrc', '.editorconfig', 'LICENSE',
+]);
 
 class GuardError extends Error {
   constructor(code, message, httpStatus = 403, extra = {}) {
@@ -46,7 +62,9 @@ function normalizeProjectPath(raw, limits = POLICY.limits) {
   p = p.replace(/^\.\/+/, '').replace(/^\/+/, '');
   const segments = p.split('/').filter((s) => s.length > 0);
   if (segments.some((s) => s === '..' || s === '.')) throw new GuardError('PATH_TRAVERSAL', 'Path traversal is not allowed.', 400);
-  if (segments.some((s) => s.startsWith('.'))) throw new GuardError('PATH_FORBIDDEN', 'Hidden files and directories are not allowed.', 400);
+  if (segments.some((s) => s.startsWith('.') && !ALLOWED_EXTENSIONLESS.has(s))) {
+    throw new GuardError('PATH_FORBIDDEN', 'Hidden files and directories are not allowed.', 400);
+  }
   if (segments.some((s) => !/^[\p{L}\p{N}_\-. ]+$/u.test(s) || WINDOWS_RESERVED.test(s))) {
     throw new GuardError('PATH_INVALID', 'Path contains forbidden characters.', 400);
   }
@@ -54,10 +72,20 @@ function normalizeProjectPath(raw, limits = POLICY.limits) {
   if (segments.length > limits.maxPathDepth) throw new GuardError('PATH_TOO_DEEP', `Path depth exceeds ${limits.maxPathDepth}.`, 400);
   const normalized = segments.join('/');
   if (normalized.length > limits.maxPathLength) throw new GuardError('PATH_TOO_LONG', `Path exceeds ${limits.maxPathLength} characters.`, 400);
-  const dot = normalized.lastIndexOf('.');
-  const ext = dot >= 0 ? normalized.slice(dot).toLowerCase() : '';
-  if (!limits.allowedExtensions.includes(ext)) {
-    throw new GuardError('EXTENSION_FORBIDDEN', `Extension "${ext || '(none)'}" is not allowed. Allowed: ${limits.allowedExtensions.join(', ')}.`, 400);
+
+  const base = path.basename(normalized);
+  const ext = path.extname(base).toLowerCase();
+
+  if (!ext || ALLOWED_EXTENSIONLESS.has(base)) {
+    if (!ALLOWED_EXTENSIONLESS.has(base)) {
+      throw new GuardError('EXTENSION_FORBIDDEN', `Extensionless file "${base}" is not allowed.`, 400);
+    }
+    return normalized;
+  }
+
+  const allowedSet = limits?.allowedExtensions ? new Set(limits.allowedExtensions) : ALLOWED_EXTENSIONS;
+  if (!allowedSet.has(ext) && !ALLOWED_EXTENSIONS.has(ext)) {
+    throw new GuardError('EXTENSION_FORBIDDEN', `Extension "${ext}" is not allowed. Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}.`, 400);
   }
   return normalized;
 }
@@ -305,4 +333,6 @@ module.exports = {
   frameUntrusted,
   redactSecrets,
   argsHash,
+  ALLOWED_EXTENSIONS,
+  ALLOWED_EXTENSIONLESS,
 };

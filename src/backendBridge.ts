@@ -44,8 +44,17 @@ export function attachBackendAndDatabase(app: Express) {
     try {
       const projectCount = db.prepare('SELECT COUNT(*) as c FROM app_projects').get().c;
       if (projectCount === 0) {
-        const user = db.prepare('SELECT id FROM users LIMIT 1').get() || { id: 'usr_test_admin' };
+        // ترتيب بذر الآباء أولاً: التأكد من وجود سجل المستخدم في جدول users قبل ربط المشاريع
         const now = new Date().toISOString();
+        let user = db.prepare('SELECT id FROM users LIMIT 1').get();
+        if (!user) {
+          db.prepare(`
+            INSERT OR IGNORE INTO users (id, email, password_hash, full_name, role, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run('usr_test_admin', 'admin@platform.local', 'bootstrap_hash', 'Test Admin', 'admin', now, now);
+          user = { id: 'usr_test_admin' };
+        }
+
         const insertStmt = db.prepare(`
           INSERT OR REPLACE INTO app_projects (id, user_id, name, description, prompt, slug, html, quality_status, status, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -70,20 +79,40 @@ export function attachBackendAndDatabase(app: Express) {
             slug: 'pitchdeck-slides',
           },
         ];
-        for (const sp of sampleProjects) {
-          insertStmt.run(
-            sp.id,
-            user.id,
-            sp.name,
-            sp.desc,
-            sp.desc,
-            sp.slug,
-            `<!DOCTYPE html><html dir="rtl"><head><title>${sp.name}</title></head><body><h1>${sp.name}</h1><p>${sp.desc}</p></body></html>`,
-            'verified',
-            'completed',
-            now,
-            now
-          );
+
+        const seedProjects = () => {
+          for (const sp of sampleProjects) {
+            insertStmt.run(
+              sp.id,
+              user.id,
+              sp.name,
+              sp.desc,
+              sp.desc,
+              sp.slug,
+              `<!DOCTYPE html><html dir="rtl"><head><title>${sp.name}</title></head><body><h1>${sp.name}</h1><p>${sp.desc}</p></body></html>`,
+              'verified',
+              'completed',
+              now,
+              now
+            );
+          }
+        };
+
+        if (typeof db.transaction === 'function') {
+          db.transaction(seedProjects)();
+        } else {
+          db.exec('BEGIN IMMEDIATE');
+          try {
+            seedProjects();
+            db.exec('COMMIT');
+          } catch (e) {
+            try {
+              db.exec('ROLLBACK');
+            } catch {
+              // ignore rollback failure
+            }
+            throw e;
+          }
         }
       }
 

@@ -75,15 +75,53 @@ function createEngineerAgent({ tools = workspaceTools, guard, audit } = {}) {
 
     onStage('agent_start', { mode, role: callerUser.role, constitution: CONSTITUTION_VERSION });
 
+    // Phase A — Live Semantic Project Index: keep the structural map of the
+    // active project fresh BEFORE the reasoning loop starts, so every
+    // search_code / get_symbol / list_dependents call inside the loop reads
+    // current data. Incremental (content-hash) — unchanged files cost nothing.
+    // Index failures never block the agent; they are reported honestly.
+    if (db && project.id && Array.isArray(project.files) && project.files.length > 0) {
+      try {
+        const { buildOrUpdateIndex } = require('./projectIndex');
+        const indexReport = buildOrUpdateIndex({ db, project, ownerId: callerUser.id });
+        onStage('index_ready', {
+          status: indexReport.status,
+          version: indexReport.version,
+          files: indexReport.fileCount,
+          symbols: indexReport.symbolCount,
+          edges: indexReport.edgeCount,
+          reindexed: indexReport.filesReindexed,
+          durationMs: indexReport.durationMs,
+        });
+      } catch (indexErr) {
+        onStage('index_warn', { error: indexErr.message });
+      }
+    }
+
     // Track starting file states for accurate diff calculation
     const initialFiles = new Map((project.files || []).map((f) => [normalizeProjectPath(f.path || f.name), f.content || '']));
 
     // Build system prompt strictly from the unified constitution
+    // AI Personalization: adapt style to the user's expertise level. An explicit
+    // user choice always wins; inference never overrides it (honesty contract).
+    let expertiseLevel = 'intermediate';
+    if (db && callerUser.id && callerUser.id !== 'usr_anonymous') {
+      try {
+        const { updateInferredExpertise } = require('./personalizationService');
+        const recentUserTexts = [
+          cleanPrompt,
+          ...history.filter((h) => h.role === 'user').slice(-6).map((h) => String(h.content || '')),
+        ];
+        const row = updateInferredExpertise(db, callerUser.id, recentUserTexts);
+        expertiseLevel = (row && row.level) || 'intermediate';
+      } catch (_) { /* personalization must never break a run */ }
+    }
     const systemPrompt = buildSystemPrompt({
       mode,
       role: callerUser.role,
       project,
       language: isAr ? 'ar' : 'en',
+      expertise: expertiseLevel,
     });
 
     // Format attachments context if present

@@ -1,0 +1,10 @@
+lief>=0.14
+capstone>=5.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pydantic>=2.6
+# Phase 2
+pypcode>=4.0      # Ghidra SLEIGH/p-code IR lifter
+unicorn>=2.0      # sandboxed CPU emulation (dynamic decryption)
+angr>=9.2         # C pseudocode decompiler (swap for Ghidra headless in prod)

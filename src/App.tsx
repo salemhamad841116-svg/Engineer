@@ -17,6 +17,8 @@ import {
   Bot,
   Server,
   Sparkles,
+  Image as ImageIcon,
+  Layers,
 } from 'lucide-react';
 import {
   AIAgentProfile,
@@ -49,6 +51,8 @@ import { OnboardingTour } from './components/OnboardingTour';
 import { AdminPortalView } from './components/AdminPortalView';
 
 import { DynamicAgentWorkspace } from './components/dynamic-agent/DynamicAgentWorkspace';
+import MediaStudio from './components/media/MediaStudio';
+import Flashcards from './components/cards/Flashcards';
 
 /** Client-side hard ceiling for one chat request (server model timeout is shorter). */
 const CHAT_REQUEST_TIMEOUT_MS = 120_000;
@@ -113,7 +117,7 @@ export default function App() {
   });
 
   // Navigation & UI State
-  const [activeView, setActiveView] = useState<'home' | 'ide' | 'published' | 'registry' | 'servers' | 'dynamic-agent'>('home');
+  const [activeView, setActiveView] = useState<'home' | 'ide' | 'published' | 'registry' | 'servers' | 'dynamic-agent' | 'media' | 'cards'>('home');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [modalPayload, setModalPayload] = useState<unknown>(null);
@@ -842,6 +846,28 @@ export default function App() {
                 },
               },
               {
+                id: 'media',
+                labelEn: 'Media Studio',
+                labelAr: 'استوديو الوسائط',
+                icon: ImageIcon,
+                active: activeView === 'media',
+                onClick: () => {
+                  setActiveView('media');
+                  setInfoDrawer(null);
+                },
+              },
+              {
+                id: 'cards',
+                labelEn: 'Flashcards',
+                labelAr: 'بطاقات المراجعة',
+                icon: Layers,
+                active: activeView === 'cards',
+                onClick: () => {
+                  setActiveView('cards');
+                  setInfoDrawer(null);
+                },
+              },
+              {
                 id: 'projects',
                 labelEn: 'Projects',
                 labelAr: 'المشاريع',
@@ -1158,6 +1184,18 @@ export default function App() {
 
       {activeView === 'dynamic-agent' && (
         <DynamicAgentWorkspace />
+      )}
+
+      {activeView === 'media' && (
+        <div className="flex-1 overflow-auto bg-[#131316]">
+          <MediaStudio />
+        </div>
+      )}
+
+      {activeView === 'cards' && (
+        <div className="flex-1 overflow-auto bg-[#131316]">
+          <Flashcards />
+        </div>
       )}
 
       {/* Modals Hub */}

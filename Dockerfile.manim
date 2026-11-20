@@ -1,0 +1,17 @@
+# صورة حاوية Manim المعزولة
+# البناء على السيرفر:  docker build -f Dockerfile.manim -t engineer-manim .
+FROM python:3.12-slim
+
+# FFmpeg ضروري لإخراج الفيديو ولفحص FFprobe، وPango/Cairo لعرض النصوص
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ffmpeg libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir manim==0.19.0
+
+# مستخدم غير جذري داخل الحاوية
+RUN useradd -m manim
+USER manim
+
+WORKDIR /work
+ENTRYPOINT ["sh", "-lc"]

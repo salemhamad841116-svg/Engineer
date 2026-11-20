@@ -1685,7 +1685,217 @@ CREATE INDEX IF NOT EXISTS idx_ai_feedback_few_shot ON ai_feedback(is_few_shot_c
       `);
     },
   },
+  {
+    id: 27,
+    name: '027_media_studio',
+    up: (handle) => {
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS media_jobs (
+          id              TEXT PRIMARY KEY,
+          owner_id        TEXT NOT NULL,
+          project_id      TEXT,
+          type            TEXT NOT NULL CHECK (type IN ('image','diagram','tts','animation','video','flashcards')),
+          state           TEXT NOT NULL DEFAULT 'QUEUED'
+                          CHECK (state IN ('DRAFT','QUEUED','RUNNING','READY','FAILED','CANCELLED','EXPIRED')),
+          prompt          TEXT NOT NULL DEFAULT '',
+          params_json     TEXT NOT NULL DEFAULT '{}',
+          provider        TEXT,
+          idempotency_key TEXT UNIQUE,
+          cost_units      INTEGER NOT NULL DEFAULT 0,
+          artifact_path   TEXT,
+          artifact_mime   TEXT,
+          artifact_bytes  INTEGER,
+          error_code      TEXT,
+          error_summary   TEXT,
+          created_at      TEXT NOT NULL,
+          updated_at      TEXT NOT NULL,
+          started_at      TEXT,
+          finished_at     TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_media_jobs_owner ON media_jobs(owner_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS media_usage (
+          owner_id TEXT NOT NULL,
+          day      TEXT NOT NULL,
+          type     TEXT NOT NULL,
+          units    INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (owner_id, day, type)
+        );
+
+        CREATE TABLE IF NOT EXISTS media_events (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          job_id     TEXT NOT NULL,
+          owner_id   TEXT NOT NULL,
+          event      TEXT NOT NULL,
+          meta_json  TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_media_events_job ON media_events(job_id);
+      `);
+    },
+  },
+  {
+    id: 28,
+    name: '028_flashcards',
+    up: (handle) => {
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS card_decks (
+          id         TEXT PRIMARY KEY,
+          owner_id   TEXT NOT NULL,
+          title      TEXT NOT NULL,
+          source_ref TEXT,
+          generated  INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_card_decks_owner ON card_decks(owner_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS cards (
+          id           TEXT PRIMARY KEY,
+          deck_id      TEXT NOT NULL REFERENCES card_decks(id) ON DELETE CASCADE,
+          owner_id     TEXT NOT NULL,
+          front        TEXT NOT NULL,
+          back         TEXT NOT NULL,
+          source_ref   TEXT,
+          media_job_id TEXT,
+          created_at   TEXT NOT NULL,
+          updated_at   TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cards_deck ON cards(deck_id);
+        CREATE INDEX IF NOT EXISTS idx_cards_owner ON cards(owner_id);
+
+        CREATE TABLE IF NOT EXISTS card_reviews (
+          card_id          TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          owner_id         TEXT NOT NULL,
+          easiness         REAL    NOT NULL DEFAULT 2.5,
+          interval_days    INTEGER NOT NULL DEFAULT 0,
+          repetitions      INTEGER NOT NULL DEFAULT 0,
+          due_at           TEXT,
+          last_reviewed_at TEXT,
+          PRIMARY KEY (card_id, owner_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_card_reviews_due ON card_reviews(owner_id, due_at);
+
+        CREATE TABLE IF NOT EXISTS card_events (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          owner_id   TEXT NOT NULL,
+          deck_id    TEXT,
+          card_id    TEXT,
+          event      TEXT NOT NULL,
+          meta_json  TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_card_events_deck ON card_events(deck_id);
+      `);
+    },
+  },
+  {
+    id: 29,
+    name: '029_project_semantic_index',
+    up: (handle) => {
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS project_index_meta (
+          project_id   TEXT PRIMARY KEY,
+          owner_id     TEXT NOT NULL,
+          version      INTEGER NOT NULL DEFAULT 0,
+          file_count   INTEGER NOT NULL DEFAULT 0,
+          symbol_count INTEGER NOT NULL DEFAULT 0,
+          edge_count   INTEGER NOT NULL DEFAULT 0,
+          built_at     TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS project_index_files (
+          project_id   TEXT NOT NULL,
+          file_path    TEXT NOT NULL,
+          language     TEXT NOT NULL,
+          content_hash TEXT NOT NULL,
+          byte_size    INTEGER NOT NULL DEFAULT 0,
+          symbol_count INTEGER NOT NULL DEFAULT 0,
+          indexed_at   TEXT NOT NULL,
+          PRIMARY KEY (project_id, file_path)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pindex_files_project ON project_index_files(project_id);
+
+        CREATE TABLE IF NOT EXISTS project_index_symbols (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id  TEXT NOT NULL,
+          file_path   TEXT NOT NULL,
+          name        TEXT NOT NULL,
+          kind        TEXT NOT NULL CHECK (kind IN ('function','component','class','method','variable','state','handler','element','selector','route')),
+          signature   TEXT,
+          parent_name TEXT,
+          line_start  INTEGER NOT NULL,
+          line_end    INTEGER NOT NULL,
+          byte_start  INTEGER NOT NULL,
+          byte_end    INTEGER NOT NULL,
+          exported    INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_pindex_symbols_name ON project_index_symbols(project_id, name);
+        CREATE INDEX IF NOT EXISTS idx_pindex_symbols_file ON project_index_symbols(project_id, file_path);
+
+        CREATE TABLE IF NOT EXISTS project_index_edges (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL,
+          from_file  TEXT NOT NULL,
+          to_file    TEXT,
+          specifier  TEXT,
+          edge_type  TEXT NOT NULL CHECK (edge_type IN ('import','includes','dom-handler','calls')),
+          symbol     TEXT,
+          line       INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_pindex_edges_from ON project_index_edges(project_id, from_file);
+        CREATE INDEX IF NOT EXISTS idx_pindex_edges_to ON project_index_edges(project_id, to_file);
+      `);
+    },
+  },
+  {
+    id: 30,
+    name: '030_ai_feature_pack',
+    up: (handle) => {
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS user_expertise (
+          user_id      TEXT PRIMARY KEY,
+          level        TEXT NOT NULL DEFAULT 'intermediate'
+                       CHECK (level IN ('beginner','intermediate','expert')),
+          source       TEXT NOT NULL DEFAULT 'inferred'
+                       CHECK (source IN ('explicit','inferred')),
+          signals_json TEXT NOT NULL DEFAULT '{}',
+          updated_at   TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS build_plans (
+          id         TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          owner_id   TEXT NOT NULL,
+          prompt     TEXT NOT NULL DEFAULT '',
+          plan_json  TEXT NOT NULL,
+          status     TEXT NOT NULL DEFAULT 'active'
+                     CHECK (status IN ('active','superseded','completed')),
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_build_plans_project ON build_plans(project_id, created_at DESC);
+      `);
+    },
+  },
 ];
+
+function attachTransactionHelper(handle) {
+  if (handle && typeof handle.transaction !== 'function') {
+    handle.transaction = function (fn) {
+      return function (...args) {
+        handle.exec('BEGIN IMMEDIATE');
+        try {
+          const res = fn(...args);
+          handle.exec('COMMIT');
+          return res;
+        } catch (err) {
+          try { handle.exec('ROLLBACK'); } catch (_) {}
+          throw err;
+        }
+      };
+    };
+  }
+}
 
 function openDb() {
   if (db) return db;
@@ -1697,11 +1907,13 @@ function openDb() {
   db.exec('PRAGMA synchronous = NORMAL');
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA busy_timeout = 10000');
+  attachTransactionHelper(db);
   runMigrations(db);
   return db;
 }
 
 function runMigrations(handle) {
+  attachTransactionHelper(handle);
   handle.exec(
     'CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)'
   );
