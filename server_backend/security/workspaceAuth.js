@@ -31,6 +31,8 @@ const PROTECTED_API_PREFIXES = [
   '/api/anim/',
   '/api/video/',
   '/api/analysis/',
+  '/api/studio/',
+  '/api/v1/',
 ];
 
 const PUBLIC_WORKSPACE_PREFIXES = [

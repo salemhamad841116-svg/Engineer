@@ -429,6 +429,104 @@ runStep('Phase 21 Binary Analysis Module & AI Model Integration Gate (6 Acceptan
   execSync('node server_backend/tests/binaryAnalysisSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
 });
 
+// ----------------------------------------------------
+// Step 35: Continuous Improvement Engine Suite (13 Tests)
+// ----------------------------------------------------
+runStep('Continuous Improvement Engine Suite (13 Tests)', () => {
+  execSync('node server_backend/tests/continuousImprovementSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 36: Smart Studio Layer Suite (21 Tests)
+// ----------------------------------------------------
+runStep('Smart Studio Layer Suite (21 Tests)', () => {
+  execSync('node server_backend/tests/smartStudioSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 37: Studio Presets Engine Suite (14 Tests)
+// ----------------------------------------------------
+runStep('Studio Presets Engine Suite (14 Tests)', () => {
+  execSync('node server_backend/tests/studioPresetsSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 38: Smart Router & Intent Dispatch Suite (15 Tests)
+// ----------------------------------------------------
+runStep('Smart Router & Intent Dispatch Suite (15 Tests)', () => {
+  execSync('node server_backend/tests/smartRouterSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 39: Image Mode Phase 1 Suite (10 Tests)
+// ----------------------------------------------------
+runStep('Image Mode Phase 1 Suite (10 Tests)', () => {
+  execSync('node server_backend/tests/imageModeSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 40: UI Builder Mode Phase 3 Suite (17 Tests)
+// ----------------------------------------------------
+runStep('UI Builder Mode Phase 3 Suite (17 Tests)', () => {
+  execSync('node server_backend/tests/uiBuilderSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 41: Prompt Enhancer Engine Suite (18 Tests)
+// ----------------------------------------------------
+runStep('Prompt Enhancer Engine Suite (18 Tests)', () => {
+  execSync('node server_backend/tests/promptEnhancerEngineSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 42: Quick Clarifiers Engine Suite (18 Tests)
+// ----------------------------------------------------
+runStep('Quick Clarifiers Engine Suite (18 Tests)', () => {
+  execSync('node server_backend/tests/quickClarifiersSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 43: Smart Presets Engine V2 Suite (18 Tests)
+// ----------------------------------------------------
+runStep('Smart Presets Engine V2 Suite (18 Tests)', () => {
+  execSync('node server_backend/tests/smartPresetsV2Suite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 44: Bilingual Typography Engine Suite (21 Tests)
+// ----------------------------------------------------
+runStep('Bilingual Typography Engine Suite (21 Tests)', () => {
+  execSync('node server_backend/tests/bilingualTypographySuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 45: Phase 1 Vertical Slice Feature Freeze Suite (13 Tests)
+// ----------------------------------------------------
+runStep('Phase 1 Vertical Slice Feature Freeze Suite (13 Tests)', () => {
+  execSync('node server_backend/tests/phase1VerticalSliceSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 46: Autonomous Repair Loop Suite (10 Tests)
+// ----------------------------------------------------
+runStep('Autonomous Repair Loop Suite (10 Tests)', () => {
+  execSync('node server_backend/tests/autonomousRepairSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 47: Code Scan Complete & FIM Completion Suite (10 Tests)
+// ----------------------------------------------------
+runStep('Code Scan Complete & FIM Completion Suite (10 Tests)', () => {
+  execSync('node server_backend/tests/codeScanCompleteSuite.test.js', { stdio: 'inherit', cwd: projectRoot });
+});
+
+// ----------------------------------------------------
+// Step 48: Quick Image Toolbar Mini Browser Gate (22 Tests)
+// ----------------------------------------------------
+runStep('Quick Image Toolbar Mini Browser Gate (22 Tests)', () => {
+  execSync('node server_backend/tests/quickImageToolbarGate.test.cjs', { stdio: 'inherit', cwd: projectRoot });
+});
+
 printSummaryAndExit(0);
 
 

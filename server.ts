@@ -72,6 +72,10 @@ import { mediaRoutes } from './server/media/mediaRoutes.js';
 import { cardsRoutes } from './server/cards/cardsRoutes.js';
 import { animRoutes } from './server/anim/animRoutes.js';
 import { videoRoutes } from './server/video/videoRoutes.js';
+import { studioRoutes } from './server/studio/studioRoutes.js';
+import { presetsV1Routes } from './server/studio/presets/presetsRoutes.js';
+import { typographyV1Routes } from './server/studio/typography/typographyRoutes.js';
+import { phase1Routes } from './server/studio/phase1/phase1Routes.js';
 import { analysisRouter } from './server/analysis/analysisRoutes.ts';
 import { aiAssistantRouter } from './server/analysis/aiAssistantRoutes.ts';
 import { createRequire } from 'module';
@@ -322,6 +326,10 @@ async function startServer() {
   app.use('/api/cards', cardsRoutes(platformDb, workspaceAuth.requireWorkspaceAuth));
   app.use('/api/anim', animRoutes(platformDb, workspaceAuth.requireWorkspaceAuth));
   app.use('/api/video', videoRoutes(platformDb, workspaceAuth.requireWorkspaceAuth));
+  app.use('/api/studio', studioRoutes(platformDb, workspaceAuth.requireWorkspaceAuth));
+  app.use('/api/v1', presetsV1Routes(platformDb, workspaceAuth.requireWorkspaceAuth));
+  app.use('/api/v1', typographyV1Routes(platformDb, workspaceAuth.requireWorkspaceAuth));
+  app.use('/api/v1', phase1Routes(platformDb, workspaceAuth.requireWorkspaceAuth));
   app.use('/api/analysis', workspaceAuth.requireWorkspaceAuth, analysisRouter);
   app.use('/api/analysis', workspaceAuth.requireWorkspaceAuth, aiAssistantRouter);
 

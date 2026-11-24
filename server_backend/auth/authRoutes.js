@@ -1,6 +1,6 @@
 const express = require('express');
 const authService = require('./authService');
-const { requireAuth, asyncHandler, setSessionCookie, clearSessionCookie } = require('./middleware');
+const { requireAuth, asyncHandler, setSessionCookie, clearSessionCookie, extractToken } = require('./middleware');
 const config = require('../config');
 
 const router = express.Router();
@@ -80,21 +80,31 @@ router.post(
   })
 );
 
+// Session probe: an unauthenticated page load is a NORMAL state, not an
+// error — answer 200 with user:null so the client boots with zero console
+// noise (the SPA already branches on data?.user). Authenticated probes keep
+// the full payload unchanged.
 router.get(
   '/me',
-  requireAuth({ passive: true }),
   asyncHandler(async (req, res) => {
-    res.json({
-      success: true,
-      user: authService.publicUser(req.user),
-      session: { id: req.session.id, expiresAt: req.session.expires_at },
-      policy: {
-        heartbeatIntervalSeconds: config.heartbeatIntervalSec,
-        offlineAfterSeconds: config.offlineAfterSec,
-        awayAfterSeconds: config.awayAfterSec,
-        displayTimeZone: config.displayTimeZone,
-      },
-    });
+    const policy = {
+      heartbeatIntervalSeconds: config.heartbeatIntervalSec,
+      offlineAfterSeconds: config.offlineAfterSec,
+      awayAfterSeconds: config.awayAfterSec,
+      displayTimeZone: config.displayTimeZone,
+    };
+    try {
+      const { token } = extractToken(req);
+      const { session, user } = authService.resolveSession(token);
+      return res.json({
+        success: true,
+        user: authService.publicUser(user),
+        session: { id: session.id, expiresAt: session.expires_at },
+        policy,
+      });
+    } catch {
+      return res.json({ success: true, user: null, session: null, policy });
+    }
   })
 );
 
