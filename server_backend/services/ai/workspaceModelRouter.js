@@ -570,6 +570,21 @@ async function openAiCompatibleWithTools({ entry, messages, tools, timeoutMs, si
  * @returns {Promise<{text:string, toolCalls:Array<{id:string,name:string,arguments:any}>, usage:object, latencyMs:number, model:string, provider:string}>}
  */
 async function chatWithTools({ modelId, messages, tools = [], timeoutMs = DEFAULT_TIMEOUT_MS * 2, signal, maxTokens = 8192 }) {
+  if (mockToolResponder && mockAllowed() && (!modelId || modelId === 'mock')) {
+    if (signal && signal.aborted) throw new WorkspaceModelError('CANCELLED', 'Client disconnected');
+    const t0 = Date.now();
+    const out = await mockToolResponder({ messages, tools, model: 'mock' });
+    const text = stripReasoning(out.text || '');
+    const toolCalls = (out.toolCalls || []).map((c, i) => ({ id: c.id || `call_mock_${i}_${Date.now().toString(36)}`, name: c.name, arguments: c.arguments == null ? {} : c.arguments }));
+    return {
+      text,
+      toolCalls,
+      usage: { promptTokens: Math.round(JSON.stringify(messages).length / 4), completionTokens: Math.round(text.length / 4), totalTokens: Math.round((JSON.stringify(messages).length + text.length) / 4), estimated: true },
+      latencyMs: Date.now() - t0,
+      model: 'mock',
+      provider: 'mock',
+    };
+  }
   const entry = await resolveModel(modelId, 'coding');
   if (entry.provider === 'mock') {
     if (!mockAllowed()) throw new WorkspaceModelError('MODEL_UNAVAILABLE', 'The mock provider is disabled in production');

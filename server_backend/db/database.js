@@ -1877,6 +1877,688 @@ CREATE INDEX IF NOT EXISTS idx_ai_feedback_few_shot ON ai_feedback(is_few_shot_c
       `);
     },
   },
+  {
+    id: 31,
+    name: '031_continuous_improvement_engine',
+    up: (handle) => {
+      // Latent-defect repair: agentMemory.recordLesson writes tech_stack,
+      // verification_status, usage_count and updated_at, but no migration ever
+      // created them — on a migrated DB the INSERT path would throw. The
+      // improvement engine also needs usage_count as directive evidence.
+      const cols = handle.prepare("PRAGMA table_info('agent_memory_lessons')").all().map((c) => c.name);
+      const ensureLessonCol = (name, def) => {
+        if (!cols.includes(name)) handle.exec(`ALTER TABLE agent_memory_lessons ADD COLUMN ${name} ${def}`);
+      };
+      ensureLessonCol('tech_stack', "TEXT NOT NULL DEFAULT 'universal'");
+      ensureLessonCol('verification_status', "TEXT NOT NULL DEFAULT 'verified'");
+      ensureLessonCol('usage_count', 'INTEGER NOT NULL DEFAULT 0');
+      ensureLessonCol('updated_at', 'TEXT');
+
+      // Same drift class on agent_deployments: deploymentService writes
+      // target_platform / endpoint_url / logs_json / completed_at that no
+      // migration ever created (legacy columns target_environment / url are
+      // kept untouched for old readers).
+      const depCols = handle.prepare("PRAGMA table_info('agent_deployments')").all().map((c) => c.name);
+      const ensureDepCol = (name, def) => {
+        if (!depCols.includes(name)) handle.exec(`ALTER TABLE agent_deployments ADD COLUMN ${name} ${def}`);
+      };
+      ensureDepCol('target_platform', "TEXT NOT NULL DEFAULT 'local_preview'");
+      ensureDepCol('endpoint_url', 'TEXT');
+      ensureDepCol('logs_json', "TEXT NOT NULL DEFAULT '[]'");
+      ensureDepCol('completed_at', 'TEXT');
+
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS code_patterns (
+          id                TEXT PRIMARY KEY,
+          pattern_key       TEXT NOT NULL,
+          category          TEXT NOT NULL,
+          title             TEXT NOT NULL,
+          description       TEXT NOT NULL DEFAULT '',
+          keywords          TEXT NOT NULL DEFAULT '',
+          snippet           TEXT NOT NULL DEFAULT '',
+          framework         TEXT NOT NULL DEFAULT 'vanilla-web',
+          success_count     INTEGER NOT NULL DEFAULT 1,
+          use_count         INTEGER NOT NULL DEFAULT 0,
+          last_used_at      TEXT,
+          source_project_id TEXT,
+          owner_id          TEXT NOT NULL,
+          is_verified       INTEGER NOT NULL DEFAULT 1,
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL,
+          UNIQUE(pattern_key, owner_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_code_patterns_owner ON code_patterns(owner_id, success_count DESC);
+
+        CREATE TABLE IF NOT EXISTS improvement_directives (
+          id             TEXT PRIMARY KEY,
+          directive_key  TEXT NOT NULL,
+          owner_id       TEXT NOT NULL,
+          kind           TEXT NOT NULL
+                         CHECK (kind IN ('recurring_error','preferred_pattern','stability_watch')),
+          title          TEXT NOT NULL,
+          body           TEXT NOT NULL DEFAULT '',
+          boost_keys     TEXT NOT NULL DEFAULT '',
+          evidence_json  TEXT NOT NULL DEFAULT '{}',
+          confidence     REAL NOT NULL DEFAULT 0.5,
+          active         INTEGER NOT NULL DEFAULT 1,
+          created_at     TEXT NOT NULL,
+          updated_at     TEXT NOT NULL,
+          UNIQUE(directive_key, owner_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_directives_owner ON improvement_directives(owner_id, active, confidence DESC);
+
+        CREATE TABLE IF NOT EXISTS improvement_dataset_entries (
+          id            TEXT PRIMARY KEY,
+          kind          TEXT NOT NULL
+                        CHECK (kind IN ('successful_build','verified_fix')),
+          project_id    TEXT,
+          owner_id      TEXT NOT NULL,
+          instruction   TEXT NOT NULL,
+          input_context TEXT NOT NULL DEFAULT '',
+          output        TEXT NOT NULL DEFAULT '',
+          quality_score REAL NOT NULL DEFAULT 0,
+          approved      INTEGER NOT NULL DEFAULT 0,
+          approved_at   TEXT,
+          created_at    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_dataset_owner ON improvement_dataset_entries(owner_id, approved, created_at DESC);
+      `);
+    },
+  },
+  {
+    id: 32,
+    name: '032_autonomous_repair_loop',
+    up: (handle) => {
+      // The autonomous repair loop: every build through the execute pipeline
+      // records its outcome (first attempt + final state after any self-repair),
+      // and each repair round records exactly which checks failed and whether
+      // the round fixed them. These rows are the evidence base for measuring
+      // REAL improvement over time (first-pass rate, repair rescue rate, trend).
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS build_outcomes (
+          id            TEXT PRIMARY KEY,
+          request_id    TEXT NOT NULL,
+          project_id    TEXT,
+          owner_id      TEXT NOT NULL,
+          intent        TEXT NOT NULL DEFAULT 'build',
+          files_count   INTEGER NOT NULL DEFAULT 0,
+          tests_total   INTEGER NOT NULL DEFAULT 0,
+          tests_passed  INTEGER NOT NULL DEFAULT 0,
+          first_passed  INTEGER NOT NULL DEFAULT 0,
+          final_passed  INTEGER NOT NULL DEFAULT 0,
+          repair_rounds INTEGER NOT NULL DEFAULT 0,
+          created_at    TEXT NOT NULL,
+          UNIQUE(request_id, owner_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_build_outcomes_owner ON build_outcomes(owner_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS repair_rounds (
+          id                TEXT PRIMARY KEY,
+          outcome_id        TEXT NOT NULL,
+          owner_id          TEXT NOT NULL,
+          round_no          INTEGER NOT NULL,
+          failed_tests_json TEXT NOT NULL DEFAULT '[]',
+          success           INTEGER NOT NULL DEFAULT 0,
+          tests_passed      INTEGER NOT NULL DEFAULT 0,
+          tests_total       INTEGER NOT NULL DEFAULT 0,
+          created_at        TEXT NOT NULL,
+          UNIQUE(outcome_id, round_no)
+        );
+        CREATE INDEX IF NOT EXISTS idx_repair_rounds_owner ON repair_rounds(owner_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    id: 33,
+    name: '033_smart_studio',
+    up: (handle) => {
+      // Smart Studio Phase 1: generated image assets with their full audit trail
+      // (original Arabic message, enhanced English prompt, OCR typography verdict).
+      // States: RUNNING -> READY | UNVERIFIED | QUALITY_GATE_FAILED | FAILED.
+      // UNVERIFIED = image exists but OCR tooling was unavailable (honest, not faked).
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS studio_assets (
+          id                 TEXT PRIMARY KEY,
+          owner_id           TEXT NOT NULL,
+          project_id         TEXT,
+          kind               TEXT NOT NULL DEFAULT 'image' CHECK (kind IN ('image')),
+          state              TEXT NOT NULL DEFAULT 'RUNNING'
+                             CHECK (state IN ('RUNNING','READY','UNVERIFIED','QUALITY_GATE_FAILED','FAILED')),
+          user_message       TEXT NOT NULL DEFAULT '',
+          prompt_en          TEXT NOT NULL DEFAULT '',
+          negative           TEXT NOT NULL DEFAULT '',
+          preset             TEXT,
+          sector             TEXT,
+          theme              TEXT,
+          platform           TEXT,
+          aspect             TEXT NOT NULL DEFAULT '1:1',
+          overlay_texts_json TEXT NOT NULL DEFAULT '[]',
+          ocr_coverage       REAL,
+          attempts           INTEGER NOT NULL DEFAULT 0,
+          provider           TEXT,
+          model              TEXT,
+          artifact_path      TEXT,
+          artifact_mime      TEXT,
+          artifact_bytes     INTEGER,
+          error_code         TEXT,
+          error_summary      TEXT,
+          created_at         TEXT NOT NULL,
+          updated_at         TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_studio_assets_owner ON studio_assets(owner_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    id: 34,
+    name: '034_studio_presets',
+    up: (handle) => {
+      // Smart Presets subsystem: per-asset preset metadata, user-saved custom
+      // presets, and per-project brand locks (visual identity pinned across
+      // all future generations until explicitly unlocked).
+      handle.exec(`
+        ALTER TABLE studio_assets ADD COLUMN palette_json TEXT NOT NULL DEFAULT '[]';
+        ALTER TABLE studio_assets ADD COLUMN style_seed TEXT;
+        ALTER TABLE studio_assets ADD COLUMN modifiers_json TEXT NOT NULL DEFAULT '{}';
+        ALTER TABLE studio_assets ADD COLUMN intensity TEXT NOT NULL DEFAULT 'balanced';
+        ALTER TABLE studio_assets ADD COLUMN ocr_gate_mode TEXT NOT NULL DEFAULT 'on_text_detected';
+        ALTER TABLE studio_assets ADD COLUMN auto_detected INTEGER NOT NULL DEFAULT 0;
+
+        CREATE TABLE IF NOT EXISTS studio_custom_presets (
+          id              TEXT PRIMARY KEY,
+          owner_id        TEXT NOT NULL,
+          name            TEXT NOT NULL,
+          base_preset_id  TEXT,
+          source_asset_id TEXT,
+          wrapper_en      TEXT NOT NULL DEFAULT '{}',
+          negative_en     TEXT NOT NULL DEFAULT '',
+          aspect          TEXT NOT NULL DEFAULT '1:1',
+          ocr_gate        TEXT NOT NULL DEFAULT 'on_text_detected'
+                          CHECK (ocr_gate IN ('off','always','on_text_detected')),
+          palette_json    TEXT NOT NULL DEFAULT '[]',
+          style_seed      TEXT,
+          modifiers_json  TEXT NOT NULL DEFAULT '{}',
+          intensity       TEXT NOT NULL DEFAULT 'balanced',
+          created_at      TEXT NOT NULL,
+          updated_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_studio_custom_presets_owner ON studio_custom_presets(owner_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS studio_project_brand_lock (
+          project_id        TEXT PRIMARY KEY,
+          owner_id          TEXT NOT NULL,
+          preset_id         TEXT,
+          custom_preset_id  TEXT,
+          style_seed        TEXT,
+          palette_json      TEXT NOT NULL DEFAULT '[]',
+          locked_at         TEXT NOT NULL
+        );
+      `);
+    },
+  },
+  {
+    id: 35,
+    name: '035_studio_routing',
+    up: (handle) => {
+      // Smart Intent Router (7 layers): routing telemetry for every decision
+      // (intent, confidence, latency, provider, fallback, ambiguity, cost
+      // block) plus the 1-Click Override improvement signal.
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS studio_routing_telemetry (
+          id                TEXT PRIMARY KEY,
+          owner_id          TEXT NOT NULL,
+          session_id        TEXT,
+          intent            TEXT NOT NULL,
+          confidence        REAL NOT NULL,
+          model_tier        TEXT,
+          provider          TEXT NOT NULL,
+          fallback_used     INTEGER NOT NULL DEFAULT 0,
+          ambiguous         INTEGER NOT NULL DEFAULT 0,
+          override_clicked  INTEGER NOT NULL DEFAULT 0,
+          corrected_intent  TEXT,
+          latency_ms        REAL NOT NULL DEFAULT 0,
+          cost_blocked      INTEGER NOT NULL DEFAULT 0,
+          created_at        TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_studio_routing_owner
+          ON studio_routing_telemetry(owner_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_studio_routing_session
+          ON studio_routing_telemetry(owner_id, session_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    id: 36,
+    name: '036_studio_image_mode',
+    up: (handle) => {
+      // Image Mode (Phase 1): multi-candidate groups, reference images,
+      // local WebP variants, and SHA-256 request-fingerprint caching.
+      handle.exec(`
+        ALTER TABLE studio_assets ADD COLUMN generation_group TEXT;
+        ALTER TABLE studio_assets ADD COLUMN reference_id TEXT;
+        ALTER TABLE studio_assets ADD COLUMN webp_path TEXT;
+        CREATE INDEX IF NOT EXISTS idx_studio_assets_group
+          ON studio_assets(owner_id, generation_group);
+
+        CREATE TABLE IF NOT EXISTS studio_references (
+          id          TEXT PRIMARY KEY,
+          owner_id    TEXT NOT NULL,
+          role        TEXT NOT NULL DEFAULT 'style'
+                      CHECK (role IN ('style','product')),
+          hash        TEXT NOT NULL,
+          path        TEXT NOT NULL,
+          mime        TEXT NOT NULL,
+          bytes       INTEGER NOT NULL,
+          created_at  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_studio_references_owner
+          ON studio_references(owner_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS studio_generation_cache (
+          owner_id     TEXT NOT NULL,
+          fingerprint  TEXT NOT NULL,
+          asset_id     TEXT NOT NULL,
+          created_at   TEXT NOT NULL,
+          PRIMARY KEY (owner_id, fingerprint)
+        );
+      `);
+    },
+  },
+  {
+    id: 37,
+    name: '037_ui_builder',
+    up: (handle) => {
+      // UI Builder Mode (Phase 3): one row per generated interface build.
+      // version/parent_id form the basic version chain (full tree: Phase 4);
+      // audit_json stores static gates + headless audit + WCAG + asset stats.
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS studio_ui_builds (
+          id            TEXT PRIMARY KEY,
+          owner_id      TEXT NOT NULL,
+          project_id    TEXT,
+          session_id    TEXT,
+          routing_id    TEXT,
+          domain        TEXT NOT NULL,
+          model_tier    TEXT NOT NULL,
+          provider      TEXT NOT NULL,
+          status        TEXT NOT NULL
+                        CHECK (status IN ('READY','UNVERIFIED','FAILED','QUALITY_GATE_FAILED')),
+          version       INTEGER NOT NULL DEFAULT 1,
+          parent_id     TEXT,
+          html_path     TEXT NOT NULL,
+          tokens_json   TEXT NOT NULL DEFAULT '{}',
+          manifest_json TEXT NOT NULL DEFAULT '[]',
+          audit_json    TEXT NOT NULL DEFAULT '{}',
+          heal_used     INTEGER NOT NULL DEFAULT 0,
+          lang          TEXT NOT NULL DEFAULT 'ar',
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_studio_ui_builds_owner
+          ON studio_ui_builds(owner_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_studio_ui_builds_project
+          ON studio_ui_builds(owner_id, project_id, created_at DESC);
+
+        -- Full router contract replay: POST /ui/build {routing_id} needs the
+        -- complete JSON contract, not just the telemetry scalars.
+        ALTER TABLE studio_routing_telemetry ADD COLUMN contract_json TEXT;
+      `);
+    },
+  },
+  {
+    id: 38,
+    name: '038_prompt_enhancer',
+    up: (handle) => {
+      // Prompt Enhancer Engine (Phase 1, 6 layers). Two tables by design:
+      //  - studio_prompt_enhancements: append-only TELEMETRY ledger — every
+      //    run logged (raw vs enhanced, provider, latency, flags).
+      //  - studio_prompt_cache: the SHA-256 zero-cost cache — one pointer row
+      //    per UNIQUE(owner_id, fingerprint) -> the enhancement that produced it.
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS studio_prompt_enhancements (
+          id                        TEXT PRIMARY KEY,
+          owner_id                  TEXT NOT NULL,
+          session_id                TEXT,
+          fingerprint               TEXT NOT NULL,
+          raw_message               TEXT NOT NULL,
+          contract_json             TEXT NOT NULL,
+          track                     TEXT NOT NULL DEFAULT 'image',
+          provider_dialect          TEXT NOT NULL DEFAULT 'gemini',
+          engine_provider           TEXT NOT NULL DEFAULT 'deterministic'
+                                    CHECK (engine_provider IN ('deterministic','local_qwen','gemini_flash')),
+          fallback_used             INTEGER NOT NULL DEFAULT 0,
+          override_used             INTEGER NOT NULL DEFAULT 0,
+          retry_refinement_applied  INTEGER NOT NULL DEFAULT 0,
+          cache_hit                 INTEGER NOT NULL DEFAULT 0,
+          latency_ms                INTEGER NOT NULL DEFAULT 0,
+          created_at                TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_studio_enhance_owner
+          ON studio_prompt_enhancements(owner_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_studio_enhance_session
+          ON studio_prompt_enhancements(owner_id, session_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS studio_prompt_cache (
+          owner_id     TEXT NOT NULL,
+          fingerprint  TEXT NOT NULL,
+          enhancement_id TEXT NOT NULL,
+          created_at   TEXT NOT NULL,
+          PRIMARY KEY (owner_id, fingerprint)
+        );
+      `);
+    },
+  },
+  {
+    id: 39,
+    name: '039_quick_clarifiers',
+    up: (handle) => {
+      // Quick Clarifiers Engine (Annex 7, Phase 1). Two tables by design:
+      //  - studio_clarifier_sessions: one row per evaluated clarifier card —
+      //    the full card payload, the resolution, and the bypass outcome.
+      //  - studio_clarifier_cache: SHA-256 zero-cost cache for DYNAMIC
+      //    (local-LLM) question sets — one row per unique input hash, so a
+      //    repeated ambiguous request costs 0 LLM calls (cache_hit source).
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS studio_clarifier_sessions (
+          id                    TEXT PRIMARY KEY,
+          owner_id              TEXT NOT NULL,
+          project_id            TEXT,
+          routing_log_id        TEXT,
+          stage                 TEXT NOT NULL CHECK (stage IN ('pre_gen','post_gen','micro_edit','hybrid_expand')),
+          source                TEXT NOT NULL CHECK (source IN ('deterministic_bank','local_llm','cache_hit','circuit_breaker_skipped')),
+          verbosity_mode        TEXT NOT NULL CHECK (verbosity_mode IN ('smart','guided','turbo')),
+          questions_json        TEXT NOT NULL,
+          suppressed_slots_json TEXT NOT NULL,
+          selected_answers_json TEXT,
+          custom_text_input     TEXT,
+          status                TEXT NOT NULL DEFAULT 'pending'
+                                CHECK (status IN ('pending','resolved','skipped','auto_proceeded','timeout_bypassed')),
+          latency_ms            INTEGER NOT NULL DEFAULT 0,
+          created_at            TEXT NOT NULL,
+          resolved_at           TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_studio_clarifier_routing
+          ON studio_clarifier_sessions(routing_log_id);
+        CREATE INDEX IF NOT EXISTS idx_studio_clarifier_owner_status
+          ON studio_clarifier_sessions(owner_id, status, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS studio_clarifier_cache (
+          input_hash         TEXT PRIMARY KEY,
+          intent             TEXT NOT NULL,
+          missing_slots_json TEXT NOT NULL,
+          questions_json     TEXT NOT NULL,
+          hit_count          INTEGER NOT NULL DEFAULT 0,
+          latency_ms         INTEGER NOT NULL DEFAULT 0,
+          created_at         TEXT NOT NULL,
+          last_used_at       TEXT NOT NULL
+        );
+      `);
+    },
+  },
+  {
+    id: 40,
+    name: '040_smart_presets_v2',
+    up: (handle) => {
+      // Smart Presets Engine v2 (updated official annex, Phase 1).
+      // DB-backed preset registry replacing the abbreviated smart_presets
+      // definition: immutable versioning, hierarchical parentage, pinning,
+      // budget tiers, optical physics, OCR gate modes, conflict rules,
+      // 4-level intensity weights, provider dialects, post-process hooks,
+      // theme variants and share slugs — seeded idempotently with the 7
+      // built-in system presets (INSERT OR IGNORE: safe to run twice).
+      // Platform extension: owner_id column (tenant isolation rule — every
+      // query is owner-scoped; system presets carry '').
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS smart_presets (
+          id TEXT PRIMARY KEY,
+          version INTEGER NOT NULL DEFAULT 1,
+          parent_preset_id TEXT REFERENCES smart_presets(id) ON DELETE SET NULL,
+          project_id TEXT,
+          owner_id TEXT NOT NULL DEFAULT '',
+          is_system INTEGER NOT NULL DEFAULT 0 CHECK (is_system IN (0, 1)),
+          is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+          is_pinned INTEGER NOT NULL DEFAULT 0 CHECK (is_pinned IN (0, 1)),
+          category TEXT NOT NULL CHECK (category IN (
+            'photo', 'commercial', 'product', 'ui_asset', 'fintech', 'marketing', 'heritage', 'edit_profile'
+          )),
+          budget_tier TEXT NOT NULL DEFAULT 'photo_paid' CHECK (budget_tier IN ('photo_paid', 'svg_free', 'css_free')),
+          i18n_label_key TEXT NOT NULL,
+          i18n_description_key TEXT NOT NULL DEFAULT '',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          positive_prompt_wrapper TEXT NOT NULL,
+          negative_prompt_rules TEXT NOT NULL,
+          optical_physics_json TEXT NOT NULL DEFAULT '{}',
+          default_aspect_ratio TEXT NOT NULL DEFAULT '16:9',
+          ocr_gate_mode TEXT NOT NULL DEFAULT 'off' CHECK (ocr_gate_mode IN ('off', 'always', 'on_text_detected')),
+          modifiers_schema_json TEXT NOT NULL DEFAULT '{}',
+          conflict_rules_json TEXT NOT NULL DEFAULT '[]',
+          intensity_weights_json TEXT NOT NULL DEFAULT '{"subtle":0.4,"balanced":0.7,"strong":0.9,"strict":1.0}',
+          provider_dialects_json TEXT NOT NULL DEFAULT '{}',
+          post_process_hooks_json TEXT NOT NULL DEFAULT '{"webp":true,"rembg":false,"upscale_4k":false,"svg":false}',
+          palette_json TEXT NOT NULL DEFAULT '[]',
+          theme_variants_json TEXT NOT NULL DEFAULT '{}',
+          style_seed INTEGER,
+          thumbnail_url TEXT,
+          share_slug TEXT UNIQUE,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_presets_project_active ON smart_presets(project_id, is_active, is_pinned DESC);
+        CREATE INDEX IF NOT EXISTS idx_presets_category ON smart_presets(category, is_active);
+        CREATE INDEX IF NOT EXISTS idx_presets_parent ON smart_presets(parent_preset_id);
+        CREATE INDEX IF NOT EXISTS idx_presets_owner ON smart_presets(owner_id, is_active);
+
+        INSERT OR IGNORE INTO smart_presets (
+          id, version, project_id, is_system, category, budget_tier,
+          i18n_label_key, i18n_description_key, tags_json,
+          positive_prompt_wrapper, negative_prompt_rules, optical_physics_json,
+          default_aspect_ratio, ocr_gate_mode, modifiers_schema_json, conflict_rules_json, post_process_hooks_json,
+          palette_json
+        ) VALUES
+        (
+          'cinematic_photo', 1, NULL, 1, 'photo', 'photo_paid',
+          'presets.cinematic_photo.label', 'presets.cinematic_photo.desc', '["nature","desert","city","realistic"]',
+          'Photorealistic cinematic photography, natural lighting, ultra-detailed textures, balanced film color grading',
+          'random text, watermark, cartoon, plastic skin, distorted anatomy, overexposed highlights, low resolution',
+          '{"lens":"35mm","dof":"shallow","angle":"eye_level"}',
+          '16:9', 'off',
+          '{"lighting":["day","golden_hour","night"],"lens":["wide","portrait"]}',
+          '[]',
+          '{"webp":true,"rembg":false,"upscale_4k":false,"svg":false}',
+          '["#1a2634","#c98a3d","#e8d9b8","#3d5a6c"]'
+        ),
+        (
+          'commercial_storefront', 1, NULL, 1, 'commercial', 'photo_paid',
+          'presets.commercial_storefront.label', 'presets.commercial_storefront.desc', '["shop","cafe","interior","signage"]',
+          'High-end architectural commercial photography of a storefront facade, crisp legible illuminated signage, clean structural lines, inviting ambiance',
+          'garbled letters, misspelled signage, distorted perspective, visual clutter, watermark, low resolution',
+          '{"lens":"35mm","dof":"medium","angle":"eye_level"}',
+          '16:9', 'always',
+          '{"time":["day","illuminated_night"],"style":["modern","luxury","classic"]}',
+          '[]',
+          '{"webp":true,"rembg":false,"upscale_4k":false,"svg":false}',
+          '["#2b2118","#d4a24e","#f5ead6","#7a5c3e"]'
+        ),
+        (
+          'product_studio', 1, NULL, 1, 'product', 'photo_paid',
+          'presets.product_studio.label', 'presets.product_studio.desc', '["ecommerce","perfume","food","packaging"]',
+          'Commercial studio product photography, softbox lighting, realistic soft shadows, crisp surface reflections, centered hero composition',
+          'floating artifacts, warped packaging, harsh glare, cluttered background, watermark, blurry edges',
+          '{"lens":"85mm","dof":"shallow","angle":"three_quarter"}',
+          '1:1', 'on_text_detected',
+          '{"surface":["marble","wood","dark_luxury","pure_white"],"angle":["eye_level","top_down","three_quarter"],"lighting":["soft_studio","dramatic_neon"]}',
+          '[{"if":{"surface":"pure_white"},"forbid":{"lighting":"dramatic_neon"}}]',
+          '{"webp":true,"rembg":false,"upscale_4k":false,"svg":false}',
+          '["#f5f2ee","#c9b48a","#3a3a3a","#8a6d4b"]'
+        ),
+        (
+          'ui_assets', 1, NULL, 1, 'ui_asset', 'svg_free',
+          'presets.ui_assets.label', 'presets.ui_assets.desc', '["icons","3d","glassmorphism","flat","hero"]',
+          'Clean modern application UI visual asset, refined minimalist geometry, soft lighting, uncluttered composition suitable for digital interfaces',
+          'random text, noisy grain, photographic clutter, watermark, jagged edges, low contrast',
+          '{"lens":"50mm","dof":"deep","angle":"isometric"}',
+          '1:1', 'off',
+          '{"style":["3d","glassmorphism","flat"],"background":["transparent","dark","light"]}',
+          '[{"if":{"style":"glassmorphism"},"forbid":{"background":"pure_white"}}]',
+          '{"webp":true,"rembg":true,"upscale_4k":false,"svg":true}',
+          '["#0f172a","#38bdf8","#e2e8f0","#818cf8"]'
+        ),
+        (
+          'fintech_tech', 1, NULL, 1, 'fintech', 'photo_paid',
+          'presets.fintech_tech.label', 'presets.fintech_tech.desc', '["trading","dashboard","dark","crypto"]',
+          'Sleek futuristic fintech and enterprise tech visual, deep dark ambient backdrop, subtle glassmorphic depth, crisp geometric highlights',
+          'cartoonish graphics, cluttered text, bright neon mess, watermark, blurry elements',
+          '{"lens":"35mm","dof":"medium","angle":"eye_level"}',
+          '16:9', 'on_text_detected',
+          '{"theme":["dark_neon","corporate_blue","glassmorphic"]}',
+          '[]',
+          '{"webp":true,"rembg":false,"upscale_4k":false,"svg":false}',
+          '["#090d18","#22d3ee","#10b981","#f8fafc"]'
+        ),
+        (
+          'marketing_banner', 1, NULL, 1, 'marketing', 'photo_paid',
+          'presets.marketing_banner.label', 'presets.marketing_banner.desc', '["ads","social","banner","cta"]',
+          'High-converting commercial hero banner composition, strong visual hierarchy, clean low-contrast negative space reserved for headline and CTA overlay',
+          'cluttered text zone, unreadable typography, watermark, stretched proportions, low resolution',
+          '{"lens":"35mm","dof":"shallow","angle":"wide"}',
+          '16:9', 'always',
+          '{"negative_space_side":["right","left","center"]}',
+          '[]',
+          '{"webp":true,"rembg":false,"upscale_4k":false,"svg":false}',
+          '["#1e293b","#f59e0b","#f8fafc","#ef4444"]'
+        ),
+        (
+          'regional_heritage', 1, NULL, 1, 'heritage', 'photo_paid',
+          'presets.regional_heritage.label', 'presets.regional_heritage.desc', '["arabian","gulf","architecture","culture"]',
+          'Authentic Arabian and Gulf architectural heritage photography, warm golden desert sunlight, refined sandstone textures, timeless cultural elegance',
+          'anachronistic neon clutter, distorted geometric patterns, random text, watermark, artificial HDR look',
+          '{"lens":"35mm","dof":"medium","angle":"eye_level"}',
+          '16:9', 'on_text_detected',
+          '{"lighting":["day","golden_hour","warm_lantern_night"],"style":["authentic_traditional","modern_heritage","royal_luxury"]}',
+          '[]',
+          '{"webp":true,"rembg":false,"upscale_4k":false,"svg":false}',
+          '["#7c5a3a","#d4a24e","#f5ead6","#4a3728"]'
+        );
+      `);
+    },
+  },
+  {
+    id: 41,
+    name: '041_bilingual_typography',
+    up: (handle) => {
+      // Bilingual In-Image Typography Engine (8th annex, Phase 1). Two tables:
+      //  - typography_fonts: curated AR/EN/bilingual commercial font vault with
+      //    automatic AR-EN pairing, plus custom Brand Kit uploads (Phase 4).
+      //  - image_text_layers: non-destructive text layers + OCR verification
+      //    records (strategy, material, layout, scores, retry budget).
+      // Adaptation (documented): the annex references image_assets(id); this
+      // codebase's asset table is studio_assets(id) — the FK points there.
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS typography_fonts (
+          id TEXT PRIMARY KEY,
+          project_id TEXT,
+          is_system INTEGER NOT NULL DEFAULT 1 CHECK (is_system IN (0, 1)),
+          family_name TEXT NOT NULL,
+          script_support TEXT NOT NULL CHECK (script_support IN ('ar', 'en', 'bilingual')),
+          style_category TEXT NOT NULL CHECK (style_category IN (
+            'modern_sans', 'classic_serif', 'calligraphy_heritage', 'display_bold', 'fintech_mono'
+          )),
+          paired_font_id TEXT REFERENCES typography_fonts(id) ON DELETE SET NULL,
+          font_file_path TEXT NOT NULL,
+          weights_json TEXT NOT NULL DEFAULT '[400,600,700]',
+          license_type TEXT NOT NULL DEFAULT 'SIL_OFL',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS image_text_layers (
+          id TEXT PRIMARY KEY,
+          asset_id TEXT NOT NULL REFERENCES studio_assets(id) ON DELETE CASCADE,
+          owner_id TEXT NOT NULL DEFAULT '',
+          clean_plate_url TEXT,
+          layer_role TEXT NOT NULL DEFAULT 'headline' CHECK (layer_role IN ('headline', 'subheadline', 'tagline', 'badge', 'signage')),
+          script_mode TEXT NOT NULL CHECK (script_mode IN ('ar', 'en', 'mixed')),
+          direction TEXT NOT NULL DEFAULT 'rtl' CHECK (direction IN ('rtl', 'ltr', 'auto')),
+          literal_text TEXT NOT NULL,
+          render_strategy TEXT NOT NULL CHECK (render_strategy IN (
+            'native_generative', 'deterministic_compositor', 'two_pass_hybrid', 'fallback_compositor'
+          )),
+          primary_font_id TEXT REFERENCES typography_fonts(id) ON DELETE SET NULL,
+          paired_font_id TEXT REFERENCES typography_fonts(id) ON DELETE SET NULL,
+          material_style TEXT NOT NULL DEFAULT 'flat_clean' CHECK (material_style IN (
+            'flat_clean', 'gold_embossed', 'neon_glow', 'acrylic_3d', 'wood_engraved', 'marble_carved', 'ink_print'
+          )),
+          layout_box_json TEXT NOT NULL DEFAULT '{}',
+          homography_matrix_json TEXT DEFAULT '[]',
+          lighting_params_json TEXT DEFAULT '{}',
+          ocr_engine_used TEXT DEFAULT 'none',
+          ocr_detected_text TEXT,
+          ocr_similarity_score REAL,
+          wcag_contrast_ratio REAL,
+          hallucinated_text_found INTEGER NOT NULL DEFAULT 0 CHECK (hallucinated_text_found IN (0, 1)),
+          retry_count INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN (
+            'planned', 'passed', 'retry_scheduled', 'fallback_recovered', 'failed_unverified', 'skipped'
+          )),
+          diagnosis_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_fonts_script_cat ON typography_fonts(script_support, style_category);
+        CREATE INDEX IF NOT EXISTS idx_text_layers_asset ON image_text_layers(asset_id, layer_role);
+        CREATE INDEX IF NOT EXISTS idx_text_layers_script_ocr ON image_text_layers(script_mode, ocr_similarity_score);
+        CREATE INDEX IF NOT EXISTS idx_text_layers_owner ON image_text_layers(owner_id, created_at DESC);
+
+        INSERT OR IGNORE INTO typography_fonts (
+          id, project_id, is_system, family_name, script_support, style_category, paired_font_id, font_file_path, weights_json
+        ) VALUES
+        ('inter_sans', NULL, 1, 'Inter', 'en', 'modern_sans', NULL, '/assets/fonts/Inter-Variable.ttf', '[400,600,700,800]'),
+        ('playfair_serif', NULL, 1, 'Playfair Display', 'en', 'classic_serif', NULL, '/assets/fonts/PlayfairDisplay-Variable.ttf', '[500,700]'),
+        ('montserrat_bold', NULL, 1, 'Montserrat', 'en', 'display_bold', NULL, '/assets/fonts/Montserrat-Variable.ttf', '[600,700,800]'),
+        ('jetbrains_mono', NULL, 1, 'JetBrains Mono', 'en', 'fintech_mono', NULL, '/assets/fonts/JetBrainsMono-Variable.ttf', '[400,600,700]'),
+        ('ibm_plex_sans_ar', NULL, 1, 'IBM Plex Sans Arabic', 'bilingual', 'modern_sans', 'inter_sans', '/assets/fonts/IBMPlexSansArabic-Bold.ttf', '[400,600,700]'),
+        ('cairo_display', NULL, 1, 'Cairo', 'bilingual', 'display_bold', 'montserrat_bold', '/assets/fonts/Cairo-Variable.ttf', '[600,700,800]'),
+        ('amiri_heritage', NULL, 1, 'Amiri', 'ar', 'calligraphy_heritage', 'playfair_serif', '/assets/fonts/Amiri-Bold.ttf', '[400,700]');
+      `);
+    },
+  },
+  {
+    id: 42,
+    name: '042_phase1_cost_ledger',
+    up: (handle) => {
+      // Phase-1 Feature Freeze (execution order): provider_cost_ledger — the
+      // single honest cost book for the frozen E2E slice. One row per paid
+      // provider call (cost_usd > 0) AND one row per cache-hit saving
+      // (saved_usd > 0), so "Zero Duplicate Spend" is provable from data.
+      // Prices are estimates from a deterministic local table — flagged as
+      // such, never presented as billed invoices.
+      handle.exec(`
+        CREATE TABLE IF NOT EXISTS provider_cost_ledger (
+          id            TEXT PRIMARY KEY,
+          owner_id      TEXT NOT NULL,
+          provider      TEXT NOT NULL,
+          operation     TEXT NOT NULL CHECK (operation IN (
+            'image_generate', 'prompt_enhance', 'clarify_dynamic', 'ocr_verify'
+          )),
+          pricing_model TEXT NOT NULL DEFAULT 'estimated'
+                        CHECK (pricing_model IN ('estimated')),
+          unit_cost_usd REAL NOT NULL DEFAULT 0,
+          units         INTEGER NOT NULL DEFAULT 1,
+          cost_usd      REAL NOT NULL DEFAULT 0,
+          saved_usd     REAL NOT NULL DEFAULT 0,
+          cache_source  TEXT CHECK (cache_source IN (
+            'prompt_cache_hit', 'generation_cache_hit'
+          ) OR cache_source IS NULL),
+          ref_id        TEXT,
+          created_at    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cost_ledger_owner
+          ON provider_cost_ledger(owner_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_cost_ledger_operation
+          ON provider_cost_ledger(operation, created_at DESC);
+      `);
+    },
+  },
 ];
 
 function attachTransactionHelper(handle) {

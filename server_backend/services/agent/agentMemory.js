@@ -110,17 +110,21 @@ function recordLesson({
     };
   }
 
-  const lessonId = 'les_' + crypto.randomUUID().slice(0, 12);
+  // verified_solution is the legacy NOT NULL column from the original schema;
+  // proven_fix is its modern successor. Both are written with the same content
+  // so old and new readers stay consistent (schema drift repair, Phase CI).
+  const lessonId = 'lsn_' + crypto.randomUUID();
   run(
-    `INSERT INTO agent_memory_lessons 
-     (id, project_id, scope, tech_stack, error_signature, root_cause, proven_fix, code_before, code_after, verification_status, usage_count, has_conflict, is_cold, created_at, updated_at, last_recalled_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified', 1, 0, 0, ?, ?, ?)`,
+    `INSERT INTO agent_memory_lessons
+     (id, project_id, scope, tech_stack, error_signature, root_cause, verified_solution, proven_fix, code_before, code_after, verification_status, usage_count, has_conflict, is_cold, created_at, updated_at, last_recalled_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'verified', 1, 0, 0, ?, ?, ?)`,
     lessonId,
     projectId,
     scope,
     techStack,
     cleanSignature,
     rootCause,
+    provenFix,
     provenFix,
     codeBefore,
     codeAfter,
